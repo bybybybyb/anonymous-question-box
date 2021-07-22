@@ -6,7 +6,7 @@ import (
 )
 
 type TokenManager interface {
-	GenerateToken(ctx context.Context, uuid string, isAdmin bool) string
+	GenerateToken(ctx context.Context, uuid string) (string, error)
 	ValidateToken(ctx context.Context, token string) (string, bool, error)
 }
 
