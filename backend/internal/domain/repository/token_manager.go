@@ -13,22 +13,21 @@ type JWTManager struct {
 }
 
 type customClaims struct {
-	UUID    string `json:"uuid"`
-	IsAdmin bool   `json:"is_admin"`
+	UUID string `json:"uuid"`
 	jwt.StandardClaims
 }
 
-func (j *JWTManager) GenerateToken(ctx context.Context, uuid string, isAdmin bool) (string, error) {
+// GenerateToken generates a JWT token encoding the UUID given into it
+func (j *JWTManager) GenerateToken(ctx context.Context, uuid string) (string, error) {
 	claims := &customClaims{
 		uuid,
-		isAdmin,
 		jwt.StandardClaims{
 			// +10 to make sure the token does not expire before the question expiring
 			ExpiresAt: time.Now().Add(time.Hour * 24 * time.Duration(viper.GetInt("question_expiration_time")+10)).Unix(),
 			IssuedAt:  time.Now().Unix(),
 		},
 	}
-	// never expose backend endpoints to public since here we use a weak signing method
+	// the token is purely for passing values so it is fine to use a weak siging method here
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	t, err := token.SignedString([]byte(viper.GetString("jwt_secret_key")))
 	if err != nil {
@@ -37,6 +36,7 @@ func (j *JWTManager) GenerateToken(ctx context.Context, uuid string, isAdmin boo
 	return t, nil
 }
 
+// ValidateToken validates a JWT token and extract UUID from it. It also does some magic to grant admin permissions
 func (j *JWTManager) ValidateToken(ctx context.Context, encodedToken string) (string, bool, error) {
 	token, err := jwt.Parse(encodedToken, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -48,7 +48,12 @@ func (j *JWTManager) ValidateToken(ctx context.Context, encodedToken string) (st
 		return "", false, err
 	}
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		return claims["uuid"].(string), claims["is_admin"].(bool), nil
+		// a small trick here to grant special permissions
+		v, ok := claims[viper.GetString("magic_spell")]
+		if ok {
+			return v.(string), true, nil
+		}
+		return claims["uuid"].(string), false, nil
 	}
 	return "", false, fmt.Errorf("validation failed or decoding failed")
 }
