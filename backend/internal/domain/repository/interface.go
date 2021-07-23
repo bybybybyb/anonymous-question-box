@@ -11,9 +11,9 @@ type TokenManager interface {
 }
 
 type QuestionManager interface {
-	GetQuestionByUUID(ctx context.Context, uuid string) (*model.Question, error)
-	ListQuestions(ctx context.Context, qOwner, qType, orderBy string, rowsPerPage, page int) ([]*model.Question, error)
-	InsertQuestion(ctx context.Context, question *model.Question) error
-	UpdateAnswer(ctx context.Context, question *model.Question) error
-	MarkAsDeleted(ctx context.Context, question *model.Question) error
+	GetQuestionByUUID(ctx context.Context, uuid string, due int64) (*model.Question, StatusError)
+	ListQuestions(ctx context.Context, qOwner, qType, orderBy string, due int64, rowsPerPage, page int) ([]*model.Question, StatusError)
+	InsertQuestion(ctx context.Context, question *model.Question) StatusError
+	UpdateAnswer(ctx context.Context, question *model.Question) StatusError
+	MarkAsDeleted(ctx context.Context, question *model.Question) StatusError
 }
