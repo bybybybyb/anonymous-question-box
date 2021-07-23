@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"github.com/anonymous-question-box/internal/domain/model"
 	"github.com/anonymous-question-box/internal/infrastructure"
 	"net/http"
@@ -23,9 +24,9 @@ func (q *SQLiteQuestionManager) GetQuestionByUUID(ctx context.Context, uuid stri
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, E(err, "question not found", http.StatusNotFound)
+			return nil, E(err, http.StatusNotFound)
 		}
-		return nil, E(err, "failed to query question from db", http.StatusInternalServerError)
+		return nil, E(err, http.StatusInternalServerError)
 	}
 
 	return &model.Question{
@@ -53,9 +54,9 @@ func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, E(err, "no more questions", http.StatusNotFound)
+			return nil, E(err, http.StatusNotFound)
 		}
-		return nil, E(err, "failed to query questions from db", http.StatusInternalServerError)
+		return nil, E(err, http.StatusInternalServerError)
 	}
 
 	for rows.Next() {
@@ -78,14 +79,14 @@ func (q *SQLiteQuestionManager) InsertQuestion(ctx context.Context, question *mo
 	result, err := infrastructure.DBConn.ExecContext(ctx, "INSERT INTO `question` (`uuid`, `owner`, `type`, `question`, `asked_at`) VALUES (?,?,?,?,?);",
 		question.UUID, question.Owner, question.Type, question.Text, question.AskedAt.Unix())
 	if err != nil {
-		return E(err, "failed to insert question", http.StatusInternalServerError)
+		return E(err, http.StatusInternalServerError)
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
-		return E(err, "failed to check insertion result", http.StatusInternalServerError)
+		return E(err, http.StatusInternalServerError)
 	}
 	if id <= 0 {
-		return E(err, "failed to insert question for unknown reason", http.StatusInternalServerError)
+		return E(fmt.Errorf("no row inserted"), http.StatusInternalServerError)
 	}
 	return nil
 }
@@ -94,14 +95,14 @@ func (q *SQLiteQuestionManager) UpdateAnswer(ctx context.Context, question *mode
 	result, err := infrastructure.DBConn.ExecContext(ctx, "UPDATE `question` SET `answer` = ?, `answered_at` = ? WHERE `uuid` = ?",
 		question.AnswerText, question.AnsweredAt.Unix(), question.UUID)
 	if err != nil {
-		return E(err, "failed to update answer", http.StatusInternalServerError)
+		return E(err, http.StatusInternalServerError)
 	}
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return E(err, "failed to check update result", http.StatusInternalServerError)
+		return E(err, http.StatusInternalServerError)
 	}
 	if rowsAffected != 1 {
-		return E(err, "question not found", http.StatusNotFound)
+		return E(err, http.StatusNotFound)
 	}
 	return nil
 }
@@ -109,14 +110,14 @@ func (q *SQLiteQuestionManager) UpdateAnswer(ctx context.Context, question *mode
 func (q *SQLiteQuestionManager) MarkAsDeleted(ctx context.Context, question *model.Question) StatusError {
 	result, err := infrastructure.DBConn.ExecContext(ctx, "UPDATE `question` SET `deleted` = 1 WHERE `uuid` = ?", question.UUID)
 	if err != nil {
-		return E(err, "failed to delete question", http.StatusInternalServerError)
+		return E(err, http.StatusInternalServerError)
 	}
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return E(err, "failed to check delete result", http.StatusInternalServerError)
+		return E(err, http.StatusInternalServerError)
 	}
 	if rowsAffected != 1 {
-		return E(err, "question not found", http.StatusNotFound)
+		return E(err, http.StatusNotFound)
 	}
 	return nil
 }
