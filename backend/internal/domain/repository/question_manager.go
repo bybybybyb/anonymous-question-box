@@ -107,8 +107,8 @@ func (q *SQLiteQuestionManager) UpdateAnswer(ctx context.Context, question *mode
 	return nil
 }
 
-func (q *SQLiteQuestionManager) MarkAsDeleted(ctx context.Context, question *model.Question) StatusError {
-	result, err := infrastructure.DBConn.ExecContext(ctx, "UPDATE `question` SET `deleted` = 1 WHERE `uuid` = ?", question.UUID)
+func (q *SQLiteQuestionManager) MarkAsDeleted(ctx context.Context, uuid string) StatusError {
+	result, err := infrastructure.DBConn.ExecContext(ctx, "UPDATE `question` SET `deleted` = 1 WHERE `uuid` = ?", uuid)
 	if err != nil {
 		return E(err, http.StatusInternalServerError)
 	}

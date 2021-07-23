@@ -15,5 +15,5 @@ type QuestionManager interface {
 	ListQuestions(ctx context.Context, qOwner, qType, orderBy string, due int64, rowsPerPage, page int) ([]*model.Question, StatusError)
 	InsertQuestion(ctx context.Context, question *model.Question) StatusError
 	UpdateAnswer(ctx context.Context, question *model.Question) StatusError
-	MarkAsDeleted(ctx context.Context, question *model.Question) StatusError
+	MarkAsDeleted(ctx context.Context, uuid string) StatusError
 }
