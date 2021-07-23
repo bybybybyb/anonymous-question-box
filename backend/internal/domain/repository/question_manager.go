@@ -89,6 +89,7 @@ func (q *SQLiteQuestionManager) InsertQuestion(ctx context.Context, question *mo
 	}
 	return nil
 }
+
 func (q *SQLiteQuestionManager) UpdateAnswer(ctx context.Context, question *model.Question) StatusError {
 	result, err := infrastructure.DBConn.ExecContext(ctx, "UPDATE `question` SET `answer` = ?, `answered_at` = ? WHERE `uuid` = ?",
 		question.AnswerText, question.AnsweredAt.Unix(), question.UUID)
@@ -104,6 +105,7 @@ func (q *SQLiteQuestionManager) UpdateAnswer(ctx context.Context, question *mode
 	}
 	return nil
 }
+
 func (q *SQLiteQuestionManager) MarkAsDeleted(ctx context.Context, question *model.Question) StatusError {
 	result, err := infrastructure.DBConn.ExecContext(ctx, "UPDATE `question` SET `deleted` = 1 WHERE `uuid` = ?", question.UUID)
 	if err != nil {
