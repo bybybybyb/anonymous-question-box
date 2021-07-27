@@ -18,6 +18,7 @@ func (a *AuthHandler) Authenticate(c *gin.Context) {
 	if len(splits) == 2 {
 		token = splits[1]
 	} else {
+		fmt.Printf("auth header: %s\n", c.GetHeader("Authorization"))
 		c.AbortWithStatusJSON(http.StatusForbidden, ErrorResp{Error: "无效token"})
 		return
 	}
@@ -28,6 +29,13 @@ func (a *AuthHandler) Authenticate(c *gin.Context) {
 	}
 	c.Set("is_admin", isAdmin)
 	c.Set("uuid", uuid)
+}
+
+func (a *AuthHandler) GetOwnerInfo(c *gin.Context) {
+	type resp struct {
+		Owner string `json:"owner"`
+	}
+	c.JSON(http.StatusOK, resp{c.GetString("uuid")})
 }
 
 func (a *AuthHandler) AuthorizeOwner(c *gin.Context) {
