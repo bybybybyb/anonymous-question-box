@@ -14,5 +14,5 @@ type ColorTheme struct {
 type QuestionType struct {
 	Name        string `mapstructure:"name" json:"name"`
 	Description string `mapstructure:"description" json:"description"`
-	RuneLimit   int    `mapstructure:"rune_limit" json:"rune_limit"`
+	RuneLimit   int32  `mapstructure:"rune_limit" json:"rune_limit"`
 }

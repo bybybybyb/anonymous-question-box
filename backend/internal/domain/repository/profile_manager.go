@@ -7,7 +7,7 @@ import (
 
 type LocalProfileManager struct{}
 
-func (p *LocalProfileManager) GetRuneLimitByOwnerNameAndQuestionType(ownerName string, qTypeName string) (int, bool) {
+func (p *LocalProfileManager) GetRuneLimitByOwnerNameAndQuestionType(ownerName string, qTypeName string) (int32, bool) {
 	profile, ok := infrastructure.Profiles[ownerName]
 	if !ok {
 		return 0, false
@@ -17,7 +17,7 @@ func (p *LocalProfileManager) GetRuneLimitByOwnerNameAndQuestionType(ownerName s
 		return 0, false
 	}
 	if questionType.RuneLimit == 0 {
-		return viper.GetInt("default_rune_limit"), true
+		return viper.GetInt32("default_rune_limit"), true
 	}
 	return questionType.RuneLimit, true
 }
