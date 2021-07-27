@@ -91,15 +91,18 @@ func (q *QuestionsHandler) GetQuestion(c *gin.Context) {
 
 // ListQuestions returns a list of questions queried by given params
 func (q *QuestionsHandler) ListQuestions(c *gin.Context) {
+	type orderParams struct {
+		By       string `json:"by"`
+		Reversed bool   `json:"reversed"`
+	}
 	type listRequest struct {
-		Owner          string `json:"owner"`
-		Type           string `json:"type"`
-		OrderBy        string `json:"order_by"`
-		OrderDirection int    `json:"order_direction"`
-		Days           int    `json:"day_limit"`
-		ReplyStatus    int    `json:"reply_status"`
-		RowsPerPage    int    `json:"rows_per_page"`
-		Page           int    `json:"page"`
+		Owner       string      `json:"owner"`
+		Type        string      `json:"type"`
+		OrderParams orderParams `json:"order_params"`
+		Days        int         `json:"day_limit"`
+		ReplyStatus int         `json:"reply_status"`
+		RowsPerPage int         `json:"rows_per_page"`
+		Page        int         `json:"page"`
 	}
 	body, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
@@ -116,7 +119,7 @@ func (q *QuestionsHandler) ListQuestions(c *gin.Context) {
 	if !ok {
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("未知提问箱主人 %s 或问题类型 %s", req.Owner, req.Type)})
 	}
-	questions, statusErr := q.QuestionManager.ListQuestions(c, req.Owner, req.Type, req.OrderBy, time.Now().AddDate(0, 0, -req.Days).Unix(), req.RowsPerPage, req.Page, req.OrderDirection, req.ReplyStatus)
+	questions, statusErr := q.QuestionManager.ListQuestions(c, req.Owner, req.Type, req.OrderParams.By, req.OrderParams.Reversed, time.Now().AddDate(0, 0, -req.Days).Unix(), req.RowsPerPage, req.Page, req.ReplyStatus)
 	if statusErr != nil {
 		switch statusErr.Code() {
 		case http.StatusNotFound:
