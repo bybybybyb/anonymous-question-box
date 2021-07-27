@@ -15,6 +15,7 @@ import (
 )
 
 type QuestionsHandler struct {
+	ProfileManager  repository.ProfileManager
 	TokenManager    repository.TokenManager
 	QuestionManager repository.QuestionManager
 }
@@ -56,7 +57,7 @@ func (q *QuestionsHandler) SubmitNewQuestion(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("无法解析问题请求，错误信息：%s", err.Error())})
 		return
 	}
-	runeLimit, ok := getRuneLimitFromConfig(req.Owner, req.Type)
+	runeLimit, ok := q.ProfileManager.GetRuneLimitByOwnerNameAndQuestionType(req.Owner, req.Type)
 	if !ok {
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("未知提问箱主人 %s 或问题类型 %s", req.Owner, req.Type)})
 		return
@@ -91,11 +92,14 @@ func (q *QuestionsHandler) GetQuestion(c *gin.Context) {
 // ListQuestions returns a list of questions queried by given params
 func (q *QuestionsHandler) ListQuestions(c *gin.Context) {
 	type listRequest struct {
-		Owner       string `json:"owner"`
-		Type        string `json:"type"`
-		OrderBy     string `json:"order_by"`
-		RowsPerPage int    `json:"rows_per_page"`
-		Page        int    `json:"page"`
+		Owner          string `json:"owner"`
+		Type           string `json:"type"`
+		OrderBy        string `json:"order_by"`
+		OrderDirection int    `json:"order_direction"`
+		Days           int    `json:"day_limit"`
+		ReplyStatus    int    `json:"reply_status"`
+		RowsPerPage    int    `json:"rows_per_page"`
+		Page           int    `json:"page"`
 	}
 	body, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
@@ -108,11 +112,11 @@ func (q *QuestionsHandler) ListQuestions(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("无法解析问题请求，错误信息：%s", err.Error())})
 		return
 	}
-	_, ok := getRuneLimitFromConfig(req.Owner, req.Type)
+	_, ok := q.ProfileManager.GetRuneLimitByOwnerNameAndQuestionType(req.Owner, req.Type)
 	if !ok {
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("未知提问箱主人 %s 或问题类型 %s", req.Owner, req.Type)})
 	}
-	questions, statusErr := q.QuestionManager.ListQuestions(c, req.Owner, req.Type, req.OrderBy, time.Now().AddDate(0, 0, -viper.GetInt("question_expiration_days")).Unix(), req.RowsPerPage, req.Page)
+	questions, statusErr := q.QuestionManager.ListQuestions(c, req.Owner, req.Type, req.OrderBy, time.Now().AddDate(0, 0, -req.Days).Unix(), req.RowsPerPage, req.Page, req.OrderDirection, req.ReplyStatus)
 	if statusErr != nil {
 		switch statusErr.Code() {
 		case http.StatusNotFound:
