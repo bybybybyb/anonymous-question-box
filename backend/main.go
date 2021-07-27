@@ -32,10 +32,7 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	r, err := server.SetupRoutes()
-	if err != nil {
-		panic(err.Error())
-	}
+	r := server.SetupRoutes()
 	// profiling
 	pprof.Register(r)
 	// start server

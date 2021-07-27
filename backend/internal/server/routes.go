@@ -10,11 +10,14 @@ import (
 func SetupRoutes() *gin.Engine {
 	r := gin.Default()
 	authHandler := &handler.AuthHandler{TokenManager: &repository.JWTManager{}}
-	questionsHandler := &handler.QuestionsHandler{TokenManager: &repository.JWTManager{}, QuestionManager: &repository.SQLiteQuestionManager{}}
+	questionsHandler := &handler.QuestionsHandler{ProfileManager: &repository.LocalProfileManager{}, TokenManager: &repository.JWTManager{}, QuestionManager: &repository.SQLiteQuestionManager{}}
 
-	// checkalive
+	// some basic one liner handlers
 	r.GET("/checkalive", func(c *gin.Context) {
 		c.String(http.StatusOK, "pong")
+	})
+	r.GET("/profiles", func(c *gin.Context) {
+		c.JSON(http.StatusOK, infrastructure.Profiles)
 	})
 
 	r.GET("/new", questionsHandler.NewQuestionToken)
@@ -24,6 +27,7 @@ func SetupRoutes() *gin.Engine {
 	userAuthorized.POST("/submit", questionsHandler.SubmitNewQuestion)
 
 	ownerAuthorized := r.Group("/owner", authHandler.Authenticate, authHandler.AuthorizeOwner)
+	ownerAuthorized.GET("/", authHandler.GetOwnerInfo)
 	ownerAuthorized.POST("/questions", questionsHandler.ListQuestions)
 	ownerAuthorized.POST("/questions/answer", questionsHandler.AnswerQuestion)
 	ownerAuthorized.DELETE("/questions/delete", questionsHandler.DeleteQuestion)
