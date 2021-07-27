@@ -42,7 +42,7 @@ func (q *SQLiteQuestionManager) GetQuestionByUUID(ctx context.Context, uuid stri
 	}, nil
 }
 
-func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType, orderBy string, due int64, rowsPerPage, page, orderDirection, replyStatus int) ([]*model.Question, StatusError) {
+func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType, orderBy string, orderReversed bool, due int64, rowsPerPage, page, replyStatus int) ([]*model.Question, StatusError) {
 	questions := make([]*model.Question, 0)
 	var id, wordCount int32
 	var askedAt int64
@@ -55,7 +55,7 @@ func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType
 		orderBy = "asked_at"
 	}
 	direction := fmt.Sprintf("`%s` ASC", orderBy)
-	if orderDirection > 0 {
+	if orderReversed {
 		direction = fmt.Sprintf("`%s` DESC", orderBy)
 	}
 	replyFilterStr := ""
