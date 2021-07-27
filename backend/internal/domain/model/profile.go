@@ -1,0 +1,18 @@
+package model
+
+type Profile struct {
+	Name          string                  `mapstructure:"name" json:"name"`
+	ColorTheme    ColorTheme              `mapstructure:"color_theme" json:"color_theme"`
+	QuestionTypes map[string]QuestionType `mapstructure:"question_types" json:"question_types"`
+}
+
+type ColorTheme struct {
+	PrimaryColor   string `mapstructure:"primary_color" json:"primary_color"`
+	SecondaryColor string `mapstructure:"secondary_color" json:"secondary_color"`
+}
+
+type QuestionType struct {
+	Name        string `mapstructure:"name" json:"name"`
+	Description string `mapstructure:"description" json:"description"`
+	RuneLimit   int    `mapstructure:"rune_limit" json:"rune_limit"`
+}
