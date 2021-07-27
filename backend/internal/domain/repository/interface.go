@@ -12,12 +12,12 @@ type TokenManager interface {
 
 type QuestionManager interface {
 	GetQuestionByUUID(ctx context.Context, uuid string, due int64) (*model.Question, StatusError)
-	ListQuestions(ctx context.Context, qOwner, qType, orderBy string, orderReversed bool, due int64, rowsPerPage, page, replyStatus int) ([]*model.Question, StatusError)
+	ListQuestions(ctx context.Context, qOwner, qType, orderBy string, orderReversed bool, due int64, rowsPerPage, page, replyStatus int32) ([]*model.Question, int32, StatusError)
 	InsertQuestion(ctx context.Context, question *model.Question) StatusError
 	UpdateAnswer(ctx context.Context, question *model.Question) StatusError
 	MarkAsDeleted(ctx context.Context, uuid string) StatusError
 }
 
 type ProfileManager interface {
-	GetRuneLimitByOwnerNameAndQuestionType(ownerName string, qTypeName string) (int, bool)
+	GetRuneLimitByOwnerNameAndQuestionType(ownerName string, qTypeName string) (int32, bool)
 }

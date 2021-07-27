@@ -42,9 +42,9 @@ func (q *SQLiteQuestionManager) GetQuestionByUUID(ctx context.Context, uuid stri
 	}, nil
 }
 
-func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType, orderBy string, orderReversed bool, due int64, rowsPerPage, page, replyStatus int) ([]*model.Question, StatusError) {
+func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType, orderBy string, orderReversed bool, due int64, rowsPerPage, page, replyStatus int32) ([]*model.Question, int32, StatusError) {
 	questions := make([]*model.Question, 0)
-	var id, wordCount int32
+	var id, wordCount, totalCount int32
 	var askedAt int64
 	var answeredAt sql.NullInt64
 	var uuid, question string
@@ -65,16 +65,28 @@ func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType
 		replyFilterStr = "AND answered_at IS NOT NULL"
 	}
 
-	sqlStr := "SELECT `id`, `uuid`, `question`, `word_count`, `answer`, `asked_at`, `answered_at` FROM `question` WHERE `owner` = ? AND `question_type` = ? AND `asked_at` > ? AND `deleted_at` IS NULL " + replyFilterStr + " ORDER BY " + direction + " LIMIT ? OFFSET ?;"
+	attrs := "`id`, `uuid`, `question`, `word_count`, `answer`, `asked_at`, `answered_at`"
+	counts := "COUNT(*)"
 
+	sqlStr := buildQuery(counts, replyFilterStr, direction, false)
+	row := infrastructure.DBConn.QueryRowContext(ctx, sqlStr, qOwner, qType, due)
+	err := row.Scan(&totalCount)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, 0, E(err, http.StatusNotFound)
+		}
+		return nil, 0, E(err, http.StatusInternalServerError)
+	}
+
+	sqlStr = buildQuery(attrs, replyFilterStr, direction, true)
 	rows, err := infrastructure.DBConn.QueryContext(ctx, sqlStr,
 		qOwner, qType, due, rowsPerPage, rowsPerPage*(page-1))
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, E(err, http.StatusNotFound)
+			return nil, 0, E(err, http.StatusNotFound)
 		}
-		return nil, E(err, http.StatusInternalServerError)
+		return nil, 0, E(err, http.StatusInternalServerError)
 	}
 
 	for rows.Next() {
@@ -91,7 +103,8 @@ func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType
 			AnsweredAt: time.Unix(answeredAt.Int64, 0),
 		})
 	}
-	return questions, nil
+
+	return questions, totalCount, nil
 }
 
 func (q *SQLiteQuestionManager) InsertQuestion(ctx context.Context, question *model.Question) StatusError {
@@ -139,4 +152,12 @@ func (q *SQLiteQuestionManager) MarkAsDeleted(ctx context.Context, uuid string) 
 		return E(err, http.StatusNotFound)
 	}
 	return nil
+}
+
+func buildQuery(toSelect, filter, direction string, withPagination bool) string {
+	sqlStr := "SELECT " + toSelect + " FROM `question` WHERE `owner` = ? AND `question_type` = ? AND `asked_at` > ? AND `deleted_at` IS NULL " + filter + " ORDER BY " + direction
+	if withPagination {
+		sqlStr += " LIMIT ? OFFSET ?;"
+	}
+	return sqlStr
 }

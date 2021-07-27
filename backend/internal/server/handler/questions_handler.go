@@ -62,7 +62,7 @@ func (q *QuestionsHandler) SubmitNewQuestion(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("未知提问箱主人 %s 或问题类型 %s", req.Owner, req.Type)})
 		return
 	}
-	if utf8.RuneCountInString(req.Text) > runeLimit {
+	if int32(utf8.RuneCountInString(req.Text)) > runeLimit {
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("问题长度超过最大限度 %d", runeLimit)})
 		return
 	}
@@ -99,10 +99,10 @@ func (q *QuestionsHandler) ListQuestions(c *gin.Context) {
 		Owner       string      `json:"owner"`
 		Type        string      `json:"type"`
 		OrderParams orderParams `json:"order_params"`
-		Days        int         `json:"day_limit"`
-		ReplyStatus int         `json:"reply_status"`
-		RowsPerPage int         `json:"rows_per_page"`
-		Page        int         `json:"page"`
+		Days        int32       `json:"day_limit"`
+		ReplyStatus int32       `json:"reply_status"`
+		PageSize    int32       `json:"page_size"`
+		Page        int32       `json:"page"`
 	}
 	body, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
@@ -119,7 +119,7 @@ func (q *QuestionsHandler) ListQuestions(c *gin.Context) {
 	if !ok {
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("未知提问箱主人 %s 或问题类型 %s", req.Owner, req.Type)})
 	}
-	questions, statusErr := q.QuestionManager.ListQuestions(c, req.Owner, req.Type, req.OrderParams.By, req.OrderParams.Reversed, time.Now().AddDate(0, 0, -req.Days).Unix(), req.RowsPerPage, req.Page, req.ReplyStatus)
+	questions, totalCount, statusErr := q.QuestionManager.ListQuestions(c, req.Owner, req.Type, req.OrderParams.By, req.OrderParams.Reversed, time.Now().AddDate(0, 0, int(-req.Days)).Unix(), req.PageSize, req.Page, req.ReplyStatus)
 	if statusErr != nil {
 		switch statusErr.Code() {
 		case http.StatusNotFound:
@@ -129,7 +129,13 @@ func (q *QuestionsHandler) ListQuestions(c *gin.Context) {
 		}
 		return
 	}
-	c.JSON(http.StatusOK, questions)
+	type resp struct {
+		Questions  []*model.Question `json:"questions"`
+		TotalCount int32             `json:"total"`
+		PageSize   int32             `json:"page_size"`
+		Page       int32             `json:"page"`
+	}
+	c.JSON(http.StatusOK, resp{Questions: questions, TotalCount: totalCount, PageSize: req.PageSize, Page: req.Page})
 }
 
 // AnswerQuestion records the answer for one single question queried by the given UUID
