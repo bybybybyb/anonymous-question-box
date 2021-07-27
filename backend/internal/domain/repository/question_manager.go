@@ -8,6 +8,7 @@ import (
 	"github.com/anonymous-question-box/internal/infrastructure"
 	"net/http"
 	"time"
+	"unicode/utf8"
 )
 
 type SQLiteQuestionManager struct{}
@@ -19,7 +20,7 @@ func (q *SQLiteQuestionManager) GetQuestionByUUID(ctx context.Context, uuid stri
 	var qOwner, qType, question string
 	var answer sql.NullString
 
-	err := infrastructure.DBConn.QueryRowContext(ctx, "SELECT `id`, `owner`, `type`, `question`, `answer`, `asked_at`, `answered_at` FROM `question` WHERE `uuid` = ? AND `asked_at` > ?",
+	err := infrastructure.DBConn.QueryRowContext(ctx, "SELECT `id`, `owner`, `question_type`, `question`, `answer`, `asked_at`, `answered_at` FROM `question` WHERE `uuid` = ? AND `asked_at` > ? AND `deleted_at` IS NULL",
 		uuid, due).Scan(&id, &qOwner, &qType, &question, &answer, &askedAt, &answeredAt)
 
 	if err != nil {
@@ -41,16 +42,33 @@ func (q *SQLiteQuestionManager) GetQuestionByUUID(ctx context.Context, uuid stri
 	}, nil
 }
 
-func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType, orderBy string, due int64, rowsPerPage, page int) ([]*model.Question, StatusError) {
+func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType, orderBy string, due int64, rowsPerPage, page, orderDirection, replyStatus int) ([]*model.Question, StatusError) {
 	questions := make([]*model.Question, 0)
-	var id int32
+	var id, wordCount int32
 	var askedAt int64
 	var answeredAt sql.NullInt64
 	var uuid, question string
 	var answer sql.NullString
 
-	rows, err := infrastructure.DBConn.QueryContext(ctx, "SELECT `id`, `uuid`, `question`, `answer`, `asked_at`, `answered_at` FROM `question` WHERE `owner` = ? AND `type` = ? AND `asked_at` > ? ORDER BY ? LIMIT ? OFFSET ?;",
-		qOwner, qType, due, orderBy, rowsPerPage, rowsPerPage*(page-1))
+	// sorting & filters
+	if orderBy == "" {
+		orderBy = "asked_at"
+	}
+	direction := fmt.Sprintf("`%s` ASC", orderBy)
+	if orderDirection > 0 {
+		direction = fmt.Sprintf("`%s` DESC", orderBy)
+	}
+	replyFilterStr := ""
+	if replyStatus < 0 {
+		replyFilterStr = "AND answered_at IS NULL"
+	} else if replyStatus > 0 {
+		replyFilterStr = "AND answered_at IS NOT NULL"
+	}
+
+	sqlStr := "SELECT `id`, `uuid`, `question`, `word_count`, `answer`, `asked_at`, `answered_at` FROM `question` WHERE `owner` = ? AND `question_type` = ? AND `asked_at` > ? AND `deleted_at` IS NULL " + replyFilterStr + " ORDER BY " + direction + " LIMIT ? OFFSET ?;"
+
+	rows, err := infrastructure.DBConn.QueryContext(ctx, sqlStr,
+		qOwner, qType, due, rowsPerPage, rowsPerPage*(page-1))
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -60,13 +78,14 @@ func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType
 	}
 
 	for rows.Next() {
-		rows.Scan(&id, &uuid, &question, &answer, &askedAt, &answeredAt)
+		rows.Scan(&id, &uuid, &question, &wordCount, &answer, &askedAt, &answeredAt)
 		questions = append(questions, &model.Question{
 			ID:         id,
 			UUID:       uuid,
 			Owner:      qOwner,
 			Type:       qType,
 			Text:       question,
+			WordCount:  wordCount,
 			AnswerText: answer.String,
 			AskedAt:    time.Unix(askedAt, 0),
 			AnsweredAt: time.Unix(answeredAt.Int64, 0),
@@ -76,8 +95,8 @@ func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType
 }
 
 func (q *SQLiteQuestionManager) InsertQuestion(ctx context.Context, question *model.Question) StatusError {
-	result, err := infrastructure.DBConn.ExecContext(ctx, "INSERT INTO `question` (`uuid`, `owner`, `type`, `question`, `asked_at`) VALUES (?,?,?,?,?);",
-		question.UUID, question.Owner, question.Type, question.Text, question.AskedAt.Unix())
+	result, err := infrastructure.DBConn.ExecContext(ctx, "INSERT INTO `question` (`uuid`, `owner`, `question_type`, `question`, `word_count`, `asked_at`) VALUES (?,?,?,?,?,?);",
+		question.UUID, question.Owner, question.Type, question.Text, utf8.RuneCountInString(question.Text), question.AskedAt.Unix())
 	if err != nil {
 		return E(err, http.StatusInternalServerError)
 	}
@@ -108,7 +127,7 @@ func (q *SQLiteQuestionManager) UpdateAnswer(ctx context.Context, question *mode
 }
 
 func (q *SQLiteQuestionManager) MarkAsDeleted(ctx context.Context, uuid string) StatusError {
-	result, err := infrastructure.DBConn.ExecContext(ctx, "UPDATE `question` SET `deleted` = 1 WHERE `uuid` = ?", uuid)
+	result, err := infrastructure.DBConn.ExecContext(ctx, "UPDATE `question` SET `deleted` = ? WHERE `uuid` = ?", time.Now().Unix(), uuid)
 	if err != nil {
 		return E(err, http.StatusInternalServerError)
 	}
