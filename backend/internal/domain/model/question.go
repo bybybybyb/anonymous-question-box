@@ -6,7 +6,7 @@ import (
 
 type Question struct {
 	ID         int32     `json:"-"`
-	UUID       string    `json:"-"`
+	UUID       string    `json:"uuid"`
 	Type       string    `json:"type,omitempty"`
 	Owner      string    `json:"owner"`
 	Text       string    `json:"text"`

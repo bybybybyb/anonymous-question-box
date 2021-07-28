@@ -13,15 +13,15 @@ import (
 
 type SQLiteQuestionManager struct{}
 
-func (q *SQLiteQuestionManager) GetQuestionByUUID(ctx context.Context, uuid string, due int64) (*model.Question, StatusError) {
+func (q *SQLiteQuestionManager) GetQuestionByUUID(ctx context.Context, uuid string) (*model.Question, StatusError) {
 	var id int32
 	var askedAt int64
 	var answeredAt sql.NullInt64
 	var qOwner, qType, question string
 	var answer sql.NullString
 
-	err := infrastructure.DBConn.QueryRowContext(ctx, "SELECT `id`, `owner`, `question_type`, `question`, `answer`, `asked_at`, `answered_at` FROM `question` WHERE `uuid` = ? AND `asked_at` > ? AND `deleted_at` IS NULL",
-		uuid, due).Scan(&id, &qOwner, &qType, &question, &answer, &askedAt, &answeredAt)
+	err := infrastructure.DBConn.QueryRowContext(ctx, "SELECT `id`, `owner`, `question_type`, `question`, `answer`, `asked_at`, `answered_at` FROM `question` WHERE `uuid` = ? AND `deleted_at` IS NULL",
+		uuid).Scan(&id, &qOwner, &qType, &question, &answer, &askedAt, &answeredAt)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
