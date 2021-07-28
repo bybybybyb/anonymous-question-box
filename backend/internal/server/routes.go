@@ -2,6 +2,7 @@ package server
 
 import (
 	"github.com/anonymous-question-box/internal/domain/repository"
+	"github.com/anonymous-question-box/internal/infrastructure"
 	"github.com/anonymous-question-box/internal/server/handler"
 	"github.com/gin-gonic/gin"
 	"net/http"
