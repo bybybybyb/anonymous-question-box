@@ -7,7 +7,6 @@ import (
 	"github.com/anonymous-question-box/internal/domain/repository"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/spf13/viper"
 	"io/ioutil"
 	"net/http"
 	"time"
@@ -76,7 +75,7 @@ func (q *QuestionsHandler) SubmitNewQuestion(c *gin.Context) {
 
 // GetQuestion returns one single question queried by the given UUID
 func (q *QuestionsHandler) GetQuestion(c *gin.Context) {
-	question, err := q.QuestionManager.GetQuestionByUUID(c, c.GetString("uuid"), time.Now().AddDate(0, 0, -viper.GetInt("question_expiration_days")).Unix())
+	question, err := q.QuestionManager.GetQuestionByUUID(c, c.GetString("uuid"))
 	if err != nil {
 		switch err.Code() {
 		case http.StatusNotFound:
@@ -155,7 +154,7 @@ func (q *QuestionsHandler) AnswerQuestion(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("无法解析问题请求，错误信息：%s", err.Error())})
 		return
 	}
-	question, statusErr := q.QuestionManager.GetQuestionByUUID(c, req.UUID, time.Now().AddDate(0, 0, -viper.GetInt("question_expiration_days")).Unix())
+	question, statusErr := q.QuestionManager.GetQuestionByUUID(c, req.UUID)
 	if statusErr != nil {
 		switch statusErr.Code() {
 		case http.StatusNotFound:
