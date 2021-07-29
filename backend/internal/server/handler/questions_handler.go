@@ -70,12 +70,19 @@ func (q *QuestionsHandler) SubmitNewQuestion(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("提交失败，错误信息：%s，请联系网站管理员", err.Error())})
 		return
 	}
-	c.Status(http.StatusOK)
+	c.JSON(http.StatusOK, struct {
+		UUID    string    `json:"uuid"`
+		AskedAt time.Time `json:"asked_at"`
+	}{UUID: req.UUID, AskedAt: req.AskedAt})
 }
 
 // GetQuestion returns one single question queried by the given UUID
 func (q *QuestionsHandler) GetQuestion(c *gin.Context) {
-	question, err := q.QuestionManager.GetQuestionByUUID(c, c.GetString("uuid"))
+	uuid := c.Param("uuid")
+	if uuid == "" {
+		uuid = c.GetString("uuid")
+	}
+	question, err := q.QuestionManager.GetQuestionByUUID(c, uuid)
 	if err != nil {
 		switch err.Code() {
 		case http.StatusNotFound:
