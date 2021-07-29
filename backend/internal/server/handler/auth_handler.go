@@ -18,7 +18,6 @@ func (a *AuthHandler) Authenticate(c *gin.Context) {
 	if len(splits) == 2 {
 		token = splits[1]
 	} else {
-		fmt.Printf("auth header: %s\n", c.GetHeader("Authorization"))
 		c.AbortWithStatusJSON(http.StatusForbidden, ErrorResp{Error: "无效token"})
 		return
 	}
