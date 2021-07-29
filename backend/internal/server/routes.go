@@ -28,7 +28,7 @@ func SetupRoutes() *gin.Engine {
 	userAuthorized.POST("/submit", questionsHandler.SubmitNewQuestion)
 
 	ownerAuthorized := r.Group("/owner", authHandler.Authenticate, authHandler.AuthorizeOwner)
-	ownerAuthorized.GET("/", authHandler.GetOwnerInfo)
+	ownerAuthorized.GET("", authHandler.GetOwnerInfo)
 	ownerAuthorized.POST("/questions", questionsHandler.ListQuestions)
 	ownerAuthorized.GET("/questions/:uuid", questionsHandler.GetQuestion)
 	ownerAuthorized.PUT("/questions/:uuid/answer", questionsHandler.AnswerQuestion)
