@@ -140,7 +140,7 @@ func (q *SQLiteQuestionManager) UpdateAnswer(ctx context.Context, question *mode
 }
 
 func (q *SQLiteQuestionManager) MarkAsDeleted(ctx context.Context, uuid string) StatusError {
-	result, err := infrastructure.DBConn.ExecContext(ctx, "UPDATE `question` SET `deleted` = ? WHERE `uuid` = ?", time.Now().Unix(), uuid)
+	result, err := infrastructure.DBConn.ExecContext(ctx, "UPDATE `question` SET `deleted_at` = ? WHERE `uuid` = ?", time.Now().Unix(), uuid)
 	if err != nil {
 		return E(err, http.StatusInternalServerError)
 	}

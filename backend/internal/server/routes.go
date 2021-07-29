@@ -31,7 +31,7 @@ func SetupRoutes() *gin.Engine {
 	ownerAuthorized.GET("/", authHandler.GetOwnerInfo)
 	ownerAuthorized.POST("/questions", questionsHandler.ListQuestions)
 	ownerAuthorized.PUT("/questions/answer", questionsHandler.AnswerQuestion)
-	ownerAuthorized.DELETE("/questions/delete", questionsHandler.DeleteQuestion)
+	ownerAuthorized.DELETE("/questions/delete/:uuid", questionsHandler.DeleteQuestion)
 
 	return r
 }
