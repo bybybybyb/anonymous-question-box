@@ -183,7 +183,7 @@ func (q *QuestionsHandler) AnswerQuestion(c *gin.Context) {
 
 // DeleteQuestion deletes one single question queried by the given UUID
 func (q *QuestionsHandler) DeleteQuestion(c *gin.Context) {
-	uuid := c.Query("uuid")
+	uuid := c.Param("uuid")
 	statusErr := q.QuestionManager.MarkAsDeleted(c, uuid)
 	if statusErr != nil {
 		switch statusErr.Code() {
