@@ -1,62 +1,64 @@
 <template>
-  <Header :hideBackBtn="true" :hideHomepageBtn="true"></Header>
-  <div class="container">
-    <div class="row">
-      <div class="col-12">
-        <div class="card m-3 p-3">
-          <div class="row">
-            <h1>MeUmy草原提问箱</h1>
-          </div>
-          <div class="row">
-            <!-- TODO: refactor here to automatically add buttons by profiles -->
-            <div class="col-6">
-              <button
-                class="btn btn-outline-info my-2"
-                value="merry"
-                style="color: #95a0dc; border-color: #95a0dc"
-                v-on:click="newQuestion"
-              >
-                咩栗和蜗牛姐姐的棉花糖
-              </button>
+  <div>
+    <Header :hideBackBtn="true" :hideHomepageBtn="true"></Header>
+    <div class="container">
+      <div class="row">
+        <div class="col-12">
+          <div class="card m-3 p-3">
+            <div class="row">
+              <h1>MeUmy草原提问箱</h1>
             </div>
-            <div class="col-6">
-              <button
-                class="btn btn-outline-danger my-2"
-                value="umy"
-                style="color: #b15158; border-color: #b15158"
-                v-on:click="newQuestion"
-              >
-                呜米和妹妹的棉花糖
-              </button>
+            <div class="row">
+              <!-- TODO: refactor here to automatically add buttons by profiles -->
+              <div class="col-6">
+                <button
+                  class="btn btn-outline-info my-2"
+                  value="merry"
+                  style="color: #95a0dc; border-color: #95a0dc"
+                  v-on:click="newQuestion"
+                >
+                  咩栗和蜗牛姐姐的棉花糖
+                </button>
+              </div>
+              <div class="col-6">
+                <button
+                  class="btn btn-outline-danger my-2"
+                  value="umy"
+                  style="color: #b15158; border-color: #b15158"
+                  v-on:click="newQuestion"
+                >
+                  呜米和妹妹的棉花糖
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-    <div class="row">
-      <div class="col-12">
-        <div class="card m-3 p-3">
-          <div class="row m-3">
-            <h4>查询之前的投稿？</h4>
+      <div class="row">
+        <div class="col-12">
+          <div class="card m-3 p-3">
+            <div class="row m-3">
+              <h4>查询之前的投稿？</h4>
+            </div>
+            <form class="row">
+              <div class="col-12">
+                <input
+                  v-model="token"
+                  placeholder="请输入神秘代码"
+                  v-on:keyup="makeSubmitClickable"
+                />
+              </div>
+              <div class="col-12">
+                <button
+                  type="button"
+                  :class="[submitBtnStyleClasses, submitBtnActiveClass]"
+                  v-on:click="checkToken"
+                >
+                  提交
+                </button>
+              </div>
+            </form>
           </div>
-          <form class="row">
-            <div class="col-12">
-              <input
-                v-model="token"
-                placeholder="请输入神秘代码"
-                v-on:keyup="makeSubmitClickable"
-              />
-            </div>
-            <div class="col-12">
-              <button
-                type="button"
-                :class="[submitBtnStyleClasses, submitBtnActiveClass]"
-                v-on:click="checkToken"
-              >
-                提交
-              </button>
-            </div>
-          </form>
         </div>
       </div>
     </div>
