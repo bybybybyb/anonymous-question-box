@@ -52,7 +52,7 @@ export default {
       this.$router.go(-1);
     },
     contactAdmin() {
-      location.href = "https://space.bilibili.com/503";
+      window.open("https://space.bilibili.com/745493");
     },
   },
   beforeCreate() {
