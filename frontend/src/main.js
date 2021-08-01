@@ -30,24 +30,25 @@ const router = createRouter({
   routes,
 });
 
-await axios
-  .get("/api/profiles").then((resp) => {
-    const profiles = resp.data;
-    const profileProvider = {
-      name: "ProfileProvider",
-      data() {
-        return {
-          ownerProfiles: profiles,
-        };
-      },
-    }
-    const app = createApp(App);
-    app.use(VueAxios, axios);
-    app.use(router);
-    app.mixin(profileProvider);
-    app.mount('#app');
-  }).catch((err) => {
-    console.log(err.response);
-  });
-
+(async () => {
+  await axios
+    .get("/api/profiles").then((resp) => {
+      const profiles = resp.data;
+      const profileProvider = {
+        name: "ProfileProvider",
+        data() {
+          return {
+            ownerProfiles: profiles,
+          };
+        },
+      }
+      const app = createApp(App);
+      app.use(VueAxios, axios);
+      app.use(router);
+      app.mixin(profileProvider);
+      app.mount('#app');
+    }).catch((err) => {
+      console.log(err.response);
+    });
+})()
 
