@@ -1,49 +1,51 @@
 <template>
-  <Header :hideHomepageBtn="true"></Header>
-  <div class="container">
-    <div class="row">
-      <div class="col-12 col-md-6">
-        <div class="card my-3">
-          <div class="card-body">
-            <i class="my-3">提交时间：{{ formatTime(asked_at) }}</i>
-            <ul class="list-unstyled mx-3 my-3" style="line-break: anywhere">
-              <li
-                v-for="(sentence, i) in formatText(question_text)"
-                v-bind:key="i"
-                class="text-start"
-              >
-                {{ sentence }}
-              </li>
-            </ul>
+  <div>
+    <Header :hideHomepageBtn="true"></Header>
+    <div class="container">
+      <div class="row">
+        <div class="col-12 col-md-6">
+          <div class="card my-3">
+            <div class="card-body">
+              <i class="my-3">提交时间：{{ formatTime(asked_at) }}</i>
+              <ul class="list-unstyled mx-3 my-3" style="line-break: anywhere">
+                <li
+                  v-for="(sentence, i) in formatText(question_text)"
+                  v-bind:key="i"
+                  class="text-start"
+                >
+                  {{ sentence }}
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="card my-3">
+            <div class="card-body">
+              <i class="my-3">回复时间： {{ formatTime(answered_at) }}</i>
+              <ul class="list-unstyled mx-3 my-3" style="line-break: anywhere">
+                <li
+                  v-for="(sentence, i) in formatText(previous_answer_text)"
+                  v-bind:key="i"
+                >
+                  {{ sentence }}
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
-      <div class="col-12 col-md-6">
+      <div class="row">
         <div class="card my-3">
           <div class="card-body">
-            <i class="my-3">回复时间： {{ formatTime(answered_at) }}</i>
-            <ul class="list-unstyled mx-3 my-3" style="line-break: anywhere">
-              <li
-                v-for="(sentence, i) in formatText(previous_answer_text)"
-                v-bind:key="i"
-              >
-                {{ sentence }}
-              </li>
-            </ul>
+            <textarea class="col-12" rows="10" v-model="answer_text"></textarea>
+            <button
+              class="btn btn-outline-success col-12 col-sm-3"
+              v-on:click="submit"
+            >
+              提交或更新
+            </button>
           </div>
-        </div>
-      </div>
-    </div>
-    <div class="row">
-      <div class="card my-3">
-        <div class="card-body">
-          <textarea class="col-12" rows="10" v-model="answer_text"></textarea>
-          <button
-            class="btn btn-outline-success col-12 col-sm-3"
-            v-on:click="submit"
-          >
-            提交或更新
-          </button>
         </div>
       </div>
     </div>
