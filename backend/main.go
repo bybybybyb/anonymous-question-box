@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	configFlag := flag.String("config", "./config/config.yaml", "path to the config yaml")
+	configFlag := flag.String("c", "./config/config.yaml", "path to the config yaml")
 
 	// server config
 	viper.SetConfigName("config")
