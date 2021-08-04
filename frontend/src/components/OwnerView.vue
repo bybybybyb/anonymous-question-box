@@ -20,7 +20,7 @@
                     aria-label="Default select example"
                     id="question_type"
                     v-on:change="onQueryChange"
-                    v-model="type"
+                    v-model="queryParams['type']"
                   >
                     <option
                       v-for="q_type in ownerProfiles[owner].question_types"
@@ -37,7 +37,7 @@
                     aria-label="Default select example"
                     id="reply_status"
                     v-on:change="onQueryChange"
-                    v-model="reply_status"
+                    v-model="queryParams['reply_status']"
                   >
                     <option selected value="0">全部</option>
                     <option value="-1">未回复</option>
@@ -50,7 +50,7 @@
                     aria-label="Default select example"
                     id="day_limit"
                     v-on:change="onQueryChange"
-                    v-model="day_limit"
+                    v-model="queryParams['day_limit']"
                   >
                     <option value="1">1天内</option>
                     <option selected value="7">7天内</option>
@@ -65,7 +65,7 @@
                     aria-label="Default select example"
                     id="order"
                     v-on:change="onQueryChange"
-                    v-model="order_param_index"
+                    v-model="queryParams['order_params_index']"
                   >
                     <option selected value="0">时间降序</option>
                     <option value="1">时间升序</option>
@@ -79,7 +79,7 @@
                     aria-label="Default select example"
                     id="order"
                     v-on:change="onQueryChange"
-                    v-model="page_size"
+                    v-model="queryParams['page_size']"
                   >
                     <option selected value="5">每页5条</option>
                     <option value="10">每页10条</option>
@@ -157,9 +157,9 @@
             <div class="row">
               <div class="col-12 p-3">
                 <pagination
-                  v-model="page"
+                  v-model="queryParams['page']"
                   :records="total_count"
-                  :per-page="page_size"
+                  :per-page="queryParams['page_size']"
                   :options="{
                     chunk: 3,
                     format: false,
@@ -187,7 +187,8 @@
 <script>
 import Header from "./Header.vue";
 import Pagination from "v-pagination-3";
-let orderDeriction = [
+const storagePrefix = "ownerView_";
+const orderDeriction = [
   { by: "asked_at", reversed: true },
   { by: "asked_at", reversed: false },
   { by: "word_count", reversed: true },
@@ -210,15 +211,16 @@ export default {
           "/api/owner/questions",
           {
             owner: this.owner,
-            type: this.type,
+            type: this.queryParams["type"],
             order_params: {
-              by: orderDeriction[this.order_param_index].by,
-              reversed: orderDeriction[this.order_param_index].reversed,
+              by: orderDeriction[this.queryParams["order_params_index"]].by,
+              reversed:
+                orderDeriction[this.queryParams["order_params_index"]].reversed,
             },
-            reply_status: +this.reply_status,
-            day_limit: +this.day_limit,
-            page_size: +this.page_size,
-            page: +this.page,
+            reply_status: +this.queryParams["reply_status"],
+            day_limit: +this.queryParams["day_limit"],
+            page_size: +this.queryParams["page_size"],
+            page: +this.queryParams["page"],
           },
           {
             headers: { Authorization: `Bearer ${this.$route.query.token}` },
@@ -229,8 +231,14 @@ export default {
           this.total_count = resp.data.total;
         })
         .catch((err) => {
-          console.log(err);
+          console.log(err.response);
         });
+
+      for (var key in this.queryParams) {
+        if (this.queryParams.hasOwnProperty(key)) {
+          localStorage.setItem(storagePrefix + key, this.queryParams[key]);
+        }
+      }
     },
     deleteQuestion(event) {
       this.axios
@@ -259,7 +267,7 @@ export default {
         query: {
           owner: this.owner,
           type: this.type,
-          order_param_index: this.order_param_index,
+          order_params_index: this.order_params_index,
           day_limit: this.day_limit,
           reply_status: this.reply_status,
           token: this.$route.query.token,
@@ -288,28 +296,31 @@ export default {
       "background-color":
         this.ownerProfiles[this.owner].color_theme.primary_color,
     };
-    if (this.$route.query.type != null) this.type = this.$route.query.type;
-    if (this.$route.query.order_param_index != null)
-      this.order_param_index = this.$route.query.order_param_index;
-    if (this.$route.query.reply_status != null)
-      this.reply_status = this.$route.query.reply_status;
-    if (this.$route.query.day_limit != null)
-      this.day_limit = this.$route.query.day_limit;
-    if (this.$route.query.page != null) this.page = this.$route.query.page;
-    if (this.$route.query.page_size != null)
-      this.page_size = this.$route.query.page_size;
+
+    // try reading query params from local storage
+    for (var key in this.queryParams) {
+      if (this.queryParams.hasOwnProperty(key)) {
+        let localVal = localStorage.getItem(storagePrefix + key);
+        if (localVal && localVal !== "") {
+          const parsedInt = parseInt(localVal);
+          this.queryParams[key] = isNaN(parsedInt) ? localVal : parsedInt;
+        }
+      }
+    }
     this.onQueryChange();
   },
   data() {
     return {
+      queryParams: {
+        type: "normal",
+        order_params_index: 0,
+        reply_status: 0,
+        day_limit: 7,
+        page_size: 5,
+        page: 1,
+      },
       rows: [],
-      type: "normal",
-      order_param_index: 0,
-      day_limit: 7,
-      reply_status: 0,
       total_count: 0,
-      page_size: 5,
-      page: 1,
       navbarStyling: {},
     };
   },
