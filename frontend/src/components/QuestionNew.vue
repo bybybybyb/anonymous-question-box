@@ -55,7 +55,7 @@
 
 <script>
 import Header from "./Header.vue";
-const storagePrefix = "uestionNew_";
+const storagePrefix = "questionNew_";
 export default {
   name: "QuestionNew",
   components: {
@@ -92,11 +92,12 @@ export default {
           },
           authHeader
         )
-        .then((resp) => {
-          localStorage.setItem("draft", null);
+        .then(() => {
+          localStorage.setItem(storagePrefix + "draft", "");
           this.$router.push({
-            name: "submission",
+            name: "question",
             query: { token: this.token },
+            params: { just_submitted: true },
           });
         })
         .catch((err) => {

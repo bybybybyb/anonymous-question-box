@@ -9,19 +9,17 @@ import App from './App.vue'
 import OwnerView from "./components/OwnerView.vue";
 import QuestionNew from "./components/QuestionNew.vue";
 import QuestionView from "./components/QuestionView.vue";
-import QuestionSubmission from "./components/QuestionSubmission.vue";
 import AnswerView from "./components/AnswerView.vue";
 import LiveView from "./components/LiveView.vue";
 import Main from "./components/Main.vue";
 
 const routes = [
+  { name: "homepage", path: "/", component: Main },
   { name: "owners", path: "/owner/:owner/dashboard", component: OwnerView, props: true },
   { name: "live", path: "/owner/:owner/live", component: LiveView, props: true },
   { name: "question", path: "/question", component: QuestionView, props: true },
   { name: "question-new", path: "/question/:owner/new", component: QuestionNew, props: true },
-  { name: "submission", path: "/question/submission", component: QuestionSubmission, props: true },
   { name: "answer", path: "/question/answer", component: AnswerView, props: true },
-  { name: "homepage", path: "/", component: Main },
   { path: "/:catchAll(.*)", redirect: "/" },
 ];
 

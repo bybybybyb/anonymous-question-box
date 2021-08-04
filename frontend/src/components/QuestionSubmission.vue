@@ -1,6 +1,5 @@
 <template>
   <div>
-    <Header :hideBackBtn="true"></Header>
     <div class="container">
       <div class="card my-3">
         <div class="card-body">
@@ -15,18 +14,11 @@
               :value="question_url"
               :size="200"
             ></qrcode-vue>
-            <p>链接直达（包含神秘代码）：</p>
             <div class="col-md-12">
-              <a :href="question_url" style="line-break: anywhere">{{
-                question_url
-              }}</a>
+              <router-link :to="{ name: 'question', query: { token: token } }"
+                >请右键或长按复制本链接！</router-link
+              >
             </div>
-            <button
-              class="col-6 btn btn-outline-info col-sm-2"
-              v-on:click="goToQuestion"
-            >
-              查看刚提交的投稿
-            </button>
             <h5 class="m-3">想要继续投稿？请点击返回主页重新开始！</h5>
           </div>
         </div>
@@ -37,27 +29,20 @@
 
 <script>
 import QrcodeVue from "qrcode.vue";
-import Header from "./Header.vue";
 
 export default {
   name: "QuestionSubmission",
   components: {
     QrcodeVue,
-    Header,
   },
-  computed: {},
-  methods: {
-    goToQuestion() {
-      this.$router.push({
-        name: "question",
-        query: { token: this.token },
-      });
-    },
+  props: {
+    token: String,
   },
   created() {
-    this.question_url =
-      window.location.host + "?token=" + this.$route.query.token;
-    this.token = this.$route.query.token;
+    let ref = this.$router.resolve({
+      query: { token: this.token },
+    });
+    this.question_url = window.location.host + "/" + ref.href;
   },
   data() {
     return {
@@ -72,7 +57,6 @@ export default {
       submitBtnStyleClasses: "btn btn-outline-success col-12",
       submitBtnActiveClass: "disabled",
       question_url: "",
-      token: "",
     };
   },
 };
