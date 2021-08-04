@@ -16,6 +16,7 @@
               >
                 {{ sentence }}
               </h5>
+              <br />
             </div>
           </div>
           <div class="row">
