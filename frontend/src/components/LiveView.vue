@@ -9,13 +9,13 @@
             style="width: 600px; height: 400px"
           >
             <div class="card-body overflow-auto">
-              <p
+              <h5
                 v-for="(sentence, i) in formatText(projected_text)"
                 v-bind:key="i"
                 class="text-start"
               >
                 {{ sentence }}
-              </p>
+              </h5>
             </div>
           </div>
           <div class="row">
@@ -28,142 +28,182 @@
           </div>
         </div>
         <div class="col">
-          <div class="mx-5 my-3" style="width: 1000px">
-            <nav
-              class="
-                border-top border-start border-end border-1 border-dark
-                navbar navbar-expand-lg navbar-light
-              "
-              :style="navbarStyling"
-            >
-              <div class="container-fluid">
-                <ul class="navbar-nav">
-                  <li class="nav-item mx-1 my-1">
-                    <select
-                      class="form-select form-select-sm"
-                      aria-label="Default select example"
-                      id="question_type"
-                      v-on:change="onQueryChange"
-                      v-model="type"
-                    >
-                      <option
-                        v-for="q_type in ownerProfiles[owner].question_types"
-                        v-bind:key="q_type.name"
-                        :value="q_type.name"
+          <div class="row">
+            <div class="mx-5 my-3" style="width: 1070px">
+              <nav
+                class="
+                  border-top border-start border-end border-1 border-dark
+                  navbar navbar-expand-lg navbar-light
+                "
+                :style="navbarStyling"
+              >
+                <div class="container-fluid">
+                  <ul class="navbar-nav">
+                    <li class="nav-item mx-1 my-1">
+                      <select
+                        class="form-select"
+                        aria-label="Default select example"
+                        id="question_type"
+                        v-on:change="onQueryChange"
+                        v-model="queryParams['type']"
                       >
-                        {{ q_type.description }}
-                      </option>
-                    </select>
-                  </li>
-                  <li class="nav-item mx-1 my-1">
-                    <select
-                      class="form-select form-select-sm"
-                      aria-label="Default select example"
-                      id="reply_status"
-                      v-on:change="onQueryChange"
-                      v-model="reply_status"
-                    >
-                      <option selected value="0">全部</option>
-                      <option value="-1">未回复</option>
-                      <option value="1">已回复</option>
-                    </select>
-                  </li>
-                  <li class="nav-item mx-1 my-1">
-                    <select
-                      class="form-select form-select-sm"
-                      aria-label="Default select example"
-                      id="day_limit"
-                      v-on:change="onQueryChange"
-                      v-model="day_limit"
-                    >
-                      <option value="1">1天内</option>
-                      <option selected value="7">7天内</option>
-                      <option value="30">30天内</option>
-                      <option value="180">180天内</option>
-                      <option value="365">1年内</option>
-                    </select>
-                  </li>
-                  <li class="nav-item mx-1 my-1">
-                    <select
-                      class="form-select form-select-sm"
-                      aria-label="Default select example"
-                      id="order"
-                      v-on:change="onQueryChange"
-                      v-model="order_param_index"
-                    >
-                      <option selected value="0">时间降序</option>
-                      <option value="1">时间升序</option>
-                      <option value="2">字数降序</option>
-                      <option value="3">字数升序</option>
-                    </select>
-                  </li>
-                </ul>
-              </div>
-            </nav>
-            <div
-              class="
-                card
-                border-start border-end border-bottom border-1 border-dark
-                overflow-auto
-              "
-              style="height: 745px; border-radius: 0rem"
-            >
-              <div class="card">
-                <div class="card m-2" v-for="(q, i) in rows" :key="i">
-                  <div class="card-body">
-                    <div class="container">
-                      <div class="row">
-                        <div class="col-3">
-                          <div class="list-group">
-                            <li class="list-group-item">
-                              字数： {{ q.word_count }}
-                            </li>
-                            <li class="list-group-item">
-                              投稿时间： {{ formatTime(q.asked_at) }}
-                            </li>
-                            <li class="list-group-item">
-                              回复时间： {{ formatTime(q.answered_at) }}
-                            </li>
-                            <li class="list-group-item">
-                              <button
-                                type="button"
-                                class="
-                                  btn btn-sm btn-outline-warning
-                                  m-1
-                                  col-sm-12
-                                "
-                                v-on:click="
-                                  projectQuestion(q.uuid, q.text, q.answered_at)
-                                "
-                              >
-                                ← 投屏
-                              </button>
-                              <button
-                                type="button"
-                                class="
-                                  btn
-                                  d-none d-sm-block
-                                  btn-sm btn-outline-danger
-                                  m-1
-                                  col-sm-12
-                                "
-                                :value="q.uuid"
-                                v-on:click="deleteQuestion"
-                              >
-                                删除
-                              </button>
-                            </li>
+                        <option
+                          v-for="q_type in ownerProfiles[owner].question_types"
+                          v-bind:key="q_type.name"
+                          :value="q_type.name"
+                        >
+                          {{ q_type.description }}
+                        </option>
+                      </select>
+                    </li>
+                    <li class="nav-item mx-1 my-1">
+                      <select
+                        class="form-select"
+                        aria-label="Default select example"
+                        id="reply_status"
+                        v-on:change="onQueryChange"
+                        v-model="queryParams['reply_status']"
+                      >
+                        <option selected value="0">全部</option>
+                        <option value="-1">未回复</option>
+                        <option value="1">已回复</option>
+                      </select>
+                    </li>
+                    <li class="nav-item mx-1 my-1">
+                      <select
+                        class="form-select"
+                        aria-label="Default select example"
+                        id="day_limit"
+                        v-on:change="onQueryChange"
+                        v-model="queryParams['day_limit']"
+                      >
+                        <option value="1">1天内</option>
+                        <option selected value="7">7天内</option>
+                        <option value="30">30天内</option>
+                        <option value="180">180天内</option>
+                        <option value="365">1年内</option>
+                      </select>
+                    </li>
+                    <li class="nav-item mx-1 my-1">
+                      <select
+                        class="form-select"
+                        aria-label="Default select example"
+                        id="order"
+                        v-on:change="onQueryChange"
+                        v-model="queryParams['order_params_index']"
+                      >
+                        <option selected value="0">时间降序</option>
+                        <option value="1">时间升序</option>
+                        <option value="2">字数降序</option>
+                        <option value="3">字数升序</option>
+                      </select>
+                    </li>
+                    <li class="nav-item mx-1 my-1">
+                      <select
+                        class="form-select"
+                        aria-label="Default select example"
+                        id="order"
+                        v-on:change="onQueryChange"
+                        v-model="queryParams['page_size']"
+                      >
+                        <option selected value="5">每页5条</option>
+                        <option value="10">每页10条</option>
+                        <option value="20">每页20条</option>
+                        <option value="50">每页50条</option>
+                      </select>
+                    </li>
+                    <li class="d-flex mx-1 my-1">
+                      <pagination
+                        v-model="queryParams['page']"
+                        :records="total_count"
+                        :per-page="queryParams['page_size']"
+                        :options="{
+                          chunk: 3,
+                          format: false,
+                          chunksNavigation: 'scroll',
+                          edgeNavigation: true,
+                          theme: 'bootstrap4',
+                          texts: {
+                            count: '',
+                            first: '首页',
+                            last: '末页',
+                          },
+                        }"
+                        @paginate="onQueryChange"
+                      />
+                    </li>
+                  </ul>
+                </div>
+              </nav>
+              <div
+                class="
+                  card
+                  border-start border-end border-bottom border-1 border-dark
+                  overflow-auto
+                "
+                style="height: 745px; border-radius: 0rem"
+              >
+                <div class="card">
+                  <div class="card m-2" v-for="(q, i) in rows" :key="i">
+                    <div class="card-body">
+                      <div class="container">
+                        <div class="row">
+                          <div class="col-3">
+                            <div class="list-group">
+                              <li class="list-group-item">
+                                字数： {{ q.word_count }}
+                              </li>
+                              <li class="list-group-item">
+                                投稿时间： {{ formatTime(q.asked_at) }}
+                              </li>
+                              <li class="list-group-item">
+                                回复时间： {{ formatTime(q.answered_at) }}
+                              </li>
+                              <li class="list-group-item">
+                                <button
+                                  type="button"
+                                  class="
+                                    btn btn-sm btn-outline-warning
+                                    m-1
+                                    col-sm-12
+                                  "
+                                  v-on:click="
+                                    projectQuestion(
+                                      q.uuid,
+                                      q.text,
+                                      q.answered_at
+                                    )
+                                  "
+                                >
+                                  ← 投屏
+                                </button>
+                                <button
+                                  type="button"
+                                  class="
+                                    btn
+                                    d-none d-sm-block
+                                    btn-sm btn-outline-danger
+                                    m-1
+                                    col-sm-12
+                                  "
+                                  :value="q.uuid"
+                                  v-on:click="deleteQuestion"
+                                >
+                                  删除
+                                </button>
+                              </li>
+                            </div>
                           </div>
-                        </div>
-                        <div class="col-9">
-                          <div class="card">
-                            <div class="card-body">
-                              <p
-                                v-for="(sentence, i) in formatText(q.text)"
-                                v-bind:key="i"
-                              >
-                                {{ sentence }}
-                              </p>
+                          <div class="col-9">
+                            <div class="card">
+                              <div class="card-body">
+                                <p
+                                  v-for="(sentence, i) in formatText(q.text)"
+                                  v-bind:key="i"
+                                >
+                                  {{ sentence }}
+                                </p>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -180,64 +220,27 @@
   </div>
 </template>
 <script>
-// TODO: merge LiveView with OwnerView as they share basically same set of methods
-//       i.e. they should be the same component with different templates
-import Pagination from "v-pagination-3";
 import Header from "./Header.vue";
-
-let orderDeriction = [
+import Pagination from "v-pagination-3";
+const storagePrefix = "ownerView_";
+const orderDeriction = [
   { by: "asked_at", reversed: true },
   { by: "asked_at", reversed: false },
   { by: "word_count", reversed: true },
   { by: "word_count", reversed: false },
 ];
-var authHeader;
 
 export default {
+  // TODO: merge LiveView and OwnerView using setup() as they share the exactly the same component construction, only difference is the template
   name: "LiveView",
   components: {
     Pagination,
     Header,
   },
+  props: {
+    owner: String,
+  },
   methods: {
-    onQueryChange() {
-      this.axios
-        .post(
-          "/api/owner/questions",
-          {
-            owner: this.owner,
-            type: this.type,
-            order_params: {
-              by: orderDeriction[this.order_param_index].by,
-              reversed: orderDeriction[this.order_param_index].reversed,
-            },
-            reply_status: +this.reply_status,
-            day_limit: +this.day_limit,
-            page_size: +this.page_size,
-            page: +this.page,
-          },
-          authHeader
-        )
-        .then((resp) => {
-          this.rows = resp.data.questions;
-          this.total_count = resp.data.total;
-        })
-        .catch((err) => {
-          console.log(err.response);
-        });
-    },
-    deleteQuestion(event) {
-      this.axios
-        .delete("api/owner/questions/" + event.target.value + "/delete", {
-          headers: { Authorization: `Bearer ${this.$route.query.token}` },
-        })
-        .then((resp) => {
-          this.onQueryChange();
-        })
-        .catch((err) => {
-          console.log(err.response);
-        });
-    },
     projectQuestion(uuid, text, answered_at) {
       this.projected_text = text;
       // automatically answer the question if it was not answered before
@@ -261,6 +264,71 @@ export default {
           });
       }
     },
+    onQueryChange() {
+      this.axios
+        .post(
+          "/api/owner/questions",
+          {
+            owner: this.owner,
+            type: this.queryParams["type"],
+            order_params: {
+              by: orderDeriction[this.queryParams["order_params_index"]].by,
+              reversed:
+                orderDeriction[this.queryParams["order_params_index"]].reversed,
+            },
+            reply_status: +this.queryParams["reply_status"],
+            day_limit: +this.queryParams["day_limit"],
+            page_size: +this.queryParams["page_size"],
+            page: +this.queryParams["page"],
+          },
+          {
+            headers: { Authorization: `Bearer ${this.$route.query.token}` },
+          }
+        )
+        .then((resp) => {
+          this.rows = resp.data.questions;
+          this.total_count = resp.data.total;
+        })
+        .catch((err) => {
+          console.log(err.response);
+        });
+
+      for (var key in this.queryParams) {
+        if (this.queryParams.hasOwnProperty(key)) {
+          localStorage.setItem(storagePrefix + key, this.queryParams[key]);
+        }
+      }
+    },
+    deleteQuestion(event) {
+      this.axios
+        .delete("api/owner/questions/" + event.target.value + "/delete", {
+          headers: { Authorization: `Bearer ${this.$route.query.token}` },
+        })
+        .then(() => {
+          this.onQueryChange();
+        })
+        .catch((err) => {
+          console.log(err.response);
+        });
+    },
+    openQuestion(event) {
+      this.$router.push({
+        name: "answer",
+        query: {
+          token: this.$route.query.token,
+          uuid: event.target.value,
+        },
+      });
+    },
+    openLiveView() {
+      this.$router.push({
+        name: "live",
+        query: {
+          owner: this.owner,
+          token: this.$route.query.token,
+        },
+      });
+    },
   },
   computed: {
     formatTime() {
@@ -280,35 +348,41 @@ export default {
         return [];
       };
     },
+    digest() {
+      return (text) => {
+        return text.substring(0, 30);
+      };
+    },
   },
-  created() {
-    if (this.$route.query.owner != null) this.owner = this.$route.query.owner;
-    if (this.$route.query.type != null) this.type = this.$route.query.type;
-    if (this.order_param_index != null)
-      this.order_param_index = this.$route.query.order_param_index;
-    if (this.day_limit != null) this.day_limit = this.$route.query.day_limit;
-    if (this.reply_status != null)
-      this.reply_status = this.$route.query.reply_status;
+  beforeMount() {
     this.navbarStyling = {
       "background-color":
         this.ownerProfiles[this.owner].color_theme.primary_color,
     };
-    authHeader = {
-      headers: { Authorization: `Bearer ${this.$route.query.token}` },
-    };
+    // try reading query params from local storage
+    for (var key in this.queryParams) {
+      if (this.queryParams.hasOwnProperty(key)) {
+        let localVal = localStorage.getItem(storagePrefix + key);
+        if (localVal && localVal !== "") {
+          const parsedInt = parseInt(localVal);
+          this.queryParams[key] = isNaN(parsedInt) ? localVal : parsedInt;
+        }
+      }
+    }
     this.onQueryChange();
   },
   data() {
     return {
+      queryParams: {
+        type: "normal",
+        order_params_index: 0,
+        reply_status: 0,
+        day_limit: 7,
+        page_size: 5,
+        page: 1,
+      },
       rows: [],
-      owner: "",
-      type: "",
-      order_param_index: 0,
-      day_limit: 7,
-      reply_status: 0,
       total_count: 0,
-      page_size: 50,
-      page: 1,
       navbarStyling: {},
       projected_text: "",
     };
