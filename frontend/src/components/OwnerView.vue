@@ -1,6 +1,6 @@
 <template>
   <div>
-    <Header></Header>
+    <Header :hideBackBtn="true"></Header>
     <div class="container">
       <div class="card my-3">
         <div class="card-body border border-2">
