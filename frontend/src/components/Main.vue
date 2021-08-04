@@ -14,7 +14,7 @@
                 <button
                   class="btn btn-outline-info my-2"
                   value="merry"
-                  style="color: #95a0dc; border-color: #95a0dc"
+                  :style="setBtnColor('merry')"
                   v-on:click="newQuestion"
                 >
                   咩栗和蜗牛姐姐的棉花糖
@@ -24,7 +24,7 @@
                 <button
                   class="btn btn-outline-danger my-2"
                   value="umy"
-                  style="color: #b15158; border-color: #b15158"
+                  :style="setBtnColor('umy')"
                   v-on:click="newQuestion"
                 >
                   呜米和妹妹的棉花糖
@@ -71,6 +71,12 @@ export default {
   name: "Main",
   components: { Header },
   methods: {
+    setBtnColor(owner) {
+      return {
+        color: this.ownerProfiles[owner].color_theme.primary_color,
+        "border-color": this.ownerProfiles[owner].color_theme.primary_color,
+      };
+    },
     makeSubmitClickable() {
       this.token.length > 0
         ? (this.submitBtnActiveClass = "")
