@@ -16,7 +16,7 @@
               <ul class="navbar-nav">
                 <li class="nav-item mx-1 my-1">
                   <select
-                    class="form-select form-select-sm"
+                    class="form-select"
                     aria-label="Default select example"
                     id="question_type"
                     v-on:change="onQueryChange"
@@ -33,7 +33,7 @@
                 </li>
                 <li class="nav-item mx-1 my-1">
                   <select
-                    class="form-select form-select-sm"
+                    class="form-select"
                     aria-label="Default select example"
                     id="reply_status"
                     v-on:change="onQueryChange"
@@ -46,7 +46,7 @@
                 </li>
                 <li class="nav-item mx-1 my-1">
                   <select
-                    class="form-select form-select-sm"
+                    class="form-select"
                     aria-label="Default select example"
                     id="day_limit"
                     v-on:change="onQueryChange"
@@ -61,7 +61,7 @@
                 </li>
                 <li class="nav-item mx-1 my-1">
                   <select
-                    class="form-select form-select-sm"
+                    class="form-select"
                     aria-label="Default select example"
                     id="order"
                     v-on:change="onQueryChange"
@@ -75,7 +75,7 @@
                 </li>
                 <li class="nav-item mx-1 my-1">
                   <select
-                    class="form-select form-select-sm"
+                    class="form-select"
                     aria-label="Default select example"
                     id="order"
                     v-on:change="onQueryChange"
@@ -90,13 +90,7 @@
                 <form class="form-inline">
                   <button
                     type="button"
-                    class="
-                      btn btn-sm
-                      d-none d-sm-block
-                      btn-sm btn-primary
-                      mx-1
-                      my-1
-                    "
+                    class="btn d-none d-sm-block btn-primary mx-1 my-1"
                     v-on:click="openLiveView"
                   >
                     直播模式
@@ -196,6 +190,7 @@ const orderDeriction = [
 ];
 
 export default {
+  // TODO: merge LiveView and OwnerView using setup() as they share the exactly the same component construction, only difference is the template
   name: "OwnerView",
   components: {
     Pagination,
@@ -205,6 +200,29 @@ export default {
     owner: String,
   },
   methods: {
+    projectQuestion(uuid, text, answered_at) {
+      this.projected_text = text;
+      // automatically answer the question if it was not answered before
+      let time = Date.parse(answered_at);
+      authHeader = {
+        headers: { Authorization: `Bearer ${this.$route.query.token}` },
+      };
+      if (time === 0) {
+        this.axios
+          .put(
+            "/api/owner/questions/" + uuid + "/answer",
+            {
+              uuid: uuid,
+              answer:
+                "已在直播中回应，请根据回复时间寻找相应录播观看。再次感谢投稿！",
+            },
+            authHeader
+          )
+          .catch((err) => {
+            console.log(err.response);
+          });
+      }
+    },
     onQueryChange() {
       this.axios
         .post(
@@ -266,10 +284,6 @@ export default {
         name: "live",
         query: {
           owner: this.owner,
-          type: this.type,
-          order_params_index: this.order_params_index,
-          day_limit: this.day_limit,
-          reply_status: this.reply_status,
           token: this.$route.query.token,
         },
       });
@@ -285,6 +299,14 @@ export default {
         return new Date(timeStr).toLocaleString();
       };
     },
+    formatText() {
+      return (text) => {
+        if (text != null) {
+          return text.split(/(?:\r\n|\r|\n)/g);
+        }
+        return [];
+      };
+    },
     digest() {
       return (text) => {
         return text.substring(0, 30);
@@ -296,7 +318,6 @@ export default {
       "background-color":
         this.ownerProfiles[this.owner].color_theme.primary_color,
     };
-
     // try reading query params from local storage
     for (var key in this.queryParams) {
       if (this.queryParams.hasOwnProperty(key)) {
@@ -322,6 +343,7 @@ export default {
       rows: [],
       total_count: 0,
       navbarStyling: {},
+      projected_text: "",
     };
   },
 };
