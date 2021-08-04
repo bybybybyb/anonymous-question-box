@@ -18,7 +18,7 @@ const routes = [
   { name: "owners", path: "/owner/:owner/dashboard", component: OwnerView, props: true },
   { name: "live", path: "/owner/:owner/live", component: LiveView, props: true },
   { name: "question", path: "/question", component: QuestionView, props: true },
-  { name: "question-new", path: "/question/new", component: QuestionNew, props: true },
+  { name: "question-new", path: "/question/:owner/new", component: QuestionNew, props: true },
   { name: "submission", path: "/question/submission", component: QuestionSubmission, props: true },
   { name: "answer", path: "/question/answer", component: AnswerView, props: true },
   { name: "homepage", path: "/", component: Main },

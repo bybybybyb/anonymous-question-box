@@ -55,16 +55,20 @@
 
 <script>
 import Header from "./Header.vue";
+const storagePrefix = "uestionNew_";
 export default {
   name: "QuestionNew",
   components: {
     Header,
   },
+  props: {
+    owner: String,
+  },
   methods: {
     onNewInput() {
       this.currentLength = this.new_question_text.length;
-      localStorage.draft = this.new_question_text;
-      this.new_question_text.length > 0
+      localStorage.setItem(storagePrefix + "draft", this.new_question_text);
+      this.currentLength > 0
         ? (this.submitBtnActiveClass = "")
         : (this.submitBtnActiveClass = "disabled");
     },
@@ -76,9 +80,8 @@ export default {
     },
     submit() {
       const authHeader = {
-        headers: { Authorization: `Bearer ${this.$route.query.token}` },
+        headers: { Authorization: `Bearer ${this.token}` },
       };
-      console.log(this.new_question_text);
       this.axios
         .post(
           "/api/questions/submit",
@@ -90,29 +93,38 @@ export default {
           authHeader
         )
         .then((resp) => {
-          console.log(resp);
-          localStorage.draft = "";
+          localStorage.setItem("draft", null);
           this.$router.push({
             name: "submission",
-            query: { token: this.$route.query.token },
+            query: { token: this.token },
           });
         })
         .catch((err) => {
-          alert(err.response);
+          alert("提问箱好像坏掉了，请保存好您的投稿，并通知管理员前来查看！");
+          console.log(err.response);
         });
     },
   },
   mounted() {
-    if (localStorage.draft != null) {
-      this.new_question_text = localStorage.draft;
+    let localVal = localStorage.getItem(storagePrefix + "draft");
+    if (localVal && localVal !== "") {
+      this.new_question_text = localVal;
       this.onNewInput();
     }
+    this.axios
+      .get("/api/new")
+      .then((resp) => {
+        this.token = resp.data.token;
+      })
+      .catch((err) => {
+        alert("提问箱好像坏掉了，请保存好您的投稿，并通知管理员前来查看！");
+        console.log(err.response);
+      });
   },
   data() {
     return {
       type: "normal",
-      // TODO: check owner existence before assignment
-      owner: this.$route.query.owner,
+      token: "",
       question_text: "",
       asked_at: "",
       answer_text: "",
