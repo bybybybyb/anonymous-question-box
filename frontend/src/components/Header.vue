@@ -46,7 +46,7 @@ export default {
   },
   methods: {
     goHome() {
-      this.$router.push("homepage");
+      this.$router.push({ path: "/" });
     },
     goBack() {
       this.$router.go(-1);
