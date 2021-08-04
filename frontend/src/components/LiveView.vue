@@ -1,6 +1,6 @@
 <template>
   <div>
-    <Header></Header>
+    <Header :hideHomepageBtn="true"></Header>
     <div class="container-fluid">
       <div class="row">
         <div class="col">
