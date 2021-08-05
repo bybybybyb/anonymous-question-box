@@ -19,6 +19,7 @@
   "devDependencies": {
     "@types/js-yaml": "^4.0.2",
     "@vue/compiler-sfc": "^3.0.4",
+    "sass": "^1.37.5",
     "snowpack": "^3.8.3",
     "vite": "^1.0.0-rc.13"
   }
