@@ -1,52 +1,62 @@
 <template>
   <div>
     <Header :hideBackBtn="true"></Header>
-    <div class="container">
-      <div class="card my-3">
-        <div class="card-body">
-          <div class="row">
-            <div class="col-4">
-              <h5>收件人：</h5>
-            </div>
-            <div class="col-8">
-              <select
-                class="form-select form-select-sm"
-                aria-label="Default select example"
-                id="question_type"
-                v-on:change="onReceiverChange"
-                v-model="type"
-              >
-                <option
-                  v-for="q_type in ownerProfiles[owner].question_types"
-                  v-bind:key="q_type.name"
-                  :value="q_type.name"
+    <div>
+      <div class="container">
+        <div
+          class="card my-3 shadow-lg"
+          style="background: rgba(255, 255, 255, 0.7)"
+        >
+          <div class="card-body">
+            <div class="row">
+              <div class="col-4">
+                <h5>收件人：</h5>
+              </div>
+              <div class="col-8">
+                <select
+                  class="form-select form-select-sm"
+                  aria-label="Default select example"
+                  id="question_type"
+                  v-on:change="onReceiverChange"
+                  v-model="type"
                 >
-                  {{ q_type.description }}
-                </option>
-              </select>
+                  <option
+                    v-for="q_type in ownerProfiles[owner].question_types"
+                    v-bind:key="q_type.name"
+                    :value="q_type.name"
+                  >
+                    {{ q_type.description }}
+                  </option>
+                </select>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-      <div class="card my-3">
-        <div class="card-body">
-          <textarea
-            class="col-12"
-            rows="20"
-            v-model="new_question_text"
-            :maxlength="maxLength"
-            v-on:keyup="onNewInput"
-          ></textarea>
-          <h4 class="col-12">当前字数： {{ currentLength }}/{{ maxLength }}</h4>
-          <button
-            v-bind:class="[submitBtnStyleClasses, submitBtnActiveClass]"
-            v-on:click="submit"
-          >
-            提交
-          </button>
-          <h5 class="col-12 m-2">
-            小提示：尚未成功提交的草稿将被暂存于您的浏览器储存中。
-          </h5>
+        <div
+          class="card my-3 shadow-lg"
+          style="background: rgba(255, 255, 255, 0.7)"
+        >
+          <div class="card-body">
+            <textarea
+              class="col-12"
+              rows="20"
+              v-model="new_question_text"
+              :maxlength="maxLength"
+              v-on:keyup="onNewInput"
+            ></textarea>
+            <h4 class="col-12">
+              当前字数： {{ currentLength }}/{{ maxLength }}
+            </h4>
+            <button
+              v-bind:class="[submitBtnStyleClasses, submitBtnActiveClass]"
+              v-on:click="submit"
+            >
+              提交
+            </button>
+            <h5 class="col-12 m-2">
+              小提示：尚未成功提交的草稿将被暂存于您的浏览器储存中。
+            </h5>
+          </div>
         </div>
       </div>
     </div>
@@ -56,6 +66,7 @@
 <script>
 import Header from "./Header.vue";
 const storagePrefix = "questionNew_";
+let prevBgClass = "";
 export default {
   name: "QuestionNew",
   components: {
@@ -77,6 +88,12 @@ export default {
         this.ownerProfiles[this.owner].question_types[
           event.target.value
         ].rune_limit;
+      let newBgClass =
+        this.ownerProfiles[this.owner].question_types[event.target.value]
+          .background_class;
+      document.body.classList.remove(prevBgClass);
+      document.body.classList.add(newBgClass);
+      prevBgClass = newBgClass;
     },
     submit() {
       const authHeader = {
@@ -106,7 +123,11 @@ export default {
         });
     },
   },
-  mounted() {
+  beforeMount() {
+    let newBgClass =
+      this.ownerProfiles[this.owner].question_types[this.type].background_class;
+    document.body.classList.add(newBgClass);
+    prevBgClass = newBgClass;
     let localVal = localStorage.getItem(storagePrefix + "draft");
     if (localVal && localVal !== "") {
       this.new_question_text = localVal;
@@ -121,6 +142,9 @@ export default {
         alert("提问箱好像坏掉了，请保存好您的投稿，并通知管理员前来查看！");
         console.log(err.response);
       });
+  },
+  beforeUnmount() {
+    document.body.classList.remove(prevBgClass);
   },
   data() {
     return {
