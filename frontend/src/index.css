@@ -8,7 +8,7 @@
   padding-top: 60px;
 }
 
-.striped-merry {
+.body-background-striped-merry {
   background-image: linear-gradient(135deg,
       #769cd2 25%,
       #f79fb8 25%,
@@ -17,10 +17,10 @@
       #769cd2 75%,
       #f79fb8 75%,
       #f79fb8 100%);
-  background-size: 84.85px 84.85px;
+  background-size: 90px 90px;
 }
 
-.striped-umy {
+.body-background-striped-umy {
   background-image: linear-gradient(45deg,
       #c42e30 25%,
       #504141 25%,
@@ -29,21 +29,21 @@
       #c42e30 75%,
       #504141 75%,
       #504141 100%);
-  background-size: 84.85px 84.85px;
+  background-size: 90px 90px;
 }
 
-.texture-merry-light-grey {
+.body-background-texture-merry-dark {
   background: url(./assets/merry_light_grey.svg), #2c3e50;
 }
 
-.texture-merry-dark-blue {
+.body-background-texture-merry-light {
   background: url(./assets/merry_dark_blue.svg);
 }
 
-.texture-umy-light-grey {
+.body-background-texture-umy-dark {
   background: url(./assets/umy_light_grey.svg), #3a1213;
 }
 
-.texture-umy-dark-blue {
+.body-background-texture-umy-light {
   background: url(./assets/umy_dark_red.svg);
 }
