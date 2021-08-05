@@ -33,7 +33,7 @@
 }
 
 .texture-merry-light-grey {
-  background: url(./assets/merry_light_grey.svg);
+  background: url(./assets/merry_light_grey.svg), #2c3e50;
 }
 
 .texture-merry-dark-blue {
@@ -41,7 +41,7 @@
 }
 
 .texture-umy-light-grey {
-  background: url(./assets/umy_light_grey.svg);
+  background: url(./assets/umy_light_grey.svg), #3a1213;
 }
 
 .texture-umy-dark-blue {
