@@ -13,9 +13,8 @@
               <div class="col-6">
                 <button
                   class="btn btn-outline-info my-2"
-                  value="merry"
                   :style="setBtnColor('merry')"
-                  v-on:click="newQuestion"
+                  v-on:click="newQuestion('merry')"
                 >
                   咩栗和蜗牛姐姐的棉花糖
                 </button>
@@ -23,9 +22,8 @@
               <div class="col-6">
                 <button
                   class="btn btn-outline-danger my-2"
-                  value="umy"
                   :style="setBtnColor('umy')"
-                  v-on:click="newQuestion"
+                  v-on:click="newQuestion('umy')"
                 >
                   呜米和妹妹的棉花糖
                 </button>
@@ -50,10 +48,10 @@ export default {
         "border-color": this.ownerProfiles[owner].color_theme.primary_color,
       };
     },
-    newQuestion(event) {
+    newQuestion(owner) {
       this.$router.push({
         name: "question-new",
-        params: { owner: event.target.value },
+        params: { owner: owner },
       });
     },
   },
