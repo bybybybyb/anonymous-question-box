@@ -3,18 +3,16 @@
     <Header :hideBackBtn="true"></Header>
     <div>
       <div class="container">
-        <div
-          class="card my-3 shadow-lg"
-          style="background: rgba(255, 255, 255, 0.7)"
-        >
+        <div class="card my-3 shadow-lg" :style="cardBackgroundStyle">
           <div class="card-body">
             <div class="row">
               <div class="col-4">
-                <h5>收件人：</h5>
+                <h5 :style="h5Style">收件人：</h5>
               </div>
               <div class="col-8">
                 <select
                   class="form-select form-select-sm"
+                  :class="formStyleClass"
                   aria-label="Default select example"
                   id="question_type"
                   v-on:change="onReceiverChange"
@@ -32,28 +30,27 @@
             </div>
           </div>
         </div>
-        <div
-          class="card my-3 shadow-lg"
-          style="background: rgba(255, 255, 255, 0.7)"
-        >
+        <div class="card my-3 shadow-lg" v-bind:style="cardBackgroundStyle">
           <div class="card-body">
             <textarea
               class="col-12 form-control"
               rows="20"
+              :class="formStyleClass"
               v-model="new_question_text"
               :maxlength="maxLength"
               v-on:keyup="onNewInput"
             ></textarea>
-            <h4 class="col-12 m-1">
+            <h5 class="col-12 m-1" :style="h5Style">
               当前字数： {{ currentLength }}/{{ maxLength }}
-            </h4>
+            </h5>
             <button
-              v-bind:class="[submitBtnStyleClasses, submitBtnActiveClass]"
+              class="btn col-sm-5 col-12"
+              :class="[submitBtnActiveClass, submitBtnStyleClass]"
               v-on:click="submit"
             >
               提交
             </button>
-            <h5 class="col-12 m-2">
+            <h5 class="col-12 m-2" :style="h5Style">
               小提示：尚未成功提交的草稿将被暂存于您的浏览器储存中。
             </h5>
           </div>
@@ -88,12 +85,27 @@ export default {
         this.ownerProfiles[this.owner].question_types[
           event.target.value
         ].rune_limit;
+
+      // style changes
+      // body background
       let newBgClass =
         this.ownerProfiles[this.owner].question_types[event.target.value]
           .background_class;
-      document.body.classList.remove(prevBgClass);
-      document.body.classList.add(newBgClass);
+      document.body.classList.remove("body-background-" + prevBgClass);
+      document.body.classList.add("body-background-" + newBgClass);
       prevBgClass = newBgClass;
+      // card background
+      if (newBgClass.includes("dark")) {
+        this.cardBackgroundStyle = "background: rgba(120,120,120,0.7)";
+        this.h5Style = "color:white";
+        this.submitBtnStyleClass = "btn-success";
+        this.formStyleClass = "bg-dark text-light";
+      } else {
+        this.cardBackgroundStyle = "background: rgba(255,255,255,0.7)";
+        this.h5Style = "color:black";
+        this.submitBtnStyleClass = "btn-outline-success";
+        this.formStyleClass = "bg-light text-dark";
+      }
     },
     submit() {
       const authHeader = {
@@ -124,11 +136,13 @@ export default {
     },
   },
   beforeMount() {
+    // change body background
     document.body.classList.remove("bg-light");
     let newBgClass =
       this.ownerProfiles[this.owner].question_types[this.type].background_class;
-    document.body.classList.add(newBgClass);
+    document.body.classList.add("body-background-" + newBgClass);
     prevBgClass = newBgClass;
+
     let localVal = localStorage.getItem(storagePrefix + "draft");
     if (localVal && localVal !== "") {
       this.new_question_text = localVal;
@@ -145,7 +159,8 @@ export default {
       });
   },
   beforeUnmount() {
-    document.body.classList.remove(prevBgClass);
+    // change back the body background
+    document.body.classList.remove("body-background-" + prevBgClass);
     document.body.classList.add("bg-light");
   },
   data() {
@@ -159,8 +174,11 @@ export default {
       new_question_text: "",
       currentLength: 0,
       maxLength: 500,
-      submitBtnStyleClasses: "btn btn-outline-success col-sm-5 col-12",
       submitBtnActiveClass: "disabled",
+      submitBtnStyleClass: "btn-outline-success",
+      cardBackgroundStyle: "background: rgba(255,255,255,0.7)",
+      formStyleClass: "bg-light text-dark",
+      h5Style: "color:black",
     };
   },
 };
