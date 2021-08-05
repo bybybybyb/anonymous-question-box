@@ -6,7 +6,7 @@
         <div class="col-12">
           <div class="card m-3 p-3">
             <div class="row">
-              <h1>MeUmy草原提问箱</h1>
+              <h1>MeUmy的棉花糖</h1>
             </div>
             <div class="row">
               <!-- TODO: refactor here to automatically add buttons by profiles -->
