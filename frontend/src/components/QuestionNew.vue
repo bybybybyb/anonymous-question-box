@@ -38,13 +38,13 @@
         >
           <div class="card-body">
             <textarea
-              class="col-12"
+              class="col-12 form-control"
               rows="20"
               v-model="new_question_text"
               :maxlength="maxLength"
               v-on:keyup="onNewInput"
             ></textarea>
-            <h4 class="col-12">
+            <h4 class="col-12 m-1">
               当前字数： {{ currentLength }}/{{ maxLength }}
             </h4>
             <button
