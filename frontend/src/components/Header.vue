@@ -2,8 +2,8 @@
   <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
     <div class="container-fluid">
       <span class="navbar-brand m-1 mb-0 h1">
-        <img src="../assets/logo.png" alt="" height="32" />
-        MeUmy草原提问箱
+        <img src="../assets/marshmallow.svg" alt="" height="32" />
+        MeUmy的棉花糖
       </span>
       <ul class="navbar-nav mb-2 mb-lg-0">
         <li class="nav-item m-1">
