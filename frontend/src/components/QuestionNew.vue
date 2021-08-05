@@ -124,6 +124,7 @@ export default {
     },
   },
   beforeMount() {
+    document.body.classList.remove("bg-light");
     let newBgClass =
       this.ownerProfiles[this.owner].question_types[this.type].background_class;
     document.body.classList.add(newBgClass);
@@ -145,6 +146,7 @@ export default {
   },
   beforeUnmount() {
     document.body.classList.remove(prevBgClass);
+    document.body.classList.add("bg-light");
   },
   data() {
     return {
