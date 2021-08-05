@@ -1,1 +1,18 @@
-@import "../node_modules/bootstrap/scss/bootstrap";
+@import "../node_modules/bootstrap/scss/functions";
+
+$utilities: ("background": (property: background-color,
+		class: background-opacity,
+		values: (0: rgba(255, 255, 255, 0),
+			25: rgba(255, 255, 255, 0.25),
+			50: rgba(255, 255, 255, 0.5),
+			75: rgba(255, 255, 255, 0.75),
+			100: rgba(255, 255, 255, 1),
+		)));
+
+$utilities: ("opacity": (property: opacity,
+		values: (0: 0,
+			25: .25,
+			50: .5,
+			75: .75,
+			100: 1,
+		)));
