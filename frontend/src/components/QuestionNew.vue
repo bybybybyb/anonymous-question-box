@@ -131,7 +131,7 @@ export default {
       // style changes
       // body background
       let newBgClass =
-        this.ownerProfiles[this.owner].question_types[event.target.value]
+        this.ownerProfiles[this.owner].question_types[event.target.value].theme
           .background_class;
       document.body.classList.remove("body-background-" + prevBgClass);
       document.body.classList.add("body-background-" + newBgClass);
@@ -185,7 +185,8 @@ export default {
     // change body background
     document.body.classList.remove("bg-light");
     let newBgClass =
-      this.ownerProfiles[this.owner].question_types[this.type].background_class;
+      this.ownerProfiles[this.owner].question_types[this.type].theme
+        .background_class;
     document.body.classList.add("body-background-" + newBgClass);
     prevBgClass = newBgClass;
 

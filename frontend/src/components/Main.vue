@@ -49,8 +49,8 @@ export default {
   methods: {
     setBtnColor(owner) {
       return {
-        color: this.ownerProfiles[owner].color_theme.primary_color,
-        "border-color": this.ownerProfiles[owner].color_theme.primary_color,
+        color: this.ownerProfiles[owner].colors.primary_color,
+        "border-color": this.ownerProfiles[owner].colors.primary_color,
       };
     },
     newQuestion(owner) {
