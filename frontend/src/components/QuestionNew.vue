@@ -193,8 +193,12 @@ export default {
           });
         })
         .catch((err) => {
-          alert("提问箱好像坏掉了，请保存好您的投稿，并通知管理员前来查看！");
           console.log(err.response);
+          if (err.response.status === 400) {
+            alert("您的投稿好像不太对劲？ " + err.response.data.error);
+          } else {
+            alert("提问箱好像坏掉了，请保存好您的投稿，并通知管理员前来查看！");
+          }
         });
     },
   },
@@ -221,8 +225,8 @@ export default {
         this.token = resp.data.token;
       })
       .catch((err) => {
-        alert("提问箱好像坏掉了，请保存好您的投稿，并通知管理员前来查看！");
         console.log(err.response);
+        alert("提问箱好像坏掉了，请保存好您的投稿，并通知管理员前来查看！");
       });
   },
   beforeUnmount() {
