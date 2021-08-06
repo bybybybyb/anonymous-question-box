@@ -47,6 +47,7 @@ const router = createRouter({
       app.mount('#app');
     }).catch((err) => {
       console.log(err.response);
+      alert("提问箱好像坏掉了，请稍后再试！万分抱歉！");
     });
 })()
 
