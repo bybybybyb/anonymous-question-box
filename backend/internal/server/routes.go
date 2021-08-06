@@ -20,6 +20,9 @@ func SetupRoutes() *gin.Engine {
 	r.GET("/profiles", func(c *gin.Context) {
 		c.JSON(http.StatusOK, infrastructure.Profiles)
 	})
+	r.GET("/metadata", func(c *gin.Context) {
+		c.JSON(http.StatusOK, infrastructure.WebsiteMetadataStore)
+	})
 
 	r.GET("/new", questionsHandler.NewQuestionToken)
 
