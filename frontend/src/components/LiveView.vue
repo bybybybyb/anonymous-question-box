@@ -357,8 +357,7 @@ export default {
   },
   beforeMount() {
     this.navbarStyling = {
-      "background-color":
-        this.ownerProfiles[this.owner].color_theme.primary_color,
+      "background-color": this.ownerProfiles[this.owner].colors.primary_color,
     };
     // try reading query params from local storage
     for (var key in this.queryParams) {
