@@ -246,9 +246,6 @@ export default {
       this.projected_text = text;
       // automatically answer the question if it was not answered before
       let time = Date.parse(answered_at);
-      authHeader = {
-        headers: { Authorization: `Bearer ${this.$route.query.token}` },
-      };
       if (time === 0) {
         this.axios
           .put(
@@ -258,7 +255,9 @@ export default {
               answer:
                 "已在直播中回应，请根据回复时间寻找相应录播观看。再次感谢投稿！",
             },
-            authHeader
+            {
+              headers: { Authorization: `Bearer ${this.$route.query.token}` },
+            }
           )
           .catch((err) => {
             console.log(err.response);
