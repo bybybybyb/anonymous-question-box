@@ -54,6 +54,7 @@
 
 <script>
 import Header from "./Header.vue";
+let printed = false;
 export default {
   name: "Main",
   components: { Header },
@@ -75,10 +76,13 @@ export default {
     this.axios
       .get("/api/metadata")
       .then((resp) => {
-        for (let i in resp.data.console_prints) {
-          console.log(resp.data.console_prints[i]);
-        }
         this.introductions = resp.data.introductions;
+        if (!printed) {
+          for (let i in resp.data.console_prints) {
+            console.log(resp.data.console_prints[i]);
+          }
+          printed = true;
+        }
       })
       .catch((err) => {
         console.log(err.response);
