@@ -17,3 +17,8 @@ type QuestionType struct {
 	RuneLimit       int32  `mapstructure:"rune_limit" json:"rune_limit"`
 	BackgroundClass string `mapstructure:"background_class" json:"background_class"`
 }
+
+type WebsiteMetadata struct {
+	Introductions []string `json:"introductions"`
+	ConsolePrints []string `json:"console_prints"`
+}

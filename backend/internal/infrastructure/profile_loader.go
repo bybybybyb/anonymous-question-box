@@ -6,6 +6,7 @@ import (
 )
 
 var Profiles map[string]model.Profile
+var WebsiteMetadataStore model.WebsiteMetadata
 
 func LoadProfiles() error {
 	Profiles = make(map[string]model.Profile)
@@ -16,6 +17,15 @@ func LoadProfiles() error {
 	}
 	for _, profile := range profiles {
 		Profiles[profile.Name] = profile
+	}
+
+	WebsiteMetadataStore = model.WebsiteMetadata{Introductions: []string{}, ConsolePrints: []string{}}
+	metadata := viper.GetStringMapStringSlice("website_metadata")
+	if intros, ok := metadata["introductions"]; ok {
+		WebsiteMetadataStore.Introductions = append(WebsiteMetadataStore.Introductions, intros...)
+	}
+	if prints, ok := metadata["console_prints"]; ok {
+		WebsiteMetadataStore.ConsolePrints = append(WebsiteMetadataStore.ConsolePrints, prints...)
 	}
 	return nil
 }
