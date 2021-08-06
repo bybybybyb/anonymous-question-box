@@ -3,32 +3,46 @@
     <div class="container">
       <div class="row">
         <div class="col-12 col-md-6">
-          <div class="card my-3">
+          <div class="card my-3" style="background: rgba(255, 255, 255, 0.7)">
             <div class="card-body">
-              <i class="my-3">提交时间：{{ formatTime(asked_at) }}</i>
-              <ul class="list-unstyled mx-3 my-3" style="line-break: anywhere">
-                <li
-                  v-for="(sentence, i) in formatText(question_text)"
-                  v-bind:key="i"
-                >
-                  {{ sentence }}
-                </li>
-              </ul>
+              <div class="card">
+                <div class="card-body">
+                  <i class="my-3">提交时间：{{ formatTime(asked_at) }}</i>
+                  <ul
+                    class="list-unstyled mx-3 my-3"
+                    style="line-break: anywhere"
+                  >
+                    <li
+                      v-for="(sentence, i) in formatText(question_text)"
+                      v-bind:key="i"
+                    >
+                      <p>{{ sentence }}</p>
+                    </li>
+                  </ul>
+                </div>
+              </div>
             </div>
           </div>
         </div>
         <div class="col-12 col-md-6">
-          <div class="card my-3">
+          <div class="card my-3" style="background: rgba(255, 255, 255, 0.7)">
             <div class="card-body">
-              <i class="my-3">回复时间： {{ formatTime(answered_at) }}</i>
-              <ul class="list-unstyled mx-3 my-3" style="line-break: anywhere">
-                <li
-                  v-for="(sentence, i) in formatText(answer_text)"
-                  v-bind:key="i"
-                >
-                  {{ sentence }}
-                </li>
-              </ul>
+              <div class="card">
+                <div class="card-body">
+                  <i class="my-3">回复时间： {{ formatTime(answered_at) }}</i>
+                  <ul
+                    class="list-unstyled mx-3 my-3"
+                    style="line-break: anywhere"
+                  >
+                    <li
+                      v-for="(sentence, i) in formatText(answer_text)"
+                      v-bind:key="i"
+                    >
+                      <p>{{ sentence }}</p>
+                    </li>
+                  </ul>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -41,7 +55,10 @@
 export default {
   name: "QuestionDisplay",
   props: {
-    token: String,
+    question_text: String,
+    asked_at: String,
+    answer_text: String,
+    answered_at: String,
   },
   computed: {
     formatTime() {
@@ -59,34 +76,9 @@ export default {
       };
     },
   },
-  beforeCreate() {
-    const authHeader = {
-      headers: { Authorization: `Bearer ${this.token}` },
-    };
-    this.axios
-      .get("/api/questions/question", authHeader)
-      .then((resp) => {
-        this.question_text = resp.data.text;
-        this.asked_at = resp.data.asked_at;
-        this.answer_text = resp.data.answer;
-        this.answered_at = resp.data.answered_at;
-      })
-      .catch((err) => {
-        if (err.response.status === 401) {
-          alert("对不起，未能找到您的投稿。");
-        } else {
-          alert("提问箱好像坏掉了，请通知管理员前来查看！");
-        }
-        this.$router.push({ path: "/" });
-      });
-  },
+  beforeCreate() {},
   data() {
-    return {
-      question_text: "",
-      asked_at: "",
-      answer_text: "",
-      answered_at: "",
-    };
+    return {};
   },
 };
 </script>
