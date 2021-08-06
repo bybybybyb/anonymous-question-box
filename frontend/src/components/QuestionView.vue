@@ -37,7 +37,7 @@ export default {
     QuestionDisplay,
     QuestionSubmission,
   },
-  beforeCreate() {
+  created() {
     this.token = this.$route.query.token;
     const authHeader = {
       headers: { Authorization: `Bearer ${this.token}` },
