@@ -105,6 +105,7 @@
 <script>
 import Header from "./Header.vue";
 const storagePrefix = "questionNew_";
+let currentQuestionTypePrefix = "";
 let prevBgClass = "";
 export default {
   name: "QuestionNew",
@@ -117,7 +118,10 @@ export default {
   methods: {
     onNewInput() {
       this.currentLength = this.new_question_text.length;
-      localStorage.setItem(storagePrefix + "draft", this.new_question_text);
+      localStorage.setItem(
+        storagePrefix + currentQuestionTypePrefix + "draft",
+        this.new_question_text
+      );
       this.currentLength > 0
         ? (this.submitBtnActiveClass = "")
         : (this.submitBtnActiveClass = "disabled");
@@ -127,6 +131,16 @@ export default {
         this.ownerProfiles[this.owner].question_types[
           event.target.value
         ].rune_limit;
+      currentQuestionTypePrefix = "_" + [this.owner, this.type].join("_") + "_";
+      let localVal = localStorage.getItem(
+        storagePrefix + currentQuestionTypePrefix + "draft"
+      );
+      if (localVal && localVal !== "") {
+        this.new_question_text = localVal;
+      } else {
+        this.new_question_text = "";
+      }
+      this.onNewInput();
 
       // style changes
       // body background
@@ -138,14 +152,14 @@ export default {
       prevBgClass = newBgClass;
       // card background
       if (newBgClass.includes("dark")) {
-        this.cardBackgroundStyle = "background: rgba(120,120,120,0.7)";
+        this.cardBackgroundStyle = "background: rgba(120,120,120,0.9)";
         this.h5Style = "color:white";
         this.submitBtnStyleClass = "btn-success";
         this.dismissBtnStyleClass = "btn-secondary";
         this.confirmBtnStyleClass = "btn-danger";
         this.formStyleClass = "bg-dark text-light";
       } else {
-        this.cardBackgroundStyle = "background: rgba(255,255,255,0.7)";
+        this.cardBackgroundStyle = "background: rgba(255,255,255,0.9)";
         this.h5Style = "color:black";
         this.submitBtnStyleClass = "btn-outline-success";
         this.dismissBtnStyleClass = "btn-outline-secondary";
@@ -168,7 +182,10 @@ export default {
           authHeader
         )
         .then(() => {
-          localStorage.setItem(storagePrefix + "draft", "");
+          localStorage.setItem(
+            storagePrefix + currentQuestionTypePrefix + "draft",
+            ""
+          );
           this.$router.push({
             name: "question",
             query: { token: this.token },
@@ -190,7 +207,10 @@ export default {
     document.body.classList.add("body-background-" + newBgClass);
     prevBgClass = newBgClass;
 
-    let localVal = localStorage.getItem(storagePrefix + "draft");
+    currentQuestionTypePrefix = "_" + [this.owner, this.type].join("_") + "_";
+    let localVal = localStorage.getItem(
+      storagePrefix + currentQuestionTypePrefix + "draft"
+    );
     if (localVal && localVal !== "") {
       this.new_question_text = localVal;
       this.onNewInput();
@@ -225,7 +245,7 @@ export default {
       submitBtnStyleClass: "btn-outline-success",
       dismissBtnStyleClass: "btn-outline-secondary",
       confirmBtnStyleClass: "btn-outline-danger",
-      cardBackgroundStyle: "background: rgba(255,255,255,0.7)",
+      cardBackgroundStyle: "background: rgba(255,255,255,0.9)",
       formStyleClass: "bg-light text-dark",
       h5Style: "color:black",
     };
