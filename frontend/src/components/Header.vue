@@ -2,7 +2,7 @@
   <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
     <div class="container-fluid">
       <span class="navbar-brand m-1 mb-0 h1">
-        <img src="../assets/marshmallow_light.svg" alt="" height="32" />
+        <img src="../assets/marshmallow_light.svg" alt="" height="20" />
         MeUmy的棉花糖
       </span>
       <ul class="navbar-nav mb-2 mb-lg-0">
