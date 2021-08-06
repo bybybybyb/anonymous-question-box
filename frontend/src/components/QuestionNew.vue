@@ -1,58 +1,100 @@
 <template>
   <div>
     <Header :hideBackBtn="true"></Header>
-    <div>
-      <div class="container">
-        <div class="card my-3 shadow-lg" :style="cardBackgroundStyle">
-          <div class="card-body">
-            <div class="row">
-              <div class="col-4">
-                <h5 :style="h5Style">收件人：</h5>
-              </div>
-              <div class="col-8">
-                <select
-                  class="form-select form-select-sm"
-                  :class="formStyleClass"
-                  aria-label="Default select example"
-                  id="question_type"
-                  v-on:change="onReceiverChange"
-                  v-model="type"
+    <div class="container">
+      <div class="card my-3 shadow-lg" :style="cardBackgroundStyle">
+        <div class="card-body">
+          <div class="row">
+            <div class="col-4">
+              <h5 :style="h5Style">收件人：</h5>
+            </div>
+            <div class="col-8">
+              <select
+                class="form-select form-select-sm"
+                :class="formStyleClass"
+                aria-label="Default select example"
+                id="question_type"
+                v-on:change="onReceiverChange"
+                v-model="type"
+              >
+                <option
+                  v-for="q_type in ownerProfiles[owner].question_types"
+                  v-bind:key="q_type.name"
+                  :value="q_type.name"
                 >
-                  <option
-                    v-for="q_type in ownerProfiles[owner].question_types"
-                    v-bind:key="q_type.name"
-                    :value="q_type.name"
-                  >
-                    {{ q_type.description }}
-                  </option>
-                </select>
-              </div>
+                  {{ q_type.description }}
+                </option>
+              </select>
             </div>
           </div>
         </div>
-        <div class="card my-3 shadow-lg" v-bind:style="cardBackgroundStyle">
-          <div class="card-body">
-            <textarea
-              class="col-12 form-control"
-              rows="20"
-              :class="formStyleClass"
-              v-model="new_question_text"
-              :maxlength="maxLength"
-              v-on:keyup="onNewInput"
-            ></textarea>
-            <h5 class="col-12 m-1" :style="h5Style">
-              当前字数： {{ currentLength }}/{{ maxLength }}
-            </h5>
+      </div>
+      <div class="card my-3 shadow-lg" v-bind:style="cardBackgroundStyle">
+        <div class="card-body">
+          <textarea
+            class="col-12 form-control"
+            rows="20"
+            :class="formStyleClass"
+            v-model="new_question_text"
+            :maxlength="maxLength"
+            v-on:keyup="onNewInput"
+          ></textarea>
+          <h5 class="col-12 m-1" :style="h5Style">
+            当前字数： {{ currentLength }}/{{ maxLength }}
+          </h5>
+          <button
+            class="btn col-sm-5 col-12"
+            :class="[submitBtnActiveClass, submitBtnStyleClass]"
+            data-bs-toggle="modal"
+            data-bs-target="#submitConfirmModal"
+          >
+            提交
+          </button>
+          <h5 class="col-12 m-2" :style="h5Style">
+            小提示：尚未成功提交的草稿将被暂存于您的浏览器储存中。
+          </h5>
+        </div>
+      </div>
+    </div>
+    <div
+      class="modal fade"
+      id="submitConfirmModal"
+      tabindex="-1"
+      aria-labelledby="submitConfirmModalLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" :class="formStyleClass">
+          <div class="modal-header">
+            <h5 class="modal-title" id="submitConfirmModalLabel">确认提交？</h5>
             <button
-              class="btn col-sm-5 col-12"
-              :class="[submitBtnActiveClass, submitBtnStyleClass]"
-              v-on:click="submit"
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="Close"
+            ></button>
+          </div>
+          <div class="modal-body">
+            提交后将无法进行更改，建议再读一遍检查一下哦？
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn"
+              :class="dismissBtnStyleClass"
+              data-bs-dismiss="modal"
             >
-              提交
+              再看一眼
             </button>
-            <h5 class="col-12 m-2" :style="h5Style">
-              小提示：尚未成功提交的草稿将被暂存于您的浏览器储存中。
-            </h5>
+            <button
+              type="button"
+              class="btn"
+              :class="confirmBtnStyleClass"
+              v-on:click="submit"
+              data-bs-dismiss="modal"
+            >
+              确认提交
+            </button>
           </div>
         </div>
       </div>
@@ -99,11 +141,15 @@ export default {
         this.cardBackgroundStyle = "background: rgba(120,120,120,0.7)";
         this.h5Style = "color:white";
         this.submitBtnStyleClass = "btn-success";
+        this.dismissBtnStyleClass = "btn-secondary";
+        this.confirmBtnStyleClass = "btn-danger";
         this.formStyleClass = "bg-dark text-light";
       } else {
         this.cardBackgroundStyle = "background: rgba(255,255,255,0.7)";
         this.h5Style = "color:black";
         this.submitBtnStyleClass = "btn-outline-success";
+        this.dismissBtnStyleClass = "btn-outline-secondary";
+        this.confirmBtnStyleClass = "btn-outline-danger";
         this.formStyleClass = "bg-light text-dark";
       }
     },
@@ -176,6 +222,8 @@ export default {
       maxLength: 500,
       submitBtnActiveClass: "disabled",
       submitBtnStyleClass: "btn-outline-success",
+      dismissBtnStyleClass: "btn-outline-secondary",
+      confirmBtnStyleClass: "btn-outline-danger",
       cardBackgroundStyle: "background: rgba(255,255,255,0.7)",
       formStyleClass: "bg-light text-dark",
       h5Style: "color:black",
