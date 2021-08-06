@@ -14,7 +14,7 @@
               </div>
               <div class="row">
                 <!-- TODO: refactor here to automatically add buttons by profiles -->
-                <div class="col-6">
+                <div class="col-12 col-sm-6">
                   <button
                     class="btn btn-outline-info my-2"
                     :style="setBtnColor('merry')"
@@ -23,7 +23,7 @@
                     咩栗和蜗牛姐姐的棉花糖
                   </button>
                 </div>
-                <div class="col-6">
+                <div class="col-12 col-sm-6">
                   <button
                     class="btn btn-outline-danger my-2"
                     :style="setBtnColor('umy')"
