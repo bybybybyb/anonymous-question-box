@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="container">
-      <div class="card my-3" style="background: rgba(255, 255, 255, 0.7)">
+      <div class="card my-3" style="background: rgba(255, 255, 255, 0.9)">
         <div class="card-body">
           <div class="card">
             <div class="card-body">
