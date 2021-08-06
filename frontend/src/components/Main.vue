@@ -13,6 +13,17 @@
                 <h1>MeUmy的棉花糖</h1>
               </div>
               <div class="row">
+                <ul class="list-unstyled">
+                  <li class="m-2" v-for="str in introductions" :key="str">
+                    {{ str }}
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <div class="card m-3 p-3">
+            <div class="card-body m-1">
+              <div class="row">
                 <!-- TODO: refactor here to automatically add buttons by profiles -->
                 <div class="col-12 col-sm-6">
                   <button
@@ -60,9 +71,21 @@ export default {
       });
     },
   },
+  beforeCreate() {
+    this.axios
+      .get("/api/metadata")
+      .then((resp) => {
+        for (let i in resp.data.console_prints) {
+          console.log(resp.data.console_prints[i]);
+        }
+        this.introductions = resp.data.introductions;
+      })
+      .catch((err) => {
+        console.log(err.response);
+      });
+  },
   data: {
-    submitBtnStyleClasses: "my-3 btn btn-outline-primary",
-    submitBtnActiveClass: "disabled",
+    introductions: [],
   },
 };
 </script>
