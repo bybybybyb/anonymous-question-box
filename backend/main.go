@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"github.com/anonymous-question-box/internal/infrastructure"
 	"github.com/anonymous-question-box/internal/server"
+	"github.com/fsnotify/fsnotify"
 	"github.com/gin-contrib/pprof"
 	"github.com/spf13/viper"
+	"log"
 )
 
 func main() {
@@ -17,6 +19,15 @@ func main() {
 	viper.SetConfigType("yaml")
 	viper.SetConfigFile(*configFlag)
 	viper.ReadInConfig()
+	viper.WatchConfig()
+	viper.OnConfigChange(func(e fsnotify.Event) {
+		log.Printf("detected config file change\n")
+		err := infrastructure.LoadProfiles()
+		if err != nil {
+			log.Printf("failed to reload the config file: %s", err.Error())
+		}
+	})
+
 	// default configs
 	viper.SetDefault("host", "")
 	viper.SetDefault("port", "8080")
