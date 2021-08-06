@@ -58,7 +58,7 @@ export default {
         document.body.classList.remove("bg-light");
         document.body.classList.add("body-background-" + currentBgClass);
         if (currentBgClass.includes("dark")) {
-          this.card_background_style = "background: rgba(120,120,120,0.7)";
+          this.card_background_style = "background: rgba(120,120,120,0.9)";
         }
       })
       .catch((err) => {
