@@ -44,7 +44,7 @@ func (q *QuestionsHandler) NewQuestionToken(c *gin.Context) {
 func (q *QuestionsHandler) SubmitNewQuestion(c *gin.Context) {
 	body, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("无法读取问题请求，错误信息：%s", err.Error())})
+		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("无法读取投稿请求，错误信息：%s", err.Error())})
 		return
 	}
 	req := &model.Question{
@@ -53,16 +53,16 @@ func (q *QuestionsHandler) SubmitNewQuestion(c *gin.Context) {
 	}
 	err = json.Unmarshal(body, req)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("无法解析问题请求，错误信息：%s", err.Error())})
+		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("无法解析投稿请求，错误信息：%s", err.Error())})
 		return
 	}
 	runeLimit, ok := q.ProfileManager.GetRuneLimitByOwnerNameAndQuestionType(req.Owner, req.Type)
 	if !ok {
-		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("未知提问箱主人 %s 或问题类型 %s", req.Owner, req.Type)})
+		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("未知提问箱主人 %s 或投稿类型 %s", req.Owner, req.Type)})
 		return
 	}
 	if int32(utf8.RuneCountInString(req.Text)) > runeLimit {
-		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("问题长度超过最大限度 %d", runeLimit)})
+		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("投稿长度超过最大限度 %d", runeLimit)})
 		return
 	}
 	err = q.QuestionManager.InsertQuestion(c, req)
@@ -86,9 +86,9 @@ func (q *QuestionsHandler) GetQuestion(c *gin.Context) {
 	if err != nil {
 		switch err.Code() {
 		case http.StatusNotFound:
-			c.AbortWithStatusJSON(http.StatusNotFound, ErrorResp{Error: "问题不存在或已过期销毁"})
+			c.AbortWithStatusJSON(http.StatusNotFound, ErrorResp{Error: "投稿不存在或已过期销毁"})
 		case http.StatusInternalServerError:
-			c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("查询问题失败，错误信息： %s，请联系网站管理员", err.Error())})
+			c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("查询投稿失败，错误信息： %s，请联系网站管理员", err.Error())})
 		}
 		return
 	}
@@ -112,26 +112,26 @@ func (q *QuestionsHandler) ListQuestions(c *gin.Context) {
 	}
 	body, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("无法读取问题请求，错误信息：%s", err.Error())})
+		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("无法读取投稿请求，错误信息：%s", err.Error())})
 		return
 	}
 	req := &listRequest{}
 	err = json.Unmarshal(body, req)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("无法解析问题请求，错误信息：%s", err.Error())})
+		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("无法解析投稿请求，错误信息：%s", err.Error())})
 		return
 	}
 	_, ok := q.ProfileManager.GetRuneLimitByOwnerNameAndQuestionType(req.Owner, req.Type)
 	if !ok {
-		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("未知提问箱主人 %s 或问题类型 %s", req.Owner, req.Type)})
+		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("未知提问箱主人 %s 或投稿类型 %s", req.Owner, req.Type)})
 	}
 	questions, totalCount, statusErr := q.QuestionManager.ListQuestions(c, req.Owner, req.Type, req.OrderParams.By, req.OrderParams.Reversed, time.Now().AddDate(0, 0, int(-req.Days)).Unix(), req.PageSize, req.Page, req.ReplyStatus)
 	if statusErr != nil {
 		switch statusErr.Code() {
 		case http.StatusNotFound:
-			c.AbortWithStatusJSON(http.StatusNotFound, ErrorResp{Error: "没有更多问题可以列出"})
+			c.AbortWithStatusJSON(http.StatusNotFound, ErrorResp{Error: "没有更多投稿可以列出"})
 		case http.StatusInternalServerError:
-			c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("查询问题失败，错误信息： %s，请联系网站管理员", statusErr.Error())})
+			c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("查询投稿失败，错误信息： %s，请联系网站管理员", statusErr.Error())})
 		}
 		return
 	}
@@ -152,22 +152,22 @@ func (q *QuestionsHandler) AnswerQuestion(c *gin.Context) {
 	}
 	body, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("无法读取问题请求，错误信息：%s", err.Error())})
+		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("无法读取投稿请求，错误信息：%s", err.Error())})
 		return
 	}
 	req := &answerReq{}
 	err = json.Unmarshal(body, req)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("无法解析问题请求，错误信息：%s", err.Error())})
+		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("无法解析投稿请求，错误信息：%s", err.Error())})
 		return
 	}
 	question, statusErr := q.QuestionManager.GetQuestionByUUID(c, req.UUID)
 	if statusErr != nil {
 		switch statusErr.Code() {
 		case http.StatusNotFound:
-			c.AbortWithStatusJSON(http.StatusNotFound, ErrorResp{Error: "问题不存在或已过期销毁"})
+			c.AbortWithStatusJSON(http.StatusNotFound, ErrorResp{Error: "投稿不存在或已过期销毁"})
 		case http.StatusInternalServerError:
-			c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("查询问题失败，错误信息： %s，请联系网站管理员", statusErr.Error())})
+			c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("查询投稿失败，错误信息： %s，请联系网站管理员", statusErr.Error())})
 		}
 		return
 	}
@@ -179,7 +179,7 @@ func (q *QuestionsHandler) AnswerQuestion(c *gin.Context) {
 	if statusErr != nil {
 		switch statusErr.Code() {
 		case http.StatusNotFound:
-			c.AbortWithStatusJSON(http.StatusNotFound, ErrorResp{Error: "问题不存在或已过期销毁"})
+			c.AbortWithStatusJSON(http.StatusNotFound, ErrorResp{Error: "投稿不存在或已过期销毁"})
 		case http.StatusInternalServerError:
 			c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("提交回答失败，错误信息： %s，请联系网站管理员", statusErr.Error())})
 		}
@@ -195,9 +195,9 @@ func (q *QuestionsHandler) DeleteQuestion(c *gin.Context) {
 	if statusErr != nil {
 		switch statusErr.Code() {
 		case http.StatusNotFound:
-			c.AbortWithStatusJSON(http.StatusNotFound, ErrorResp{Error: "问题不存在或已过期销毁"})
+			c.AbortWithStatusJSON(http.StatusNotFound, ErrorResp{Error: "投稿不存在或已过期销毁"})
 		case http.StatusInternalServerError:
-			c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("查询问题失败，错误信息： %s，请联系网站管理员", statusErr.Error())})
+			c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("查询投稿失败，错误信息： %s，请联系网站管理员", statusErr.Error())})
 		}
 		return
 	}
