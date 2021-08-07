@@ -53,7 +53,10 @@ func (j *JWTManager) ValidateToken(ctx context.Context, encodedToken string) (st
 		if ok {
 			return v.(string), true, nil
 		}
-		return claims["uuid"].(string), false, nil
+		uuid, ok := claims["uuid"]
+		if ok {
+			return uuid.(string), false, nil
+		}
 	}
 	return "", false, fmt.Errorf("validation failed or decoding failed")
 }
