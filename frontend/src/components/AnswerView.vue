@@ -58,6 +58,23 @@ export default {
   name: "AnswerView",
   components: { Header },
   methods: {
+    getQuestionAndAnswer() {
+      const authHeader = {
+        headers: { Authorization: `Bearer ${this.$route.query.token}` },
+      };
+      this.axios
+        .get("/api/owner/questions/" + this.$route.query.uuid, authHeader)
+        .then((resp) => {
+          this.question_text = resp.data.text;
+          this.asked_at = resp.data.asked_at;
+          this.previous_answer_text = resp.data.answer;
+          this.answer_text = resp.data.answer;
+          this.answered_at = resp.data.answered_at;
+        })
+        .catch((err) => {
+          console.log(err.response);
+        });
+    },
     submit() {
       const authHeader = {
         headers: { Authorization: `Bearer ${this.$route.query.token}` },
@@ -72,8 +89,7 @@ export default {
           authHeader
         )
         .then((resp) => {
-          console.log(resp);
-          this.$router.go(0);
+          this.getQuestionAndAnswer();
         })
         .catch((err) => {
           alert(err.response);
@@ -97,21 +113,7 @@ export default {
     },
   },
   created() {
-    const authHeader = {
-      headers: { Authorization: `Bearer ${this.$route.query.token}` },
-    };
-    this.axios
-      .get("/api/owner/questions/" + this.$route.query.uuid, authHeader)
-      .then((resp) => {
-        this.question_text = resp.data.text;
-        this.asked_at = resp.data.asked_at;
-        this.previous_answer_text = resp.data.answer;
-        this.answer_text = resp.data.answer;
-        this.answered_at = resp.data.answered_at;
-      })
-      .catch((err) => {
-        console.log(err.response);
-      });
+    this.getQuestionAndAnswer();
   },
   data() {
     return {
