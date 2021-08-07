@@ -250,6 +250,14 @@ export default {
         })
         .catch((err) => {
           console.log(err.response);
+          if (err.response.status === 401 || err.response.status === 403) {
+            alert(
+              "神秘代码坏掉咯，要是你知道管理员是谁的话就赶紧ping他给你个新的吧！"
+            );
+          } else {
+            alert("提问箱好像坏掉了，直接ping管理员吧！");
+          }
+          this.$router.push("/");
         });
 
       for (var key in this.queryParams) {
