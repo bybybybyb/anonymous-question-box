@@ -47,7 +47,7 @@ export default {
     let ref = this.$router.resolve({
       query: { token: this.token },
     });
-    this.question_url = window.location.host + "/" + ref.href;
+    this.question_url = "https://" + window.location.host + "/" + ref.href;
   },
   data() {
     return {
