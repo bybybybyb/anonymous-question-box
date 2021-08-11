@@ -32,8 +32,8 @@
       <div class="card my-3 shadow-lg" v-bind:style="cardBackgroundStyle">
         <div class="card-body">
           <textarea
-            class="col-12 form-control"
-            rows="20"
+            class="col-12 form-control overflow-auto"
+            rows="15"
             :class="formStyleClass"
             v-model="new_question_text"
             :maxlength="maxLength"
