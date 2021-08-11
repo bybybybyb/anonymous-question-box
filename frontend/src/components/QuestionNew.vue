@@ -38,6 +38,7 @@
             v-model="new_question_text"
             :maxlength="maxLength"
             v-on:keyup="onNewInput"
+            v-on:input="onNewInput"
           ></textarea>
           <h5 class="col-12 m-1" :style="h5Style">
             当前字数： {{ currentLength }}/{{ maxLength }}
