@@ -7,7 +7,7 @@
             <div class="card-body">
               <div class="card">
                 <div class="card-body overflow-auto" style="max-height: 300px">
-                  <i class="my-3">提交时间：{{ formatTime(asked_at) }}</i>
+                  <i class="my-3">投稿时间：{{ formatTime(asked_at) }}</i>
                   <ul
                     class="list-unstyled mx-3 my-3"
                     style="line-break: anywhere"
