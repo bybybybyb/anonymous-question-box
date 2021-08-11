@@ -5,7 +5,7 @@
       <div class="row">
         <div class="col-12">
           <div class="card my-3">
-            <i class="my-3">提交时间：{{ formatTime(asked_at) }}</i>
+            <i class="my-3">投稿时间：{{ formatTime(asked_at) }}</i>
             <div class="card-body">
               <ul class="list-unstyled mx-3 my-3" style="line-break: anywhere">
                 <li
@@ -43,6 +43,7 @@
               rows="8"
               v-model="answer_text"
               v-on:keyup="onNewInput"
+              v-on:input="onNewInput"
             ></textarea>
             <button
               class="btn btn-outline-success col-12 col-sm-3"
