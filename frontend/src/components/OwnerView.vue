@@ -124,6 +124,8 @@
                       class="btn btn-sm btn-outline-info my-1 mx-1 col-sm-12"
                       :value="q.uuid"
                       v-on:click="openQuestion"
+                      data-bs-toggle="modal"
+                      data-bs-target="#answerModal"
                     >
                       打开
                     </button>
@@ -175,12 +177,33 @@
         </div>
       </div>
     </div>
+    <div class="modal" tabindex="-1" id="answerModal">
+      <div
+        class="modal-dialog modal-lg modal-dialog-scrollable"
+        style="padding-top: 110px"
+      >
+        <div class="modal-content">
+          <div class="modal-header">
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="Close"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <answer-view :changeQuestion="uuid"></answer-view>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
 import Header from "./Header.vue";
 import Pagination from "v-pagination-3";
+import AnswerView from "./AnswerView.vue";
 const storagePrefix = "ownerView_";
 const orderDeriction = [
   { by: "asked_at", reversed: true },
@@ -195,6 +218,7 @@ export default {
   components: {
     Pagination,
     Header,
+    AnswerView,
   },
   props: {
     owner: String,
@@ -279,13 +303,7 @@ export default {
         });
     },
     openQuestion(event) {
-      this.$router.push({
-        name: "answer",
-        query: {
-          token: this.$route.query.token,
-          uuid: event.target.value,
-        },
-      });
+      this.uuid = event.target.value;
     },
     openLiveView() {
       this.$router.push({
@@ -298,6 +316,13 @@ export default {
     },
   },
   computed: {
+    answerPopup() {
+      var cc = Vue.extend(AnswerView);
+      var ans = new cc(this.token, this.uuid);
+      return {
+        ans,
+      };
+    },
     formatTime() {
       return (timeStr) => {
         let time = Date.parse(timeStr);
@@ -351,6 +376,7 @@ export default {
       total_count: 0,
       navbarStyling: {},
       projected_text: "",
+      uuid: "",
     };
   },
 };

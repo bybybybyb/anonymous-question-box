@@ -6,7 +6,7 @@
           <div class="card my-3" style="background: rgba(255, 255, 255, 0.9)">
             <div class="card-body">
               <div class="card">
-                <div class="card-body">
+                <div class="card-body overflow-auto" style="max-height: 300px">
                   <i class="my-3">提交时间：{{ formatTime(asked_at) }}</i>
                   <ul
                     class="list-unstyled mx-3 my-3"
@@ -28,7 +28,7 @@
           <div class="card my-3" style="background: rgba(255, 255, 255, 0.9)">
             <div class="card-body">
               <div class="card">
-                <div class="card-body">
+                <div class="card-body overflow-auto" style="max-height: 300px">
                   <i class="my-3">回复时间： {{ formatTime(answered_at) }}</i>
                   <ul
                     class="list-unstyled mx-3 my-3"

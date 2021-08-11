@@ -3,10 +3,10 @@
     <Header :hideHomepageBtn="true"></Header>
     <div class="container">
       <div class="row">
-        <div class="col-12 col-md-6">
+        <div class="col-12">
           <div class="card my-3">
+            <i class="my-3">提交时间：{{ formatTime(asked_at) }}</i>
             <div class="card-body">
-              <i class="my-3">提交时间：{{ formatTime(asked_at) }}</i>
               <ul class="list-unstyled mx-3 my-3" style="line-break: anywhere">
                 <li
                   v-for="(sentence, i) in formatText(question_text)"
@@ -19,10 +19,10 @@
             </div>
           </div>
         </div>
-        <div class="col-12 col-md-6">
+        <div class="col-12">
           <div class="card my-3">
+            <i class="my-3">回复时间： {{ formatTime(answered_at) }}</i>
             <div class="card-body">
-              <i class="my-3">回复时间： {{ formatTime(answered_at) }}</i>
               <ul class="list-unstyled mx-3 my-3" style="line-break: anywhere">
                 <li
                   v-for="(sentence, i) in formatText(previous_answer_text)"
@@ -38,7 +38,12 @@
       <div class="row">
         <div class="card my-3">
           <div class="card-body">
-            <textarea class="col-12" rows="10" v-model="answer_text"></textarea>
+            <textarea
+              class="col-12"
+              rows="8"
+              v-model="answer_text"
+              v-on:keyup="onNewInput"
+            ></textarea>
             <button
               class="btn btn-outline-success col-12 col-sm-3"
               v-on:click="submit"
@@ -54,22 +59,40 @@
 
 <script>
 import Header from "./Header.vue";
+const storagePrefix = "AnswerView_draft_";
 export default {
   name: "AnswerView",
   components: { Header },
+  props: ["changeQuestion"],
+  watch: {
+    changeQuestion: function (uuid) {
+      this.uuid = uuid;
+      this.getQuestionAndAnswer(uuid);
+    },
+  },
   methods: {
-    getQuestionAndAnswer() {
+    onNewInput() {
+      localStorage.setItem(storagePrefix + this.uuid, this.answer_text);
+    },
+    getQuestionAndAnswer(uuid) {
+      this.answer_text = "";
       const authHeader = {
         headers: { Authorization: `Bearer ${this.$route.query.token}` },
       };
       this.axios
-        .get("/api/owner/questions/" + this.$route.query.uuid, authHeader)
+        .get("/api/owner/questions/" + uuid, authHeader)
         .then((resp) => {
           this.question_text = resp.data.text;
           this.asked_at = resp.data.asked_at;
           this.previous_answer_text = resp.data.answer;
           this.answer_text = resp.data.answer;
           this.answered_at = resp.data.answered_at;
+          if (this.answer_text.length === 0) {
+            let localVal = localStorage.getItem(storagePrefix + this.uuid);
+            if (localVal && localVal !== "") {
+              this.answer_text = localVal;
+            }
+          }
         })
         .catch((err) => {
           console.log(err.response);
@@ -81,18 +104,19 @@ export default {
       };
       this.axios
         .put(
-          "/api/owner/questions/" + this.$route.query.uuid + "/answer",
+          "/api/owner/questions/" + this.uuid + "/answer",
           {
-            uuid: this.$route.query.uuid,
+            uuid: this.uuid,
             answer: this.answer_text,
           },
           authHeader
         )
         .then((resp) => {
-          this.getQuestionAndAnswer();
+          localStorage.removeItem(storagePrefix + this.uuid);
+          this.getQuestionAndAnswer(this.uuid);
         })
         .catch((err) => {
-          alert(err.response);
+          console.log(err.response);
         });
     },
   },
@@ -112,9 +136,6 @@ export default {
       };
     },
   },
-  created() {
-    this.getQuestionAndAnswer();
-  },
   data() {
     return {
       asked_at: "",
@@ -122,6 +143,7 @@ export default {
       answered_at: "",
       previous_answer_text: "",
       answer_text: "",
+      uuid: "",
     };
   },
 };
