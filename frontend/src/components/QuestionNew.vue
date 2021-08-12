@@ -2,7 +2,7 @@
   <div>
     <Header :hideBackBtn="true"></Header>
     <div class="container">
-      <div class="card my-3 shadow-lg" :style="cardBackgroundStyle">
+      <div class="card shadow-lg my-3" :style="cardBackgroundStyle">
         <div class="card-body">
           <div class="row">
             <div class="col-4">
@@ -29,7 +29,7 @@
           </div>
         </div>
       </div>
-      <div class="card my-3 shadow-lg" v-bind:style="cardBackgroundStyle">
+      <div class="card shadow-lg my-3" v-bind:style="cardBackgroundStyle">
         <div class="card-body">
           <textarea
             class="col-12 form-control overflow-auto"

@@ -100,7 +100,7 @@
             </div>
           </nav>
         </div>
-        <div class="card m-3" v-for="(q, i) in rows" :key="i">
+        <div class="card shadow-lg m-3" v-for="(q, i) in rows" :key="i">
           <div class="card-header">
             <div class="row">
               <div class="col-12 col-md-2 d-none d-sm-table-cell">
