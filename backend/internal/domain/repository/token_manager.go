@@ -9,6 +9,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+const tokenExpirationDays = 100000
+
 type JWTManager struct {
 }
 
@@ -22,8 +24,7 @@ func (j *JWTManager) GenerateToken(ctx context.Context, uuid string) (string, er
 	claims := &customClaims{
 		uuid,
 		jwt.StandardClaims{
-			// +10 to make sure the token does not expire before the question expiring
-			ExpiresAt: time.Now().Add(time.Hour * 24 * time.Duration(viper.GetInt("question_expiration_time")+10)).Unix(),
+			ExpiresAt: time.Now().Add(time.Hour * 24 * tokenExpirationDays).Unix(),
 			IssuedAt:  time.Now().Unix(),
 		},
 	}
