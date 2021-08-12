@@ -131,7 +131,7 @@ export default {
         if (time === 0) {
           return "尚未回复";
         }
-        return new Date(timeStr).toLocaleString();
+        return new Date(timeStr).toLocaleString("zh-CN", { hourCycle: "h23" });
       };
     },
     formatText() {
