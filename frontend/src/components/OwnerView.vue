@@ -36,7 +36,7 @@
                     class="form-select"
                     aria-label="Default select example"
                     id="reply_status"
-                    v-on:change="onQueryChange(false)"
+                    v-on:change="onQueryChange(true)"
                     v-model="queryParams['reply_status']"
                   >
                     <option selected value="0">全部</option>
@@ -49,7 +49,7 @@
                     class="form-select"
                     aria-label="Default select example"
                     id="day_limit"
-                    v-on:change="onQueryChange(false)"
+                    v-on:change="onQueryChange(true)"
                     v-model="queryParams['day_limit']"
                   >
                     <option value="1">1天内</option>
@@ -78,7 +78,7 @@
                     class="form-select"
                     aria-label="Default select example"
                     id="order"
-                    v-on:change="onQueryChange(false)"
+                    v-on:change="onQueryChange(true)"
                     v-model="queryParams['page_size']"
                   >
                     <option selected value="5">每页5条</option>
