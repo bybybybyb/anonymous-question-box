@@ -27,7 +27,7 @@
                 <!-- TODO: refactor here to automatically add buttons by profiles -->
                 <div class="col-12 col-sm-6">
                   <button
-                    class="btn btn-outline-info my-2"
+                    class="btn shadow btn-outline-info my-2"
                     :style="setBtnColor('merry')"
                     v-on:click="newQuestion('merry')"
                   >
@@ -36,7 +36,7 @@
                 </div>
                 <div class="col-12 col-sm-6">
                   <button
-                    class="btn btn-outline-danger my-2"
+                    class="btn shadow btn-outline-danger my-2"
                     :style="setBtnColor('umy')"
                     v-on:click="newQuestion('umy')"
                   >

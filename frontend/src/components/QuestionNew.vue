@@ -44,7 +44,7 @@
             当前字数： {{ currentLength }}/{{ maxLength }}
           </h5>
           <button
-            class="btn col-sm-5 col-12"
+            class="btn shadow col-sm-5 col-12"
             :class="[submitBtnActiveClass, submitBtnStyleClass]"
             data-bs-toggle="modal"
             data-bs-target="#submitConfirmModal"

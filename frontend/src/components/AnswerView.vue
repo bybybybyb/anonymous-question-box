@@ -49,7 +49,7 @@
               v-on:input="onNewInput"
             ></textarea>
             <button
-              class="btn btn-outline-success col-12 col-sm-3"
+              class="btn shadow btn-outline-success col-12 col-sm-3"
               v-on:click="submit"
             >
               提交或更新
