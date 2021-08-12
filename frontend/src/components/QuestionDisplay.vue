@@ -17,6 +17,7 @@
                     <li
                       v-for="(sentence, i) in formatText(question_text)"
                       v-bind:key="i"
+                      class="text-start"
                     >
                       <p>{{ sentence }}</p>
                     </li>
@@ -41,6 +42,7 @@
                     <li
                       v-for="(sentence, i) in formatText(answer_text)"
                       v-bind:key="i"
+                      class="text-start"
                     >
                       <p>{{ sentence }}</p>
                     </li>
