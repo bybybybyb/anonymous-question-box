@@ -5,8 +5,10 @@
       <div class="row">
         <div class="col-12">
           <div class="card my-3">
-            <i class="my-3">投稿时间：{{ formatTime(asked_at) }}</i>
-            <div class="card-body">
+            <i class="my-3 border-bottom"
+              >投稿时间：{{ formatTime(asked_at) }}</i
+            >
+            <div class="card-body overflow-auto" style="max-height: 400px">
               <ul class="list-unstyled mx-3 my-3" style="line-break: anywhere">
                 <li
                   v-for="(sentence, i) in formatText(question_text)"
@@ -21,8 +23,10 @@
         </div>
         <div class="col-12">
           <div class="card my-3">
-            <i class="my-3">回复时间： {{ formatTime(answered_at) }}</i>
-            <div class="card-body">
+            <i class="my-3 border-bottom"
+              >回复时间： {{ formatTime(answered_at) }}</i
+            >
+            <div class="card-body overflow-auto" style="max-height: 200px">
               <ul class="list-unstyled mx-3 my-3" style="line-break: anywhere">
                 <li
                   v-for="(sentence, i) in formatText(previous_answer_text)"
@@ -36,7 +40,7 @@
         </div>
       </div>
       <div class="row">
-        <div class="card my-3">
+        <div class="card my-3 border border-dark">
           <div class="card-body">
             <textarea
               class="col-12"
