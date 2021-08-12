@@ -12,4 +12,4 @@ CREATE TABLE question (
 );
 
 CREATE UNIQUE INDEX uk_uuid ON question (uuid);
-CREATE INDEX idx_owner_question_type ON question (owner, question_type);
+CREATE INDEX idx_owner_question_type_asked_at ON question (owner, question_type, asked_at);
