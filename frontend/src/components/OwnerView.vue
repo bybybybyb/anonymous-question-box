@@ -237,7 +237,7 @@ export default {
           });
       }
     },
-    onQueryChange(resetPage) {
+    onQueryChange(resetPage, needRetry = false) {
       if (resetPage) this.queryParams["page"] = 1;
       this.axios
         .post(
@@ -267,12 +267,25 @@ export default {
           console.log(err.response);
           if (err.response.status === 401 || err.response.status === 403) {
             alert(
-              "神秘代码坏掉咯，要是你知道管理员是谁的话就赶紧ping他给你个新的吧！"
+              "神秘代码坏掉咯，要是你知道真正的管理员是谁的话就赶紧ping他要个新的吧！"
             );
+            this.$router.push("/");
           } else {
-            alert("提问箱好像坏掉了，直接ping管理员吧！");
+            if (needRetry) {
+              this.queryParams = {
+                type: "normal",
+                order_params_index: 0,
+                reply_status: 0,
+                day_limit: 7,
+                page_size: 5,
+                page: 1,
+              };
+              this.onQueryChange(false, false);
+            } else {
+              alert("提问箱好像坏掉了，直接ping管理员吧！");
+              this.$router.push("/");
+            }
           }
-          this.$router.push("/");
         });
 
       for (var key in this.queryParams) {
@@ -353,7 +366,7 @@ export default {
         }
       }
     }
-    this.onQueryChange();
+    this.onQueryChange(true, true);
   },
   data() {
     return {
