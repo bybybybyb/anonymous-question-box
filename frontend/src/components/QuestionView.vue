@@ -62,7 +62,7 @@ export default {
         }
       })
       .catch((err) => {
-        if (err.response.status === 401) {
+        if (err.response.status === 401 || err.response.status === 404) {
           alert("对不起，未能找到您的投稿。");
         } else {
           alert("提问箱好像坏掉了，请通知管理员前来查看！");
