@@ -9,9 +9,7 @@
           >
             <div class="card-body">
               <div class="card">
-                <h6 class="card-title m-3">
-                  投稿时间：{{ formatTime(asked_at) }}
-                </h6>
+                <h5 class="card-title m-3">您的投稿</h5>
                 <div class="card-body overflow-auto" style="max-height: 300px">
                   <ul
                     class="list-unstyled mx-3 my-3"
@@ -37,9 +35,9 @@
           >
             <div class="card-body">
               <div class="card">
-                <h6 class="card-title m-3">
-                  回复时间： {{ formatTime(answered_at) }}
-                </h6>
+                <h5 class="card-title m-3">
+                  {{ generateAnswerTitle(answered_at) }}
+                </h5>
                 <div class="card-body overflow-auto" style="max-height: 300px">
                   <ul
                     class="list-unstyled mx-3 my-3"
@@ -73,13 +71,13 @@ export default {
     answered_at: String,
   },
   computed: {
-    formatTime() {
+    generateAnswerTitle() {
       return (timeStr) => {
         let time = Date.parse(timeStr);
         if (time === 0) {
           return "尚未回复，请耐心等待哦。";
         }
-        return new Date(timeStr).toLocaleString();
+        return "回信";
       };
     },
     formatText() {
