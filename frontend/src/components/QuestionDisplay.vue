@@ -6,9 +6,9 @@
           <div class="card my-3" style="background: rgba(255, 255, 255, 0.9)">
             <div class="card-body">
               <div class="card">
-                <h5 class="card-title my-3">
+                <h6 class="card-title m-3">
                   投稿时间：{{ formatTime(asked_at) }}
-                </h5>
+                </h6>
                 <div class="card-body overflow-auto" style="max-height: 300px">
                   <ul
                     class="list-unstyled mx-3 my-3"
@@ -30,9 +30,9 @@
           <div class="card my-3" style="background: rgba(255, 255, 255, 0.9)">
             <div class="card-body">
               <div class="card">
-                <h5 class="card-title my-3">
+                <h6 class="card-title m-3">
                   回复时间： {{ formatTime(answered_at) }}
-                </h5>
+                </h6>
                 <div class="card-body overflow-auto" style="max-height: 300px">
                   <ul
                     class="list-unstyled mx-3 my-3"
