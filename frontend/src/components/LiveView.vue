@@ -240,7 +240,7 @@ const autoReply = `
                 已在直播中回应，请移步MeUmy录播组：
                 https://space.bilibili.com/674622242
                 根据回复时间寻找相应录播观看。再次感谢投稿！
-                `.replace(/(\n)\s+/g, '$1');
+                `.replace(/(\n)\s+/g, "$1");
 
 export default {
   // TODO: merge LiveView and OwnerView using setup() as they share the exactly the same component construction, only difference is the template
@@ -369,7 +369,7 @@ export default {
         if (time === 0) {
           return "尚未回复";
         }
-        return new Date(timeStr).toLocaleString();
+        return new Date(timeStr).toLocaleString("zh-CN", { hourCycle: "h23" });
       };
     },
     formatText() {
