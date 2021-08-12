@@ -5,7 +5,7 @@
       <div class="row">
         <div class="col">
           <div
-            class="card my-3 mx-5 border border-3 border-dark"
+            class="card shadow-lg my-3 mx-5 border border-3 border-dark"
             style="width: 600px; height: 400px"
           >
             <div class="card-body overflow-auto">
@@ -145,7 +145,11 @@
                 style="height: 745px; border-radius: 0rem"
               >
                 <div class="card">
-                  <div class="card m-2" v-for="(q, i) in rows" :key="i">
+                  <div
+                    class="card shadow-lg m-2"
+                    v-for="(q, i) in rows"
+                    :key="i"
+                  >
                     <div class="card-body">
                       <div class="container">
                         <div class="row">

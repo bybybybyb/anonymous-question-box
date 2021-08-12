@@ -3,7 +3,10 @@
     <div class="container">
       <div class="row">
         <div class="col-12 col-md-6">
-          <div class="card my-3" style="background: rgba(255, 255, 255, 0.9)">
+          <div
+            class="card shadow-lg my-3"
+            style="background: rgba(255, 255, 255, 0.9)"
+          >
             <div class="card-body">
               <div class="card">
                 <h6 class="card-title m-3">
@@ -28,7 +31,10 @@
           </div>
         </div>
         <div class="col-12 col-md-6">
-          <div class="card my-3" style="background: rgba(255, 255, 255, 0.9)">
+          <div
+            class="card shadow-lg my-3"
+            style="background: rgba(255, 255, 255, 0.9)"
+          >
             <div class="card-body">
               <div class="card">
                 <h6 class="card-title m-3">
