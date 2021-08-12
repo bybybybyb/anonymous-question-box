@@ -3,7 +3,12 @@
     <div class="container-fluid">
       <span class="navbar-brand m-1 mb-0 h1">
         <img src="../assets/marshmallow_light.svg" alt="" height="20" />
-        MeUmy的棉花糖
+        <router-link
+          class="m-1"
+          to="/"
+          style="text-decoration: none; color: inherit"
+          >MeUmy的棉花糖</router-link
+        >
       </span>
       <ul class="navbar-nav mb-2 mb-lg-0">
         <li class="nav-item m-1">
