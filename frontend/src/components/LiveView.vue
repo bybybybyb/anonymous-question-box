@@ -258,7 +258,7 @@ export default {
             {
               uuid: uuid,
               answer:
-                "已在直播中回应，请根据回复时间寻找相应录播观看。再次感谢投稿！",
+                "已在直播中回应，请移步MeUmy录播组 https://space.bilibili.com/674622242 根据回复时间寻找相应录播观看。再次感谢投稿！",
             },
             {
               headers: { Authorization: `Bearer ${this.$route.query.token}` },
