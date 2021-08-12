@@ -251,9 +251,9 @@ export default {
       this.projected_text = text;
       // automatically answer the question if it was not answered before
       let time = Date.parse(answered_at);
-      const autoReply = `已于 ${Date.now().toLocaleString("zh-CN", {
+      const autoReply = `已于 ${new Date().toLocaleString("zh-CN", {
         hourCycle: "h23",
-        timezone: "Asia/Shanghai",
+        timeZone: "Asia/Shanghai",
       })} 在直播中回应。
                 请移步MeUmy录播组：https://space.bilibili.com/674622242
                 根据回应时间寻找相应录播观看。
