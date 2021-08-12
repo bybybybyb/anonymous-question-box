@@ -236,6 +236,12 @@ const orderDeriction = [
   { by: "word_count", reversed: false },
 ];
 
+const autoReply = `
+                已在直播中回应，请移步MeUmy录播组：
+                https://space.bilibili.com/674622242
+                根据回复时间寻找相应录播观看。再次感谢投稿！
+                `.replace(/(\n)\s+/g, '$1');
+
 export default {
   // TODO: merge LiveView and OwnerView using setup() as they share the exactly the same component construction, only difference is the template
   name: "LiveView",
@@ -257,8 +263,7 @@ export default {
             "/api/owner/questions/" + uuid + "/answer",
             {
               uuid: uuid,
-              answer:
-                "已在直播中回应，请移步MeUmy录播组 https://space.bilibili.com/674622242 根据回复时间寻找相应录播观看。再次感谢投稿！",
+              answer: autoReply,
             },
             {
               headers: { Authorization: `Bearer ${this.$route.query.token}` },
