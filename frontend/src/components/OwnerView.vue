@@ -195,6 +195,7 @@ import Header from "./Header.vue";
 import Pagination from "v-pagination-3";
 import AnswerView from "./AnswerView.vue";
 const storagePrefix = "ownerView_";
+const storagePrefixAnswerView = "AnswerView_draft_";
 const orderDeriction = [
   { by: "asked_at", reversed: true },
   { by: "asked_at", reversed: false },
@@ -300,6 +301,7 @@ export default {
           headers: { Authorization: `Bearer ${this.$route.query.token}` },
         })
         .then(() => {
+          localStorage.removeItem(storagePrefixAnswerView + this.uuid);
           this.onQueryChange();
         })
         .catch((err) => {
