@@ -29,6 +29,7 @@
                 <li
                   v-for="(sentence, i) in formatText(previous_answer_text)"
                   v-bind:key="i"
+                  class="text-start"
                 >
                   {{ sentence }}
                 </li>
