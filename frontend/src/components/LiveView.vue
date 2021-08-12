@@ -251,7 +251,10 @@ export default {
       this.projected_text = text;
       // automatically answer the question if it was not answered before
       let time = Date.parse(answered_at);
-      const autoReply = `已于 ${this.formatTime(Date.now())} 在直播中回应。
+      const autoReply = `已于 ${Date.now().toLocaleString("zh-CN", {
+        hourCycle: "h23",
+        timezone: "Asia/Shanghai",
+      })} 在直播中回应。
                 请移步MeUmy录播组：https://space.bilibili.com/674622242
                 根据回应时间寻找相应录播观看。
                 再次感谢投稿！
@@ -369,10 +372,7 @@ export default {
         if (time === 0) {
           return "尚未回复";
         }
-        return new Date(timeStr).toLocaleString("zh-CN", {
-          hourCycle: "h23",
-          timezone: "Asia/Shanghai",
-        });
+        return new Date(timeStr).toLocaleString("zh-CN", { hourCycle: "h23" });
       };
     },
     formatText() {
