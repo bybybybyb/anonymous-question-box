@@ -14,7 +14,7 @@
                 v-bind:key="i"
                 class="text-start"
               >
-                {{ sentence }}
+                <strong>{{ sentence }}</strong>
               </h5>
               <br />
             </div>
