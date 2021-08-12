@@ -199,6 +199,7 @@
                             <div class="card">
                               <div class="card-body">
                                 <p
+                                  class="text-start"
                                   v-for="(sentence, i) in formatText(q.text)"
                                   v-bind:key="i"
                                 >
