@@ -130,7 +130,7 @@
                             last: '末页',
                           },
                         }"
-                        @paginate="onQueryChange"
+                        @paginate="onQueryChange(false)"
                       />
                     </li>
                   </ul>
