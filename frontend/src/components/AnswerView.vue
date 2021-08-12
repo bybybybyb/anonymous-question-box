@@ -1,6 +1,6 @@
 <template>
   <div>
-    <Header :hideHomepageBtn="true"></Header>
+    <Header :hideBackBtn="true"></Header>
     <div class="container">
       <div class="row">
         <div class="col-12">
