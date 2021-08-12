@@ -45,7 +45,7 @@
                         class="form-select"
                         aria-label="Default select example"
                         id="question_type"
-                        v-on:change="onQueryChange"
+                        v-on:change="onQueryChange(true)"
                         v-model="queryParams['type']"
                       >
                         <option
@@ -62,7 +62,7 @@
                         class="form-select"
                         aria-label="Default select example"
                         id="reply_status"
-                        v-on:change="onQueryChange"
+                        v-on:change="onQueryChange(true)"
                         v-model="queryParams['reply_status']"
                       >
                         <option selected value="0">全部</option>
@@ -75,7 +75,7 @@
                         class="form-select"
                         aria-label="Default select example"
                         id="day_limit"
-                        v-on:change="onQueryChange"
+                        v-on:change="onQueryChange(true)"
                         v-model="queryParams['day_limit']"
                       >
                         <option value="1">1天内</option>
@@ -90,7 +90,7 @@
                         class="form-select"
                         aria-label="Default select example"
                         id="order"
-                        v-on:change="onQueryChange"
+                        v-on:change="onQueryChange(false)"
                         v-model="queryParams['order_params_index']"
                       >
                         <option selected value="0">时间降序</option>
@@ -104,7 +104,7 @@
                         class="form-select"
                         aria-label="Default select example"
                         id="order"
-                        v-on:change="onQueryChange"
+                        v-on:change="onQueryChange(true)"
                         v-model="queryParams['page_size']"
                       >
                         <option selected value="5">每页5条</option>
@@ -265,7 +265,8 @@ export default {
           });
       }
     },
-    onQueryChange() {
+    onQueryChange(resetPage, needRetry = false) {
+      if (resetPage) this.queryParams["page"] = 1;
       this.axios
         .post(
           "/api/owner/questions",
@@ -292,6 +293,27 @@ export default {
         })
         .catch((err) => {
           console.log(err.response);
+          if (err.response.status === 401 || err.response.status === 403) {
+            alert(
+              "神秘代码坏掉咯，要是你知道真正的管理员是谁的话就赶紧ping他要个新的吧！"
+            );
+            this.$router.push("/");
+          } else {
+            if (needRetry) {
+              this.queryParams = {
+                type: "normal",
+                order_params_index: 0,
+                reply_status: 0,
+                day_limit: 7,
+                page_size: 5,
+                page: 1,
+              };
+              this.onQueryChange(false, false);
+            } else {
+              alert("提问箱好像坏掉了，直接ping管理员吧！");
+              this.$router.push("/");
+            }
+          }
         });
 
       for (var key in this.queryParams) {
