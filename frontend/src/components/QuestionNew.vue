@@ -210,6 +210,9 @@ export default {
       this.ownerProfiles[this.owner].question_types[this.type].theme
         .background_class;
     document.body.classList.add("body-background-" + newBgClass);
+
+    this.maxLength =
+      this.ownerProfiles[this.owner].question_types[this.type].rune_limit;
     prevBgClass = newBgClass;
 
     currentQuestionTypePrefix = "_" + [this.owner, this.type].join("_") + "_";
