@@ -7,7 +7,7 @@
           <div class="card shadow-lg my-3">
             <h6 class="card-title m-3">投稿时间：{{ formatTime(asked_at) }}</h6>
             <div class="card-body overflow-auto" style="max-height: 400px">
-              <ul class="list-unstyled mx-3 my-3" style="line-break: anywhere">
+              <ul class="list-unstyled m-3" style="line-break: anywhere">
                 <li
                   v-for="(sentence, i) in formatText(question_text)"
                   v-bind:key="i"
@@ -24,7 +24,7 @@
               回复时间： {{ formatTime(answered_at) }}
             </h6>
             <div class="card-body overflow-auto" style="max-height: 300px">
-              <ul class="list-unstyled mx-3 my-3" style="line-break: anywhere">
+              <ul class="list-unstyled m-3" style="line-break: anywhere">
                 <li
                   v-for="(sentence, i) in formatText(previous_answer_text)"
                   v-bind:key="i"
