@@ -12,9 +12,8 @@
                   v-for="(sentence, i) in formatText(question_text)"
                   v-bind:key="i"
                   class="text-start"
-                >
-                  {{ sentence }}
-                </li>
+                  v-html="sentence"
+                ></li>
               </ul>
             </div>
           </div>
@@ -30,9 +29,8 @@
                   v-for="(sentence, i) in formatText(previous_answer_text)"
                   v-bind:key="i"
                   class="text-start"
-                >
-                  {{ sentence }}
-                </li>
+                  v-html="sentence"
+                ></li>
               </ul>
             </div>
           </div>
@@ -136,7 +134,14 @@ export default {
     },
     formatText() {
       return (text) => {
-        return text.split(/(?:\r\n|\r|\n)/g);
+        if (text !== null) {
+          let sentences = text.split(/(?:\r\n|\r|\n)/g);
+          for (var i in sentences) {
+            sentences[i] === "" ? (sentences[i] = "<br>") : sentences[i];
+          }
+          return sentences;
+        }
+        return [];
       };
     },
   },
