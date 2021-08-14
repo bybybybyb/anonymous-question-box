@@ -14,7 +14,7 @@
                 v-bind:key="i"
                 class="text-start"
               >
-                <strong>{{ sentence }}</strong>
+                <strong v-html="sentence"></strong>
               </h5>
               <br />
             </div>
@@ -206,9 +206,8 @@
                                   class="text-start"
                                   v-for="(sentence, i) in formatText(q.text)"
                                   v-bind:key="i"
-                                >
-                                  {{ sentence }}
-                                </p>
+                                  v-html="sentence"
+                                ></p>
                               </div>
                             </div>
                           </div>
@@ -377,8 +376,12 @@ export default {
     },
     formatText() {
       return (text) => {
-        if (text != null) {
-          return text.split(/(?:\r\n|\r|\n)/g);
+        if (text !== null) {
+          let sentences = text.split(/(?:\r\n|\r|\n)/g);
+          for (var i in sentences) {
+            sentences[i] === "" ? (sentences[i] = "<br>") : sentences[i];
+          }
+          return sentences;
         }
         return [];
       };
