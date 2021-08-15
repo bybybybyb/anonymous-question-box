@@ -39,7 +39,7 @@
         <div class="card-body">
           <textarea
             class="col-12 form-control overflow-auto"
-            rows="10"
+            rows="15"
             :class="formStyleClass"
             v-model="new_question_text"
             :maxlength="maxLength"
