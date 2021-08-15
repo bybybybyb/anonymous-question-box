@@ -10,7 +10,7 @@
             </div>
             <div class="col-8">
               <div
-                class="form-check"
+                class="form-check p-1"
                 :class="formStyleClass"
                 v-on:change="onReceiverChange"
                 v-for="q_type in questionTypes"
@@ -39,7 +39,7 @@
         <div class="card-body">
           <textarea
             class="col-12 form-control overflow-auto"
-            rows="15"
+            rows="10"
             :class="formStyleClass"
             v-model="new_question_text"
             :maxlength="maxLength"
