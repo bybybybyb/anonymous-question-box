@@ -65,6 +65,18 @@ func (q *QuestionsHandler) SubmitNewQuestion(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("投稿长度超过最大限度 %d", runeLimit)})
 		return
 	}
+	startTime, endTime, ok := q.ProfileManager.GetFlightTimeByOwnerNameAndQuestionType(req.Owner, req.Type)
+	if ok {
+		now := time.Now()
+		if now.Before(startTime) {
+			c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("尚未开始接受投稿，投稿将于 %s 开放", startTime.Format(time.RFC3339))})
+			return
+		}
+		if now.After(endTime) {
+			c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("投稿已于 %s 截止", endTime.Format(time.RFC3339))})
+			return
+		}
+	}
 	err = q.QuestionManager.InsertQuestion(c, req)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("提交失败，错误信息：%s，请联系网站管理员", err.Error())})

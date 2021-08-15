@@ -1,9 +1,11 @@
 package model
 
+import "time"
+
 type Profile struct {
-	Name          string                  `mapstructure:"name" json:"name"`
-	Colors        Colors                  `mapstructure:"colors" json:"colors"`
-	QuestionTypes map[string]QuestionType `mapstructure:"question_types" json:"question_types"`
+	Name          string                   `mapstructure:"name" json:"name"`
+	Colors        Colors                   `mapstructure:"colors" json:"colors"`
+	QuestionTypes map[string]*QuestionType `mapstructure:"question_types" json:"question_types"`
 }
 
 type Colors struct {
@@ -12,10 +14,14 @@ type Colors struct {
 }
 
 type QuestionType struct {
-	Name        string `mapstructure:"name" json:"name"`
-	Description string `mapstructure:"description" json:"description"`
-	RuneLimit   int32  `mapstructure:"rune_limit" json:"rune_limit"`
-	Theme       Theme  `mapstructure:"theme" json:"theme"`
+	Name         string `mapstructure:"name" json:"name"`
+	Description  string `mapstructure:"description" json:"description"`
+	RuneLimit    int32  `mapstructure:"rune_limit" json:"rune_limit"`
+	StartTimeStr string `mapstructure:"start_time" json:"start_time"`
+	StartTime    time.Time
+	EndTimeStr   string `mapstructure:"end_time" json:"end_time"`
+	EndTime      time.Time
+	Theme        Theme `mapstructure:"theme" json:"theme"`
 }
 
 type Theme struct {

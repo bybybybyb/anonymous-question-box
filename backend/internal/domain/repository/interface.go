@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"github.com/anonymous-question-box/internal/domain/model"
+	"time"
 )
 
 type TokenManager interface {
@@ -19,5 +20,6 @@ type QuestionManager interface {
 }
 
 type ProfileManager interface {
-	GetRuneLimitByOwnerNameAndQuestionType(ownerName string, qTypeName string) (int32, bool)
+	GetRuneLimitByOwnerNameAndQuestionType(ownerName, qTypeName string) (int32, bool)
+	GetFlightTimeByOwnerNameAndQuestionType(ownerName, qTypeName string) (time.Time, time.Time, bool)
 }
