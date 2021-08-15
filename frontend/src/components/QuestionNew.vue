@@ -234,6 +234,7 @@ export default {
       this.new_question_text = localVal;
       this.onNewInput();
     }
+    this.$scrollToTop();
     this.axios
       .get("/api/new")
       .then((resp) => {

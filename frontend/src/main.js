@@ -41,6 +41,7 @@ const router = createRouter({
         },
       }
       const app = createApp(App);
+      app.config.globalProperties.$scrollToTop = () => window.scrollTo(0, 0);
       app.use(VueAxios, axios);
       app.use(router);
       app.mixin(profileProvider);
