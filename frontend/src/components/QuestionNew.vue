@@ -19,11 +19,15 @@
                 <input
                   class="form-check-input"
                   type="radio"
-                  name="receiverRadios"
+                  :name="q_type.name + '_reciver_radio'"
+                  :id="q_type.name + '_reciver_radio'"
                   :value="q_type.name"
                   v-model="type"
                 />
-                <label class="form-check-label" for="receiverRadios">
+                <label
+                  class="form-check-label"
+                  :for="q_type.name + '_reciver_radio'"
+                >
                   {{ q_type.description }}
                 </label>
               </div>
