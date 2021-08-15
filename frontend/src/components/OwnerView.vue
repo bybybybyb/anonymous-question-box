@@ -2,7 +2,7 @@
   <div>
     <Header :hideBackBtn="true"></Header>
     <div class="container">
-      <div class="card">
+      <div class="card" style="background: rgba(255, 255, 255, 0.9)">
         <div class="card-header">
           <nav
             class="
@@ -355,6 +355,11 @@ export default {
     },
   },
   beforeMount() {
+    // change back the body background
+    document.body.classList.remove("bg-light");
+    document.body.classList.add(
+      "body-background-texture-" + this.owner + "-light"
+    );
     this.navbarStyling = {
       "background-color": this.ownerProfiles[this.owner].colors.primary_color,
     };
@@ -370,13 +375,18 @@ export default {
     }
     this.onQueryChange(true, true);
   },
+  beforeUnmount() {
+    // change back the body background
+    document.body.classList.remove("body-background-texture-merry-light");
+    document.body.classList.add("bg-light");
+  },
   data() {
     return {
       queryParams: {
         type: "normal",
         order_params_index: 0,
         reply_status: 0,
-        day_limit: 7,
+        day_limit: 30,
         page_size: 5,
         page: 1,
       },

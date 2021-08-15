@@ -19,7 +19,7 @@
               <br />
             </div>
           </div>
-          <div class="row">
+          <div class="row" style="background: rgba(255, 255, 255, 0.9)">
             <p>
               本页面仍在测试中，目前以1920x1080分辨率100%缩放为基础制作，其他分辨率或缩放下可能无法正常工作。
             </p>
