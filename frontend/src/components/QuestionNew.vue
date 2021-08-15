@@ -9,22 +9,24 @@
               <h5 :style="h5Style">收件人：</h5>
             </div>
             <div class="col-8">
-              <select
-                class="form-select form-select-sm"
+              <div
+                class="form-check"
                 :class="formStyleClass"
-                aria-label="Default select example"
-                id="question_type"
                 v-on:change="onReceiverChange"
-                v-model="type"
+                v-for="q_type in questionTypes"
+                v-bind:key="q_type.name"
               >
-                <option
-                  v-for="q_type in ownerProfiles[owner].question_types"
-                  v-bind:key="q_type.name"
+                <input
+                  class="form-check-input"
+                  type="radio"
+                  name="receiverRadios"
                   :value="q_type.name"
-                >
+                  v-model="type"
+                />
+                <label class="form-check-label" for="receiverRadios">
                   {{ q_type.description }}
-                </option>
-              </select>
+                </label>
+              </div>
             </div>
           </div>
         </div>
@@ -104,6 +106,7 @@
 </template>
 
 <script>
+import { start } from "@popperjs/core";
 import Header from "./Header.vue";
 const storagePrefix = "questionNew_";
 let currentQuestionTypePrefix = "";
@@ -127,11 +130,9 @@ export default {
         ? (this.submitBtnActiveClass = "")
         : (this.submitBtnActiveClass = "disabled");
     },
-    onReceiverChange(event) {
+    onReceiverChange() {
       this.maxLength =
-        this.ownerProfiles[this.owner].question_types[
-          event.target.value
-        ].rune_limit;
+        this.ownerProfiles[this.owner].question_types[this.type].rune_limit;
       currentQuestionTypePrefix = "_" + [this.owner, this.type].join("_") + "_";
       let localVal = localStorage.getItem(
         storagePrefix + currentQuestionTypePrefix + "draft"
@@ -146,7 +147,7 @@ export default {
       // style changes
       // body background
       let newBgClass =
-        this.ownerProfiles[this.owner].question_types[event.target.value].theme
+        this.ownerProfiles[this.owner].question_types[this.type].theme
           .background_class;
       document.body.classList.remove("body-background-" + prevBgClass);
       document.body.classList.add("body-background-" + newBgClass);
@@ -204,6 +205,16 @@ export default {
     },
   },
   beforeMount() {
+    // populate question types
+    var current = new Date();
+    for (var i in this.ownerProfiles[this.owner].question_types) {
+      let qt = this.ownerProfiles[this.owner].question_types[i];
+      let startTime = Date.parse(qt.start_time);
+      let endTime = Date.parse(qt.end_time);
+      if (isNaN(startTime) || isNaN(endTime)) this.questionTypes.push(qt);
+      else if (startTime <= current && endTime >= current)
+        this.questionTypes.push(qt);
+    }
     // change body background
     document.body.classList.remove("bg-light");
     let newBgClass =
@@ -247,6 +258,7 @@ export default {
       answer_text: "",
       answered_at: "",
       new_question_text: "",
+      questionTypes: [],
       currentLength: 0,
       maxLength: 500,
       submitBtnActiveClass: "disabled",
