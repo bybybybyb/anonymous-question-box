@@ -17,7 +17,7 @@
                 <li class="nav-item m-1">
                   <select
                     class="form-select"
-                    aria-label="Default select example"
+                    aria-label="question type select"
                     id="question_type"
                     v-on:change="onQueryChange(true)"
                     v-model="queryParams['type']"
