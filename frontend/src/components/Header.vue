@@ -1,5 +1,5 @@
 <template>
-  <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
+  <nav class="navbar navbar-expand-md navbar-dark bg-dark">
     <div class="container-fluid">
       <span class="navbar-brand m-1 mb-0 h1">
         <img src="../assets/marshmallow_light.svg" alt="" height="20" />

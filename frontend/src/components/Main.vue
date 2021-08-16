@@ -72,7 +72,7 @@ export default {
       });
     },
   },
-  beforeCreate() {
+  created() {
     this.axios
       .get("/api/metadata")
       .then((resp) => {
