@@ -169,10 +169,7 @@
     </div>
   </div>
   <div class="modal" tabindex="-1" id="answerModal">
-    <div
-      class="modal-dialog modal-lg modal-dialog-scrollable"
-      style="padding-top: 110px"
-    >
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
       <div class="modal-content">
         <div class="modal-header">
           <button
