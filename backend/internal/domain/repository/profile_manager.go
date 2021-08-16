@@ -29,7 +29,7 @@ func (p *LocalProfileManager) GetFlightTimeByOwnerNameAndQuestionType(ownerName,
 }
 
 func getQuestionType(ownerName, qTypeName string) *model.QuestionType {
-	profile, ok := infrastructure.Profiles[ownerName]
+	profile, ok := infrastructure.WebsiteProfile.OwnerProfiles[ownerName]
 	if !ok {
 		return nil
 	}

@@ -18,12 +18,8 @@ func SetupRoutes() *gin.Engine {
 		c.String(http.StatusOK, "pong")
 	})
 	r.GET("/profiles", func(c *gin.Context) {
-		c.JSON(http.StatusOK, infrastructure.Profiles)
+		c.JSON(http.StatusOK, infrastructure.WebsiteProfile)
 	})
-	r.GET("/metadata", func(c *gin.Context) {
-		c.JSON(http.StatusOK, infrastructure.WebsiteMetadataStore)
-	})
-
 	r.GET("/new", questionsHandler.NewQuestionToken)
 
 	userAuthorized := r.Group("/questions", authHandler.Authenticate, authHandler.BlockOwner)

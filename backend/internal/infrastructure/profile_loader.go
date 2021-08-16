@@ -7,12 +7,12 @@ import (
 	"time"
 )
 
-var Profiles map[string]*model.Profile
-var WebsiteMetadataStore model.WebsiteMetadata
+var WebsiteProfile *model.WebsiteProfile
 
 func LoadProfiles() error {
-	Profiles = make(map[string]*model.Profile)
-	profiles := []*model.Profile{}
+	WebsiteProfile = &model.WebsiteProfile{}
+	Profiles := make(map[string]*model.OwnerProfile)
+	profiles := []*model.OwnerProfile{}
 	err := viper.UnmarshalKey("owner_profiles", &profiles)
 	if err != nil {
 		return err
@@ -38,14 +38,21 @@ func LoadProfiles() error {
 		}
 		Profiles[profile.Name] = profile
 	}
+	WebsiteProfile.OwnerProfiles = Profiles
 
-	WebsiteMetadataStore = model.WebsiteMetadata{Introductions: []string{}, ConsolePrints: []string{}}
+	WebsiteMetadata := &model.WebsiteMetadata{Introductions: []string{}, ConsolePrints: []string{}}
 	metadata := viper.GetStringMapStringSlice("website_metadata")
+	log.Printf("whole metadata: %+v\n", metadata)
 	if intros, ok := metadata["introductions"]; ok {
-		WebsiteMetadataStore.Introductions = append(WebsiteMetadataStore.Introductions, intros...)
+		WebsiteMetadata.Introductions = append(WebsiteMetadata.Introductions, intros...)
 	}
 	if prints, ok := metadata["console_prints"]; ok {
-		WebsiteMetadataStore.ConsolePrints = append(WebsiteMetadataStore.ConsolePrints, prints...)
+		WebsiteMetadata.ConsolePrints = append(WebsiteMetadata.ConsolePrints, prints...)
 	}
+	adminInfo := viper.GetStringMapString("website_metadata.admin")
+	if adminInfo != nil {
+		WebsiteMetadata.AdminInfo = adminInfo
+	}
+	WebsiteProfile.Metadata = WebsiteMetadata
 	return nil
 }
