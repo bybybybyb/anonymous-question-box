@@ -42,7 +42,6 @@ func LoadProfiles() error {
 
 	WebsiteMetadata := &model.WebsiteMetadata{Introductions: []string{}, ConsolePrints: []string{}}
 	metadata := viper.GetStringMapStringSlice("website_metadata")
-	log.Printf("whole metadata: %+v\n", metadata)
 	if intros, ok := metadata["introductions"]; ok {
 		WebsiteMetadata.Introductions = append(WebsiteMetadata.Introductions, intros...)
 	}
