@@ -5,11 +5,11 @@
       <div class="card shadow-lg my-3" :style="cardBackgroundStyle">
         <div class="card-body">
           <div class="row">
-            <div class="col-sm-3 d-none d-sm-block"></div>
+            <div class="col-sm-2 col-md-3 d-none d-sm-block"></div>
             <div class="col-4 col-sm-3 align-self-center">
               <h5 :style="h5Style">收件人：</h5>
             </div>
-            <div class="col-8 col-sm-3">
+            <div class="col-8 col-sm-5 col-md-3">
               <div
                 class="form-check p-1"
                 :class="formStyleClass"
@@ -33,7 +33,7 @@
                 </label>
               </div>
             </div>
-            <div class="col-sm-3 d-none d-sm-block"></div>
+            <div class="col-sm-2 col-md-3 d-none d-sm-block"></div>
           </div>
         </div>
       </div>
