@@ -31,12 +31,14 @@ const router = createRouter({
 (async () => {
   await axios
     .get("/api/profiles").then((resp) => {
-      const profiles = resp.data;
+      const ownerProfiles = resp.data.owner_profiles;
+      const websiteMetadata = resp.data.metadata;
       const profileProvider = {
         name: "ProfileProvider",
         data() {
           return {
-            ownerProfiles: profiles,
+            ownerProfiles: ownerProfiles,
+            websiteMetadata: websiteMetadata,
           };
         },
       }

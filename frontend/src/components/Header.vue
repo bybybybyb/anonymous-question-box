@@ -57,7 +57,7 @@ export default {
       this.$router.go(-1);
     },
     contactAdmin() {
-      window.open("https://space.bilibili.com/674421433");
+      window.open(this.websiteMetadata.admin.link);
     },
   },
   beforeCreate() {

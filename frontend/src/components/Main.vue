@@ -73,20 +73,13 @@ export default {
     },
   },
   created() {
-    this.axios
-      .get("/api/metadata")
-      .then((resp) => {
-        this.introductions = resp.data.introductions;
-        if (!printed) {
-          for (let i in resp.data.console_prints) {
-            console.log(resp.data.console_prints[i]);
-          }
-          printed = true;
-        }
-      })
-      .catch((err) => {
-        console.log(err.response);
-      });
+    this.introductions = this.websiteMetadata.introductions;
+    if (!printed) {
+      for (let i in this.websiteMetadata.console_prints) {
+        console.log(this.websiteMetadata.console_prints[i]);
+      }
+      printed = true;
+    }
   },
   data: {
     introductions: [],
