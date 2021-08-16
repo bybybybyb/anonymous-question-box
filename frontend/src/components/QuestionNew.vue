@@ -112,7 +112,6 @@
 </template>
 
 <script>
-import { start } from "@popperjs/core";
 import Header from "./Header.vue";
 const storagePrefix = "questionNew_";
 let currentQuestionTypePrefix = "";
