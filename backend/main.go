@@ -9,6 +9,7 @@ import (
 	"github.com/gin-contrib/pprof"
 	"github.com/spf13/viper"
 	"log"
+	"os"
 )
 
 func main() {
@@ -43,6 +44,7 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
+	log.Printf("pid: %d", os.Getpid())
 	r := server.SetupRoutes()
 	// profiling
 	pprof.Register(r)
