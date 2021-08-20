@@ -36,7 +36,7 @@
         </div>
       </div>
       <div class="row">
-        <div class="card shadow-lg my-3 border border-dark">
+        <div class="card shadow-lg my-3 border">
           <div class="card-body">
             <textarea
               class="col-12"
