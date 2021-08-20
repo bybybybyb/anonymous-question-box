@@ -2,66 +2,70 @@
   <div>
     <Header :hideBackBtn="true"></Header>
     <div class="container">
-      <div class="card shadow-lg my-3" :style="cardBackgroundStyle">
-        <div class="card-body">
-          <div class="row">
-            <div class="col-sm-2 col-md-3 d-none d-sm-block"></div>
-            <div class="col-4 col-sm-3 align-self-center">
-              <h5 :style="h5Style">收件人：</h5>
-            </div>
-            <div class="col-8 col-sm-5 col-md-3">
-              <div
-                class="form-check p-1"
-                :class="formStyleClass"
-                v-on:change="onReceiverChange"
-                v-for="q_type in questionTypes"
-                v-bind:key="q_type.name"
-              >
-                <input
-                  class="form-check-input"
-                  type="radio"
-                  :name="q_type.name + '_reciver_radio'"
-                  :id="q_type.name + '_reciver_radio'"
-                  :value="q_type.name"
-                  v-model="type"
-                />
-                <label
-                  class="form-check-label"
-                  :for="q_type.name + '_reciver_radio'"
-                >
-                  {{ q_type.description }}
-                </label>
+      <div class="row">
+        <div class="col-12">
+          <div class="card shadow-lg my-3" :style="cardBackgroundStyle">
+            <div class="card-body">
+              <div class="row">
+                <div class="col-sm-2 col-md-3 d-none d-sm-block"></div>
+                <div class="col-4 col-sm-3 align-self-center">
+                  <h5 :style="h5Style">收件人：</h5>
+                </div>
+                <div class="col-8 col-sm-5 col-md-3">
+                  <div
+                    class="form-check p-1"
+                    :class="formStyleClass"
+                    v-on:change="onReceiverChange"
+                    v-for="q_type in questionTypes"
+                    v-bind:key="q_type.name"
+                  >
+                    <input
+                      class="form-check-input"
+                      type="radio"
+                      :name="q_type.name + '_reciver_radio'"
+                      :id="q_type.name + '_reciver_radio'"
+                      :value="q_type.name"
+                      v-model="type"
+                    />
+                    <label
+                      class="form-check-label"
+                      :for="q_type.name + '_reciver_radio'"
+                    >
+                      {{ q_type.description }}
+                    </label>
+                  </div>
+                </div>
+                <div class="col-sm-2 col-md-3 d-none d-sm-block"></div>
               </div>
             </div>
-            <div class="col-sm-2 col-md-3 d-none d-sm-block"></div>
           </div>
-        </div>
-      </div>
-      <div class="card shadow-lg my-3" v-bind:style="cardBackgroundStyle">
-        <div class="card-body">
-          <textarea
-            class="col-12 form-control overflow-auto"
-            rows="15"
-            :class="formStyleClass"
-            v-model="new_question_text"
-            :maxlength="maxLength"
-            v-on:keyup="onNewInput"
-            v-on:input="onNewInput"
-          ></textarea>
-          <h5 class="col-12 m-1" :style="h5Style">
-            当前字数： {{ currentLength }}/{{ maxLength }}
-          </h5>
-          <button
-            class="btn shadow col-sm-5 col-12"
-            :class="[submitBtnActiveClass, submitBtnStyleClass]"
-            data-bs-toggle="modal"
-            data-bs-target="#submitConfirmModal"
-          >
-            提交
-          </button>
-          <h5 class="col-12 m-2" :style="h5Style">
-            小提示：尚未成功提交的草稿将被暂存于您的浏览器储存中。
-          </h5>
+          <div class="card shadow-lg my-3" v-bind:style="cardBackgroundStyle">
+            <div class="card-body">
+              <textarea
+                class="col-12 form-control overflow-auto"
+                rows="15"
+                :class="formStyleClass"
+                v-model="new_question_text"
+                :maxlength="maxLength"
+                v-on:keyup="onNewInput"
+                v-on:input="onNewInput"
+              ></textarea>
+              <h5 class="col-12 m-1" :style="h5Style">
+                当前字数： {{ currentLength }}/{{ maxLength }}
+              </h5>
+              <button
+                class="btn shadow col-sm-5 col-12"
+                :class="[submitBtnActiveClass, submitBtnStyleClass]"
+                data-bs-toggle="modal"
+                data-bs-target="#submitConfirmModal"
+              >
+                提交
+              </button>
+              <h5 class="col-12 m-2" :style="h5Style">
+                小提示：尚未成功提交的草稿将被暂存于您的浏览器储存中。
+              </h5>
+            </div>
+          </div>
         </div>
       </div>
     </div>
