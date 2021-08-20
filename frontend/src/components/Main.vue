@@ -4,7 +4,7 @@
     <div class="container">
       <div class="row">
         <div class="col-12">
-          <div class="card shadow-lg m-3 p-3">
+          <div class="card shadow-lg my-3 p-3">
             <div class="card-body m-3">
               <div class="row">
                 <img src="../assets/marshmallow.svg" alt="" height="200" />
@@ -21,7 +21,7 @@
               </div>
             </div>
           </div>
-          <div class="card shadow-lg m-3 p-3">
+          <div class="card shadow-lg my-3 p-3">
             <div class="card-body m-1">
               <div class="row">
                 <!-- TODO: refactor here to automatically add buttons by profiles -->
