@@ -1,11 +1,11 @@
 <template>
   <div>
     <Header :hideBackBtn="true" :hideHomepageBtn="true"></Header>
-    <div class="container">
+    <div class="container-fluid">
       <div class="row">
         <div class="col-12">
-          <div class="card shadow-lg m-3 p-3">
-            <div class="card-body m-3">
+          <div class="card shadow-lg mx-2 mx-md-5 mt-5 mb-3 p-3">
+            <div class="card-body">
               <div class="row">
                 <img src="../assets/marshmallow.svg" alt="" height="200" />
               </div>
@@ -21,8 +21,8 @@
               </div>
             </div>
           </div>
-          <div class="card shadow-lg m-3 p-3">
-            <div class="card-body m-1">
+          <div class="card shadow-lg mx-2 mx-md-5 mb-5 p-3">
+            <div class="card-body">
               <div class="row">
                 <!-- TODO: refactor here to automatically add buttons by profiles -->
                 <div class="col-12 col-md-6">
