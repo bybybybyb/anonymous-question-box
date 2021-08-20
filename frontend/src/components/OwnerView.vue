@@ -345,7 +345,7 @@ export default {
     },
     digest() {
       return (text) => {
-        let digested = text.substring(0, 200);
+        let digested = text.substring(0, 50);
         if (digested.length < text.length) digested += "......";
         return digested;
       };
