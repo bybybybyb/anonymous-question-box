@@ -11,6 +11,7 @@
               <div class="card">
                 <h5 class="card-title m-3">您的投稿</h5>
                 <div class="card-body overflow-auto" style="max-height: 300px">
+                  <h6>投稿类型： {{ receiver }}</h6>
                   <ul class="list-unstyled m-3" style="line-break: anywhere">
                     <li
                       v-for="(sentence, i) in formatText(question_text)"
@@ -57,6 +58,7 @@
 export default {
   name: "QuestionDisplay",
   props: {
+    receiver: String,
     question_text: String,
     asked_at: String,
     answer_text: String,
