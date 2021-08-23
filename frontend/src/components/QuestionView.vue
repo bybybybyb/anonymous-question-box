@@ -12,6 +12,7 @@
     </div>
     <div v-else>
       <QuestionDisplay
+        :receiver="receiver"
         :question_text="question_text"
         :asked_at="asked_at"
         :answer_text="answer_text"
@@ -47,6 +48,8 @@ export default {
       .then((resp) => {
         this.owner = resp.data.owner;
         this.type = resp.data.type;
+        this.receiver =
+          this.ownerProfiles[this.owner].question_types[this.type].description;
         this.question_text = resp.data.text;
         this.asked_at = resp.data.asked_at;
         this.answer_text = resp.data.answer;
@@ -78,6 +81,8 @@ export default {
   data() {
     return {
       token: "",
+      receiver: "",
+      type: "",
       question_text: "",
       asked_at: "",
       answer_text: "",
