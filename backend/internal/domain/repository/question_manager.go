@@ -108,7 +108,7 @@ func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType
 }
 
 func (q *SQLiteQuestionManager) InsertQuestion(ctx context.Context, question *model.Question) StatusError {
-	result, err := infrastructure.DBConn.ExecContext(ctx, "INSERT INTO `question` (`uuid`, `owner`, `question_type`, `question`, `word_count`, `asked_at`) VALUES (?,?,?,?,?,?);",
+	result, err := infrastructure.DBConn.ExecContext(ctx, "INSERT INTO `question` (`uuid`, `owner`, `question_type`, `question`, `word_count`, `asked_at`) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING;",
 		question.UUID, question.Owner, question.Type, question.Text, utf8.RuneCountInString(question.Text), question.AskedAt.Unix())
 	if err != nil {
 		return E(err, http.StatusInternalServerError)
@@ -118,7 +118,7 @@ func (q *SQLiteQuestionManager) InsertQuestion(ctx context.Context, question *mo
 		return E(err, http.StatusInternalServerError)
 	}
 	if id <= 0 {
-		return E(fmt.Errorf("no row inserted"), http.StatusInternalServerError)
+		return E(fmt.Errorf("no row inserted"), http.StatusConflict)
 	}
 	return nil
 }
