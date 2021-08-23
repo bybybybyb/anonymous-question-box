@@ -22,7 +22,7 @@
             <h6 class="card-title m-3">
               回复时间： {{ formatTime(answered_at) }}
             </h6>
-            <div class="card-body overflow-auto" style="height: 300px">
+            <div class="card-body overflow-auto" style="height: 150px">
               <ul class="list-unstyled m-3" style="line-break: anywhere">
                 <li
                   v-for="(sentence, i) in formatText(previous_answer_text)"
