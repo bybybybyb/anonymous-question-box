@@ -77,9 +77,9 @@ func (q *QuestionsHandler) SubmitNewQuestion(c *gin.Context) {
 			return
 		}
 	}
-	err = q.QuestionManager.InsertQuestion(c, req)
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("提交失败，错误信息：%s，请联系网站管理员", err.Error())})
+	statusErr := q.QuestionManager.InsertQuestion(c, req)
+	if statusErr != nil {
+		c.AbortWithStatusJSON(statusErr.Code(), ErrorResp{Error: fmt.Sprintf("提交失败，错误信息：%s，请联系网站管理员", statusErr.Error())})
 		return
 	}
 	c.JSON(http.StatusOK, struct {
