@@ -9,7 +9,7 @@
               <div class="row">
                 <div class="col-sm-2 col-md-3 d-none d-sm-block"></div>
                 <div class="col-4 col-sm-3 align-self-center">
-                  <h5 :style="h5Style">收件人：</h5>
+                  <h5 :style="h5Style">投稿类型：</h5>
                 </div>
                 <div class="col-8 col-sm-5 col-md-3">
                   <div
@@ -88,7 +88,15 @@
             ></button>
           </div>
           <div class="modal-body">
-            提交后将无法进行更改，建议再读一遍检查一下哦？
+            <p>提交后将无法进行更改，建议再读一遍检查一下哦？</p>
+            <p>
+              确定是投给
+              <b>{{
+                this.ownerProfiles[this.owner].question_types[this.type]
+                  .description
+              }}</b>
+            </p>
+            <p>没有选错投稿类型吧？</p>
           </div>
           <div class="modal-footer">
             <button
@@ -207,6 +215,12 @@ export default {
           console.log(err.response);
           if (err.response.status === 400) {
             alert("您的投稿好像不太对劲？ " + err.response.data.error);
+          } else if (err.response.status === 409) {
+            this.$router.push({
+              name: "question",
+              query: { token: this.token },
+              params: { just_submitted: true },
+            });
           } else {
             alert("提问箱好像坏掉了，请保存好您的投稿，并通知管理员前来查看！");
           }
