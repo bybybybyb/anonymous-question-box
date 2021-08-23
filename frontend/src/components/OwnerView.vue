@@ -212,29 +212,6 @@ export default {
     owner: String,
   },
   methods: {
-    projectQuestion(uuid, text, answered_at) {
-      this.projected_text = text;
-      // automatically answer the question if it was not answered before
-      let time = Date.parse(answered_at);
-      authHeader = {
-        headers: { Authorization: `Bearer ${this.$route.query.token}` },
-      };
-      if (time === 0) {
-        this.axios
-          .put(
-            "/api/owner/questions/" + uuid + "/answer",
-            {
-              uuid: uuid,
-              answer:
-                "已在直播中回应，请根据回复时间寻找相应录播观看。再次感谢投稿！",
-            },
-            authHeader
-          )
-          .catch((err) => {
-            console.log(err.response);
-          });
-      }
-    },
     onQueryChange(resetPage, needRetry = false) {
       if (resetPage) this.queryParams["page"] = 1;
       this.axios
@@ -374,7 +351,9 @@ export default {
   },
   beforeUnmount() {
     // change back the body background
-    document.body.classList.remove("body-background-texture-merry-light");
+    document.body.classList.remove(
+      "body-background-texture-" + this.owner + "-light"
+    );
     document.body.classList.add("bg-light");
   },
   data() {
