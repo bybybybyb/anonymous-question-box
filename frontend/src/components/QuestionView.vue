@@ -4,6 +4,7 @@
     <div v-if="just_submitted">
       <QuestionSubmission :token="token" />
       <QuestionDisplay
+        :receiver="receiver"
         :question_text="question_text"
         :asked_at="asked_at"
         :answer_text="answer_text"
