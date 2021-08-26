@@ -204,7 +204,7 @@
                                 <p
                                   v-for="(sentence, i) in formatText(q.text)"
                                   v-bind:key="i"
-                                  class="lh-sm text-start"
+                                  class="lh-lg text-start"
                                 >
                                   {{ sentence }}
                                 </p>
