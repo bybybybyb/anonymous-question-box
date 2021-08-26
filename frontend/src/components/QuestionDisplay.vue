@@ -12,7 +12,7 @@
                 <h5 class="card-title m-3">您的投稿</h5>
                 <div class="card-body overflow-auto" style="max-height: 300px">
                   <h6>投稿类型： {{ receiver }}</h6>
-                  <div class="m-3" style="line-break: anywhere">
+                  <div style="line-break: anywhere">
                     <p
                       v-for="(sentence, i) in formatText(question_text)"
                       v-bind:key="i"
@@ -37,7 +37,7 @@
                   {{ generateAnswerTitle(answered_at) }}
                 </h5>
                 <div class="card-body overflow-auto" style="max-height: 300px">
-                  <div class="m-3" style="line-break: anywhere">
+                  <div style="line-break: anywhere">
                     <p
                       v-for="(sentence, i) in formatText(answer_text)"
                       v-bind:key="i"
