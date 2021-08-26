@@ -49,3 +49,7 @@
   background: url(./assets/umy_dark_red.svg);
   background-size: 500px 500px;
 }
+
+p {
+  min-height: 1rem;
+}

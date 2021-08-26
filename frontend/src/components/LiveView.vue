@@ -9,14 +9,13 @@
             style="width: 600px; height: 400px"
           >
             <div class="card-body overflow-auto">
-              <h5
+              <p
                 v-for="(sentence, i) in formatText(projected_text)"
                 v-bind:key="i"
-                class="text-start"
+                class="text-start fs-5"
               >
-                <strong v-html="sentence"></strong>
-              </h5>
-              <br />
+                <strong>{{ sentence }}</strong>
+              </p>
             </div>
           </div>
           <div class="row" style="background: rgba(255, 255, 255, 0.9)">
@@ -203,11 +202,12 @@
                             <div class="card">
                               <div class="card-body">
                                 <p
-                                  class="text-start"
                                   v-for="(sentence, i) in formatText(q.text)"
                                   v-bind:key="i"
-                                  v-html="sentence"
-                                ></p>
+                                  class="lh-sm text-start"
+                                >
+                                  {{ sentence }}
+                                </p>
                               </div>
                             </div>
                           </div>
@@ -377,11 +377,7 @@ export default {
     formatText() {
       return (text) => {
         if (text !== null) {
-          let sentences = text.split(/(?:\r\n|\r|\n)/g);
-          for (var i in sentences) {
-            sentences[i] === "" ? (sentences[i] = "<br>") : sentences[i];
-          }
-          return sentences;
+          return text.split(/(?:\r\n|\r|\n)/g);
         }
         return [];
       };

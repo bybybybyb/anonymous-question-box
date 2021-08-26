@@ -12,14 +12,15 @@
                 <h5 class="card-title m-3">您的投稿</h5>
                 <div class="card-body overflow-auto" style="max-height: 300px">
                   <h6>投稿类型： {{ receiver }}</h6>
-                  <ul class="list-unstyled m-3" style="line-break: anywhere">
-                    <li
+                  <div class="m-3" style="line-break: anywhere">
+                    <p
                       v-for="(sentence, i) in formatText(question_text)"
                       v-bind:key="i"
-                      class="text-start"
-                      v-html="sentence"
-                    ></li>
-                  </ul>
+                      class="lh-sm text-start"
+                    >
+                      {{ sentence }}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -36,14 +37,15 @@
                   {{ generateAnswerTitle(answered_at) }}
                 </h5>
                 <div class="card-body overflow-auto" style="max-height: 300px">
-                  <ul class="list-unstyled m-3" style="line-break: anywhere">
-                    <li
+                  <div class="m-3" style="line-break: anywhere">
+                    <p
                       v-for="(sentence, i) in formatText(answer_text)"
                       v-bind:key="i"
-                      class="text-start"
-                      v-html="sentence"
-                    ></li>
-                  </ul>
+                      class="lh-sm text-start"
+                    >
+                      {{ sentence }}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -77,11 +79,7 @@ export default {
     formatText() {
       return (text) => {
         if (text !== null) {
-          let sentences = text.split(/(?:\r\n|\r|\n)/g);
-          for (var i in sentences) {
-            sentences[i] === "" ? (sentences[i] = "<br>") : sentences[i];
-          }
-          return sentences;
+          return text.split(/(?:\r\n|\r|\n)/g);
         }
         return [];
       };
