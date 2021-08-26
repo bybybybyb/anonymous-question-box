@@ -6,14 +6,15 @@
           <div class="card shadow-lg my-3">
             <h6 class="card-title m-3">投稿时间：{{ formatTime(asked_at) }}</h6>
             <div class="card-body overflow-auto" style="height: 400px">
-              <ul class="list-unstyled m-3" style="line-break: anywhere">
-                <li
+              <div class="m-3" style="line-break: anywhere">
+                <p
                   v-for="(sentence, i) in formatText(question_text)"
                   v-bind:key="i"
-                  class="text-start"
-                  v-html="sentence"
-                ></li>
-              </ul>
+                  class="lh-sm text-start"
+                >
+                  {{ sentence }}
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -23,14 +24,15 @@
               回复时间： {{ formatTime(answered_at) }}
             </h6>
             <div class="card-body overflow-auto" style="height: 150px">
-              <ul class="list-unstyled m-3" style="line-break: anywhere">
-                <li
+              <div class="m-3" style="line-break: anywhere">
+                <p
                   v-for="(sentence, i) in formatText(previous_answer_text)"
                   v-bind:key="i"
-                  class="text-start"
-                  v-html="sentence"
-                ></li>
-              </ul>
+                  class="lh-sm text-start"
+                >
+                  {{ sentence }}
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -134,11 +136,7 @@ export default {
     formatText() {
       return (text) => {
         if (text !== null) {
-          let sentences = text.split(/(?:\r\n|\r|\n)/g);
-          for (var i in sentences) {
-            sentences[i] === "" ? (sentences[i] = "<br>") : sentences[i];
-          }
-          return sentences;
+          return text.split(/(?:\r\n|\r|\n)/g);
         }
         return [];
       };
