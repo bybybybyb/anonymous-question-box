@@ -6,7 +6,7 @@
           <div class="card shadow-lg my-3">
             <h6 class="card-title m-3">投稿时间：{{ formatTime(asked_at) }}</h6>
             <div class="card-body overflow-auto" style="height: 400px">
-              <div class="m-3" style="line-break: anywhere">
+              <div style="line-break: anywhere">
                 <p
                   v-for="(sentence, i) in formatText(question_text)"
                   v-bind:key="i"
@@ -24,7 +24,7 @@
               回复时间： {{ formatTime(answered_at) }}
             </h6>
             <div class="card-body overflow-auto" style="height: 150px">
-              <div class="m-3" style="line-break: anywhere">
+              <div style="line-break: anywhere">
                 <p
                   v-for="(sentence, i) in formatText(previous_answer_text)"
                   v-bind:key="i"
