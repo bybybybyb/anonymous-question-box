@@ -10,7 +10,7 @@
                 <p
                   v-for="(sentence, i) in formatText(question_text)"
                   v-bind:key="i"
-                  class="lh-sm text-start"
+                  class="lh-lg text-start"
                 >
                   {{ sentence }}
                 </p>
@@ -28,7 +28,7 @@
                 <p
                   v-for="(sentence, i) in formatText(previous_answer_text)"
                   v-bind:key="i"
-                  class="lh-sm text-start"
+                  class="lh-lg text-start"
                 >
                   {{ sentence }}
                 </p>
