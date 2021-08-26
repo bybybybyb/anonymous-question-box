@@ -9,9 +9,9 @@
           >
             <div class="card-body">
               <div class="card">
-                <h5 class="card-title m-3">您的投稿</h5>
+                <h5 class="card-title mt-3">您的投稿</h5>
+                <h6>投稿类型： {{ receiver }}</h6>
                 <div class="card-body overflow-auto" style="max-height: 300px">
-                  <h6>投稿类型： {{ receiver }}</h6>
                   <div style="line-break: anywhere">
                     <p
                       v-for="(sentence, i) in formatText(question_text)"
