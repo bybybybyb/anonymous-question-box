@@ -14,6 +14,7 @@ import (
 
 func main() {
 	configFlag := flag.String("c", "./config/config.yaml", "path to the config yaml")
+	flag.Parse()
 
 	// server config
 	viper.SetConfigName("config")
