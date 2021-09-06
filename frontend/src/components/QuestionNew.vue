@@ -138,7 +138,7 @@ export default {
   },
   methods: {
     onNewInput() {
-      this.currentLength = this.new_question_text.length;
+      this.currentLength = this.new_question_text.trim().length;
       localStorage.setItem(
         storagePrefix + currentQuestionTypePrefix + "draft",
         this.new_question_text
