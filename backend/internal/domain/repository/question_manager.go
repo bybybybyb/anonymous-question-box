@@ -13,16 +13,15 @@ import (
 
 type SQLiteQuestionManager struct{}
 
-func (q *SQLiteQuestionManager) GetQuestionByUUID(ctx context.Context, uuid string) (*model.Question, StatusError) {
-	var id int32
-	var askedAt int64
+func (q *SQLiteQuestionManager) GetQuestionByUUID(ctx context.Context, uuid string, withVisitInfo bool) (*model.Question, StatusError) {
+	var id, visitCount int32
+	var askedAt, lastVisitedAt int64
 	var answeredAt sql.NullInt64
 	var qOwner, qType, question string
 	var answer sql.NullString
 
-	err := infrastructure.DBConn.QueryRowContext(ctx, "SELECT `id`, `owner`, `question_type`, `question`, `answer`, `asked_at`, `answered_at` FROM `question` WHERE `uuid` = ? AND `deleted_at` IS NULL",
-		uuid).Scan(&id, &qOwner, &qType, &question, &answer, &askedAt, &answeredAt)
-
+	sqlStr := "SELECT `id`, `owner`, `question_type`, `question`, `answer`, `asked_at`, `answered_at` FROM `question` WHERE `uuid` = ? AND `deleted_at` IS NULL"
+	err := infrastructure.DBConn.QueryRowContext(ctx, sqlStr, uuid).Scan(&id, &qOwner, &qType, &question, &answer, &askedAt, &answeredAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, E(err, http.StatusNotFound)
@@ -30,29 +29,41 @@ func (q *SQLiteQuestionManager) GetQuestionByUUID(ctx context.Context, uuid stri
 		return nil, E(err, http.StatusInternalServerError)
 	}
 
+	if withVisitInfo {
+		sqlStr = "SELECT `last_visited_at`, `visit_count` FROM `visit` WHERE `uuid` = ?"
+		err = infrastructure.DBConn.QueryRowContext(ctx, sqlStr, uuid).Scan(&lastVisitedAt, &visitCount)
+		if err != nil {
+			if err != sql.ErrNoRows {
+				return nil, E(err, http.StatusInternalServerError)
+			}
+		}
+	}
+
 	return &model.Question{
-		ID:         id,
-		UUID:       uuid,
-		Owner:      qOwner,
-		Type:       qType,
-		Text:       question,
-		AnswerText: answer.String,
-		AskedAt:    time.Unix(askedAt, 0),
-		AnsweredAt: time.Unix(answeredAt.Int64, 0),
+		ID:            id,
+		UUID:          uuid,
+		Owner:         qOwner,
+		Type:          qType,
+		Text:          question,
+		AnswerText:    answer.String,
+		AskedAt:       time.Unix(askedAt, 0),
+		AnsweredAt:    time.Unix(answeredAt.Int64, 0),
+		LastVisitedAt: time.Unix(lastVisitedAt, 0),
+		VisitCount:    visitCount,
 	}, nil
 }
 
 func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType, orderBy string, orderReversed bool, due int64, rowsPerPage, page, replyStatus int32) ([]*model.Question, int32, StatusError) {
 	questions := make([]*model.Question, 0)
-	var id, wordCount, totalCount int32
-	var askedAt int64
+	var id, wordCount, totalCount, visitCount int32
+	var askedAt, lastVisitedAt int64
 	var answeredAt sql.NullInt64
 	var uuid, question string
 	var answer sql.NullString
 
 	// sorting & filters
 	if orderBy == "" {
-		orderBy = "asked_at"
+		orderBy = "`asked_at`"
 	}
 	direction := fmt.Sprintf("`%s` ASC", orderBy)
 	if orderReversed {
@@ -60,12 +71,12 @@ func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType
 	}
 	replyFilterStr := ""
 	if replyStatus < 0 {
-		replyFilterStr = "AND answered_at IS NULL"
+		replyFilterStr = "AND `answered_at` IS NULL"
 	} else if replyStatus > 0 {
-		replyFilterStr = "AND answered_at IS NOT NULL"
+		replyFilterStr = "AND `answered_at` IS NOT NULL"
 	}
 
-	attrs := "`id`, `uuid`, `question`, `word_count`, `answer`, `asked_at`, `answered_at`"
+	attrs := "`id`, `uuid`, `question`, `word_count`, `answer`, `asked_at`, `answered_at`, `last_visited_at`, `visit_count`"
 	counts := "COUNT(*)"
 
 	sqlStr := buildQuery(counts, replyFilterStr, direction, false)
@@ -76,6 +87,10 @@ func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType
 			return nil, 0, E(err, http.StatusNotFound)
 		}
 		return nil, 0, E(err, http.StatusInternalServerError)
+	}
+
+	if totalCount == 0 {
+		return questions, totalCount, nil
 	}
 
 	sqlStr = buildQuery(attrs, replyFilterStr, direction, true)
@@ -90,17 +105,19 @@ func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType
 	}
 
 	for rows.Next() {
-		rows.Scan(&id, &uuid, &question, &wordCount, &answer, &askedAt, &answeredAt)
+		rows.Scan(&id, &uuid, &question, &wordCount, &answer, &askedAt, &answeredAt, &visitCount, &lastVisitedAt)
 		questions = append(questions, &model.Question{
-			ID:         id,
-			UUID:       uuid,
-			Owner:      qOwner,
-			Type:       qType,
-			Text:       question,
-			WordCount:  wordCount,
-			AnswerText: answer.String,
-			AskedAt:    time.Unix(askedAt, 0),
-			AnsweredAt: time.Unix(answeredAt.Int64, 0),
+			ID:            id,
+			UUID:          uuid,
+			Owner:         qOwner,
+			Type:          qType,
+			Text:          question,
+			WordCount:     wordCount,
+			AnswerText:    answer.String,
+			AskedAt:       time.Unix(askedAt, 0),
+			AnsweredAt:    time.Unix(answeredAt.Int64, 0),
+			VisitCount:    visitCount,
+			LastVisitedAt: time.Unix(lastVisitedAt, 0),
 		})
 	}
 
@@ -155,7 +172,9 @@ func (q *SQLiteQuestionManager) MarkAsDeleted(ctx context.Context, uuid string) 
 }
 
 func buildQuery(toSelect, filter, direction string, withPagination bool) string {
-	sqlStr := "SELECT " + toSelect + " FROM `question` WHERE `owner` = ? AND `question_type` = ? AND `asked_at` > ? AND `deleted_at` IS NULL " + filter + " ORDER BY " + direction
+	sqlStr := "SELECT " + toSelect +
+		" FROM `question` NATURAL LEFT OUTER JOIN `visit`" +
+		" WHERE `owner` = ? AND `question_type` = ? AND `asked_at` > ? AND `deleted_at` IS NULL " + filter + " ORDER BY " + direction
 	if withPagination {
 		sqlStr += " LIMIT ? OFFSET ?;"
 	}
