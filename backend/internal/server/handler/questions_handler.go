@@ -90,11 +90,11 @@ func (q *QuestionsHandler) SubmitNewQuestion(c *gin.Context) {
 
 // GetQuestion returns one single question queried by the given UUID
 func (q *QuestionsHandler) GetQuestion(c *gin.Context) {
-	uuid := c.Param("uuid")
-	if uuid == "" {
-		uuid = c.GetString("uuid")
+	uuid := c.GetString("uuid")
+	if c.GetBool("is_admin") {
+		uuid = c.Param("uuid")
 	}
-	question, err := q.QuestionManager.GetQuestionByUUID(c, uuid)
+	question, err := q.QuestionManager.GetQuestionByUUID(c, uuid, c.GetBool("is_admin"))
 	if err != nil {
 		switch err.Code() {
 		case http.StatusNotFound:
@@ -173,7 +173,7 @@ func (q *QuestionsHandler) AnswerQuestion(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("无法解析投稿请求，错误信息：%s", err.Error())})
 		return
 	}
-	question, statusErr := q.QuestionManager.GetQuestionByUUID(c, req.UUID)
+	question, statusErr := q.QuestionManager.GetQuestionByUUID(c, req.UUID, false)
 	if statusErr != nil {
 		switch statusErr.Code() {
 		case http.StatusNotFound:

@@ -12,7 +12,7 @@ type TokenManager interface {
 }
 
 type QuestionManager interface {
-	GetQuestionByUUID(ctx context.Context, uuid string) (*model.Question, StatusError)
+	GetQuestionByUUID(ctx context.Context, uuid string, withVisitInfo bool) (*model.Question, StatusError)
 	ListQuestions(ctx context.Context, qOwner, qType, orderBy string, orderReversed bool, due int64, rowsPerPage, page, replyStatus int32) ([]*model.Question, int32, StatusError)
 	InsertQuestion(ctx context.Context, question *model.Question) StatusError
 	UpdateAnswer(ctx context.Context, question *model.Question) StatusError
