@@ -109,7 +109,7 @@
               <div class="col-12 col-md-5">
                 投稿时间： {{ formatTime(q.asked_at) }}
               </div>
-              <div class="col-12 col-md-5">
+              <div class="col-12 col-md-5" :style="q.visit_status_color">
                 回复时间： {{ formatTime(q.answered_at) }}
               </div>
             </div>
@@ -237,6 +237,23 @@ export default {
         .then((resp) => {
           this.rows = resp.data.questions;
           this.total_count = resp.data.total;
+          for (let row of this.rows) {
+            if (row.answered_by === "manual") {
+              if (row.visit_count > 0) {
+                row.visit_status_color = {
+                  color: "green",
+                };
+              } else {
+                row.visit_status_color = {
+                  color: "lightskyblue",
+                };
+              }
+            } else {
+              row.visit_status_color = {
+                color: "black",
+              };
+            }
+          }
         })
         .catch((err) => {
           console.log(err.response);
@@ -293,6 +310,9 @@ export default {
           token: this.$route.query.token,
         },
       });
+    },
+    visitStatusColor() {
+      return;
     },
   },
   computed: {

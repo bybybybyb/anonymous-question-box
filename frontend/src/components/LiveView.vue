@@ -266,6 +266,7 @@ export default {
             {
               uuid: uuid,
               answer: autoReply,
+              answered_by: "auto",
             },
             {
               headers: { Authorization: `Bearer ${this.$route.query.token}` },
