@@ -14,6 +14,7 @@ type Question struct {
 	AskedAt       time.Time `json:"asked_at"`
 	AnswerText    string    `json:"answer"`
 	AnsweredAt    time.Time `json:"answered_at"`
+	AnsweredBy    string    `json:"answered_by"`
 	LastVisitedAt time.Time `json:"last_visited_at"`
 	VisitCount    int32     `json:"visit_count"`
 }
