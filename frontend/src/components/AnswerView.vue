@@ -4,7 +4,7 @@
       <div class="row">
         <div class="col-12">
           <div class="card shadow-lg my-3">
-            <h6 class="card-title m-3">投稿时间：{{ formatTime(asked_at) }}</h6>
+            <h6 class="card-title m-3">投稿时间：{{ asked_at }}</h6>
             <div class="card-body overflow-auto" style="height: 400px">
               <div style="line-break: anywhere">
                 <p
@@ -20,8 +20,13 @@
         </div>
         <div class="col-12">
           <div class="card shadow-lg my-3">
-            <h6 class="card-title m-3">
-              回复时间： {{ formatTime(answered_at) }}
+            <h6 class="card-title m-3" v-if="answered_at !== ''">
+              回复时间： {{ answered_at }}
+            </h6>
+            <h6 class="card-title m-3" v-else>回复时间： 尚未回复</h6>
+            <h6 class="card-title m-3" v-if="visit_count > 0">
+              最近查看时间： {{ last_visited_at }}, 总查看次数：
+              {{ visit_count }}
             </h6>
             <div class="card-body overflow-auto" style="height: 150px">
               <div style="line-break: anywhere">
@@ -77,6 +82,13 @@ export default {
     onNewInput() {
       localStorage.setItem(storagePrefix + this.uuid, this.answer_text);
     },
+    formatTime(timeStr) {
+      let time = Date.parse(timeStr);
+      if (time === 0) {
+        return "";
+      }
+      return new Date(timeStr).toLocaleString("zh-CN", { hourCycle: "h23" });
+    },
     getQuestionAndAnswer(uuid) {
       this.answer_text = "";
       const authHeader = {
@@ -86,10 +98,12 @@ export default {
         .get("/api/owner/questions/" + uuid, authHeader)
         .then((resp) => {
           this.question_text = resp.data.text;
-          this.asked_at = resp.data.asked_at;
+          this.asked_at = this.formatTime(resp.data.asked_at);
           this.previous_answer_text = resp.data.answer;
           this.answer_text = resp.data.answer;
-          this.answered_at = resp.data.answered_at;
+          this.answered_at = this.formatTime(resp.data.answered_at);
+          this.last_visited_at = this.formatTime(resp.data.last_visited_at);
+          this.visit_count = resp.data.visit_count;
           if (this.answer_text.length === 0) {
             let localVal = localStorage.getItem(storagePrefix + this.uuid);
             if (localVal && localVal !== "") {
@@ -98,7 +112,7 @@ export default {
           }
         })
         .catch((err) => {
-          console.log(err.response);
+          console.log(err);
         });
     },
     submit() {
@@ -111,10 +125,11 @@ export default {
           {
             uuid: this.uuid,
             answer: this.answer_text,
+            answered_by: "manual",
           },
           authHeader
         )
-        .then((resp) => {
+        .then(() => {
           localStorage.removeItem(storagePrefix + this.uuid);
           this.getQuestionAndAnswer(this.uuid);
         })
@@ -124,15 +139,6 @@ export default {
     },
   },
   computed: {
-    formatTime() {
-      return (timeStr) => {
-        let time = Date.parse(timeStr);
-        if (time === 0) {
-          return "尚未回复";
-        }
-        return new Date(timeStr).toLocaleString("zh-CN", { hourCycle: "h23" });
-      };
-    },
     formatText() {
       return (text) => {
         if (text !== null) {
@@ -149,6 +155,8 @@ export default {
       answered_at: "",
       previous_answer_text: "",
       answer_text: "",
+      last_visited_at: "",
+      visit_count: 0,
       uuid: "",
     };
   },
