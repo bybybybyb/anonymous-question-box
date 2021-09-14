@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"time"
 	"unicode/utf8"
@@ -17,6 +18,7 @@ type QuestionsHandler struct {
 	ProfileManager  repository.ProfileManager
 	TokenManager    repository.TokenManager
 	QuestionManager repository.QuestionManager
+	VisitChan       chan *model.VisitStatus
 }
 
 // NewQuestionToken returns a new encoded token for identifying & authenticating the submission of a new question
@@ -98,11 +100,19 @@ func (q *QuestionsHandler) GetQuestion(c *gin.Context) {
 	if err != nil {
 		switch err.Code() {
 		case http.StatusNotFound:
-			c.AbortWithStatusJSON(http.StatusNotFound, ErrorResp{Error: "投稿不存在或已过期销毁"})
+			c.AbortWithStatusJSON(http.StatusNotFound, ErrorResp{Error: "投稿不存在或已销毁"})
 		case http.StatusInternalServerError:
 			c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("查询投稿失败，错误信息： %s，请联系网站管理员", err.Error())})
 		}
 		return
+	}
+	if !c.GetBool("is_admin") && question.AnsweredAt != time.Unix(0, 0) {
+		log.Printf("valid visit")
+		q.VisitChan <- &model.VisitStatus{
+			UUID:       uuid,
+			VisitedAt:  time.Now(),
+			VisitCount: 1,
+		}
 	}
 	c.JSON(http.StatusOK, question)
 }
@@ -159,8 +169,9 @@ func (q *QuestionsHandler) ListQuestions(c *gin.Context) {
 // AnswerQuestion records the answer for one single question queried by the given UUID
 func (q *QuestionsHandler) AnswerQuestion(c *gin.Context) {
 	type answerReq struct {
-		UUID   string `json:"uuid"`
-		Answer string `json:"answer"`
+		UUID       string `json:"uuid"`
+		Answer     string `json:"answer"`
+		AnsweredBy string `json:"answered_by"`
 	}
 	body, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
@@ -185,6 +196,7 @@ func (q *QuestionsHandler) AnswerQuestion(c *gin.Context) {
 	}
 
 	question.AnswerText = req.Answer
+	question.AnsweredBy = req.AnsweredBy
 	question.AnsweredAt = time.Now()
 
 	statusErr = q.QuestionManager.UpdateAnswer(c, question)

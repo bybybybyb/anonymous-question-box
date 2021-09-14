@@ -17,6 +17,7 @@ type QuestionManager interface {
 	InsertQuestion(ctx context.Context, question *model.Question) StatusError
 	UpdateAnswer(ctx context.Context, question *model.Question) StatusError
 	MarkAsDeleted(ctx context.Context, uuid string) StatusError
+	RecordVisit(ctx context.Context, PerQuestionVisitMap map[string]*model.VisitStatus) StatusError
 }
 
 type ProfileManager interface {

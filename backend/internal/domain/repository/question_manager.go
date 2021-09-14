@@ -7,6 +7,7 @@ import (
 	"github.com/anonymous-question-box/internal/domain/model"
 	"github.com/anonymous-question-box/internal/infrastructure"
 	"net/http"
+	"strings"
 	"time"
 	"unicode/utf8"
 )
@@ -55,15 +56,10 @@ func (q *SQLiteQuestionManager) GetQuestionByUUID(ctx context.Context, uuid stri
 
 func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType, orderBy string, orderReversed bool, due int64, rowsPerPage, page, replyStatus int32) ([]*model.Question, int32, StatusError) {
 	questions := make([]*model.Question, 0)
-	var id, wordCount, totalCount, visitCount int32
-	var askedAt, lastVisitedAt int64
-	var answeredAt sql.NullInt64
-	var uuid, question string
-	var answer sql.NullString
-
+	var totalCount int32
 	// sorting & filters
 	if orderBy == "" {
-		orderBy = "`asked_at`"
+		orderBy = "q.`asked_at`"
 	}
 	direction := fmt.Sprintf("`%s` ASC", orderBy)
 	if orderReversed {
@@ -71,12 +67,12 @@ func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType
 	}
 	replyFilterStr := ""
 	if replyStatus < 0 {
-		replyFilterStr = "AND `answered_at` IS NULL"
+		replyFilterStr = "AND q.`answered_at` IS NULL"
 	} else if replyStatus > 0 {
-		replyFilterStr = "AND `answered_at` IS NOT NULL"
+		replyFilterStr = "AND q.`answered_at` IS NOT NULL"
 	}
 
-	attrs := "`id`, `uuid`, `question`, `word_count`, `answer`, `asked_at`, `answered_at`, `last_visited_at`, `visit_count`"
+	attrs := "q.`id`, q.`uuid`, q.`question`, q.`word_count`, q.`answer`, q.`asked_at`, q.`answered_at`, q.`answered_by`, v.`last_visited_at`, v.`visit_count`"
 	counts := "COUNT(*)"
 
 	sqlStr := buildQuery(counts, replyFilterStr, direction, false)
@@ -105,7 +101,12 @@ func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType
 	}
 
 	for rows.Next() {
-		rows.Scan(&id, &uuid, &question, &wordCount, &answer, &askedAt, &answeredAt, &visitCount, &lastVisitedAt)
+		var id, wordCount, visitCount int32
+		var askedAt, lastVisitedAt int64
+		var answeredAt sql.NullInt64
+		var uuid, question string
+		var answer, answeredBy sql.NullString
+		rows.Scan(&id, &uuid, &question, &wordCount, &answer, &askedAt, &answeredAt, &answeredBy, &lastVisitedAt, &visitCount)
 		questions = append(questions, &model.Question{
 			ID:            id,
 			UUID:          uuid,
@@ -116,8 +117,9 @@ func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType
 			AnswerText:    answer.String,
 			AskedAt:       time.Unix(askedAt, 0),
 			AnsweredAt:    time.Unix(answeredAt.Int64, 0),
-			VisitCount:    visitCount,
+			AnsweredBy:    answeredBy.String,
 			LastVisitedAt: time.Unix(lastVisitedAt, 0),
+			VisitCount:    visitCount,
 		})
 	}
 
@@ -141,8 +143,8 @@ func (q *SQLiteQuestionManager) InsertQuestion(ctx context.Context, question *mo
 }
 
 func (q *SQLiteQuestionManager) UpdateAnswer(ctx context.Context, question *model.Question) StatusError {
-	result, err := infrastructure.DBConn.ExecContext(ctx, "UPDATE `question` SET `answer` = ?, `answered_at` = ? WHERE `uuid` = ?",
-		question.AnswerText, question.AnsweredAt.Unix(), question.UUID)
+	result, err := infrastructure.DBConn.ExecContext(ctx, "UPDATE `question` SET `answer` = ?, `answered_at` = ?, `answered_by` = ? WHERE `uuid` = ?",
+		question.AnswerText, question.AnsweredAt.Unix(), question.AnsweredBy, question.UUID)
 	if err != nil {
 		return E(err, http.StatusInternalServerError)
 	}
@@ -171,11 +173,77 @@ func (q *SQLiteQuestionManager) MarkAsDeleted(ctx context.Context, uuid string) 
 	return nil
 }
 
-func buildQuery(toSelect, filter, direction string, withPagination bool) string {
-	sqlStr := "SELECT " + toSelect +
-		" FROM `question` NATURAL LEFT OUTER JOIN `visit`" +
-		" WHERE `owner` = ? AND `question_type` = ? AND `asked_at` > ? AND `deleted_at` IS NULL " + filter + " ORDER BY " + direction
-	if withPagination {
+func (q *SQLiteQuestionManager) RecordVisit(ctx context.Context, perQuestionVisitMap map[string]*model.VisitStatus) StatusError {
+	uuids := make([]interface{}, 0)
+	placeholders := make([]string, 0)
+	for uuid := range perQuestionVisitMap {
+		uuids = append(uuids, uuid)
+		placeholders = append(placeholders, "?")
+	}
+	querySql := fmt.Sprintf("SELECT `uuid`, `visit_count` FROM `visit` WHERE `uuid` IN (%s)", strings.Join(placeholders, ","))
+	rows, err := infrastructure.DBConn.QueryContext(ctx, querySql, uuids...)
+
+	if err != nil {
+		if err != sql.ErrNoRows {
+			return E(err, http.StatusInternalServerError)
+		}
+	}
+
+	prevVisitStatus := make(map[string]*model.VisitStatus)
+	for rows.Next() {
+		var uuid string
+		var visitCount int32
+		rows.Scan(&uuid, &visitCount)
+		status, ok := prevVisitStatus[uuid]
+		if !ok {
+			status = &model.VisitStatus{}
+		}
+		status.UUID = uuid
+		status.VisitCount = visitCount
+		prevVisitStatus[status.UUID] = status
+	}
+
+	insertValStrs := []string{}
+	insertVals := []interface{}{}
+	updateValStrs := []string{}
+	updateVals := []interface{}{}
+	for uuid := range perQuestionVisitMap {
+		if prevStatus, ok := prevVisitStatus[uuid]; ok {
+			perQuestionVisitMap[uuid].VisitCount += prevStatus.VisitCount
+			updateValStrs = append(updateValStrs, "UPDATE `visit` SET `last_visited_at` = ?, `visit_count` = ? WHERE `uuid` = ?")
+			updateVals = append(updateVals, perQuestionVisitMap[uuid].VisitedAt.Unix(), perQuestionVisitMap[uuid].VisitCount, perQuestionVisitMap[uuid].UUID)
+		} else {
+			insertValStrs = append(insertValStrs, "(?, ?, ?)")
+			insertVals = append(insertVals, perQuestionVisitMap[uuid].UUID, perQuestionVisitMap[uuid].VisitedAt.Unix(), perQuestionVisitMap[uuid].VisitCount)
+		}
+	}
+
+	if len(insertVals) > 0 {
+		insertSql := "INSERT INTO `visit` (`uuid`, `last_visited_at`, `visit_count`) VALUES " + strings.Join(insertValStrs, ", ")
+		_, err = infrastructure.DBConn.ExecContext(ctx, insertSql, insertVals...)
+		if err != nil {
+			return E(err, http.StatusInternalServerError)
+		}
+	}
+
+	if len(updateVals) > 0 {
+		updateSql := strings.Join(updateValStrs, "; ")
+		_, err = infrastructure.DBConn.ExecContext(ctx, updateSql, updateVals...)
+		if err != nil {
+			return E(err, http.StatusInternalServerError)
+		}
+	}
+	return nil
+}
+
+func buildQuery(toSelect, filter, direction string, getValue bool) string {
+	sqlStr := "SELECT " + toSelect + " FROM `question` q "
+	if getValue {
+		sqlStr += "LEFT OUTER JOIN `visit` v ON v.`uuid` = q.`uuid` "
+	}
+
+	sqlStr += "WHERE q.`owner` = ? AND q.`question_type` = ? AND q.`asked_at` > ? AND q.`deleted_at` IS NULL " + filter + " ORDER BY " + direction
+	if getValue {
 		sqlStr += " LIMIT ? OFFSET ?;"
 	}
 	return sqlStr

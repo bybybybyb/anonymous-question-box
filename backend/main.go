@@ -6,10 +6,12 @@ import (
 	"github.com/anonymous-question-box/internal/infrastructure"
 	"github.com/anonymous-question-box/internal/server"
 	"github.com/fsnotify/fsnotify"
+	"github.com/fvbock/endless"
 	"github.com/gin-contrib/pprof"
 	"github.com/spf13/viper"
 	"log"
-	"os"
+	"sync"
+	"syscall"
 )
 
 func main() {
@@ -45,10 +47,21 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	log.Printf("pid: %d", os.Getpid())
-	r := server.SetupRoutes()
+	r, exit := server.SetupRoutes()
+	wg := &sync.WaitGroup{}
+	gracefulStopVisitMonitor := func() {
+		exit <- wg
+		wg.Wait()
+	}
 	// profiling
 	pprof.Register(r)
 	// start server
-	r.Run(fmt.Sprintf("%s:%s", viper.GetString("host"), viper.GetString("port")))
+	srv := endless.NewServer(fmt.Sprintf("%s:%s", viper.GetString("host"), viper.GetString("port")), r)
+	srv.RegisterSignalHook(endless.PRE_SIGNAL, syscall.SIGTERM, gracefulStopVisitMonitor)
+	srv.RegisterSignalHook(endless.PRE_SIGNAL, syscall.SIGKILL, gracefulStopVisitMonitor)
+	srv.RegisterSignalHook(endless.PRE_SIGNAL, syscall.SIGINT, gracefulStopVisitMonitor)
+	err = srv.ListenAndServe()
+	if err != nil {
+		log.Printf("%+v", err.Error())
+	}
 }
