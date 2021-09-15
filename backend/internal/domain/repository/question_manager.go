@@ -68,8 +68,10 @@ func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType
 	replyFilterStr := ""
 	if replyStatus < 0 {
 		replyFilterStr = "AND q.`answered_at` IS NULL"
-	} else if replyStatus > 0 {
+	} else if replyStatus == 1 {
 		replyFilterStr = "AND q.`answered_at` IS NOT NULL"
+	} else if replyStatus == 2 {
+		replyFilterStr = "AND q.`answered_at` IS NOT NULL AND q.`answered_by` = 'manual'"
 	}
 
 	attrs := "q.`id`, q.`uuid`, q.`question`, q.`word_count`, q.`answer`, q.`asked_at`, q.`answered_at`, q.`answered_by`, v.`last_visited_at`, v.`visit_count`"
