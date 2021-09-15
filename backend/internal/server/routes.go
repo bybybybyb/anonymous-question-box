@@ -12,12 +12,13 @@ import (
 	"time"
 )
 
-func SetupRoutes() (*gin.Engine, chan *sync.WaitGroup) {
+func SetupRoutes() (*gin.Engine, chan bool, *sync.WaitGroup) {
 	qManager := &repository.SQLiteQuestionManager{}
 	visitChan := make(chan *model.VisitStatus)
-	exit := make(chan *sync.WaitGroup)
+	exit := make(chan bool)
 	authHandler := &handler.AuthHandler{TokenManager: &repository.JWTManager{}}
 	questionsHandler := &handler.QuestionsHandler{ProfileManager: &repository.LocalProfileManager{}, TokenManager: &repository.JWTManager{}, QuestionManager: qManager, VisitChan: visitChan}
+	wg := &sync.WaitGroup{}
 	visitMonitor := usecase.VisitMonitor{
 		QuestionManager:     qManager,
 		VisitChan:           visitChan,
@@ -25,9 +26,10 @@ func SetupRoutes() (*gin.Engine, chan *sync.WaitGroup) {
 		PerQuestionVisitMap: make(map[string]*model.VisitStatus),
 		Interval:            usecase.DefaultUpdateInterval * time.Second,
 		Ticker:              time.NewTicker(usecase.DefaultUpdateInterval * time.Second),
+		Wg:                  wg,
 	}
 	go visitMonitor.Run()
-	return setupRoutes(authHandler, questionsHandler), exit
+	return setupRoutes(authHandler, questionsHandler), exit, wg
 }
 
 func setupRoutes(authHandler *handler.AuthHandler, questionsHandler *handler.QuestionsHandler) *gin.Engine {

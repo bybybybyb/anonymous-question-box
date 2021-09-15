@@ -1,17 +1,20 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"github.com/anonymous-question-box/internal/infrastructure"
 	"github.com/anonymous-question-box/internal/server"
 	"github.com/fsnotify/fsnotify"
-	"github.com/fvbock/endless"
 	"github.com/gin-contrib/pprof"
 	"github.com/spf13/viper"
 	"log"
-	"sync"
+	"net/http"
+	"os"
+	"os/signal"
 	"syscall"
+	"time"
 )
 
 func main() {
@@ -47,21 +50,34 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	r, exit := server.SetupRoutes()
-	wg := &sync.WaitGroup{}
-	gracefulStopVisitMonitor := func() {
-		exit <- wg
-		wg.Wait()
-	}
+	r, exit, wg := server.SetupRoutes()
 	// profiling
 	pprof.Register(r)
 	// start server
-	srv := endless.NewServer(fmt.Sprintf("%s:%s", viper.GetString("host"), viper.GetString("port")), r)
-	srv.RegisterSignalHook(endless.PRE_SIGNAL, syscall.SIGTERM, gracefulStopVisitMonitor)
-	srv.RegisterSignalHook(endless.PRE_SIGNAL, syscall.SIGKILL, gracefulStopVisitMonitor)
-	srv.RegisterSignalHook(endless.PRE_SIGNAL, syscall.SIGINT, gracefulStopVisitMonitor)
-	err = srv.ListenAndServe()
-	if err != nil {
-		log.Printf("%+v", err.Error())
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+
+	srv := &http.Server{
+		Addr:    fmt.Sprintf("%s:%s", viper.GetString("host"), viper.GetString("port")),
+		Handler: r,
 	}
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen: %s\n", err)
+		}
+	}()
+
+	<-signalChan
+	log.Println("shutting down gracefully, press Ctrl+C again to force")
+
+	exit <- true
+	wg.Wait()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatal("server forced to shutdown: ", err)
+	}
+
+	log.Println("server exiting")
 }
