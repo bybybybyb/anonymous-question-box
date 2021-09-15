@@ -42,6 +42,7 @@
                     <option selected value="0">全部</option>
                     <option value="-1">未回复</option>
                     <option value="1">已回复</option>
+                    <option value="2">已手动回复</option>
                   </select>
                 </li>
                 <li class="nav-item m-1">
