@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 	"unicode/utf8"
 )
@@ -63,8 +64,12 @@ func (q *QuestionsHandler) SubmitNewQuestion(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("未知提问箱主人 %s 或投稿类型 %s", req.Owner, req.Type)})
 		return
 	}
+	req.Text = strings.TrimSpace(req.Text)
 	if int32(utf8.RuneCountInString(req.Text)) > runeLimit {
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("投稿长度超过最大限度 %d", runeLimit)})
+		return
+	} else if int32(utf8.RuneCountInString(req.Text)) == 0 {
+		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: "空投稿"})
 		return
 	}
 	startTime, endTime, ok := q.ProfileManager.GetFlightTimeByOwnerNameAndQuestionType(req.Owner, req.Type)
