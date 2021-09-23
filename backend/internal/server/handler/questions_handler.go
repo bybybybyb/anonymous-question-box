@@ -8,7 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -112,7 +111,6 @@ func (q *QuestionsHandler) GetQuestion(c *gin.Context) {
 		return
 	}
 	if !c.GetBool("is_admin") && question.AnsweredAt != time.Unix(0, 0) {
-		log.Printf("valid visit")
 		q.VisitChan <- &model.VisitStatus{
 			UUID:       uuid,
 			VisitedAt:  time.Now(),
