@@ -4,27 +4,57 @@
     <div class="container-fluid">
       <div class="row">
         <div class="col">
-          <div
-            class="card shadow-lg my-3 mx-5 border border-3 border-dark"
-            style="width: 600px; height: 400px"
-          >
-            <div class="card-body overflow-auto">
-              <p
-                v-for="(sentence, i) in formatText(projected_text)"
-                v-bind:key="i"
-                class="text-start fs-5"
-              >
-                <strong>{{ sentence }}</strong>
-              </p>
+          <div class="div" style="width: 600px; height: 600px">
+            <div
+              class="card shadow-lg my-3 mx-5 border border-3 border-dark"
+              style="width: 600px; height: 400px"
+            >
+              <div class="card-body overflow-auto">
+                <p
+                  v-for="(sentence, i) in formatText(projected_text)"
+                  v-bind:key="i"
+                  :class="fsClass"
+                  class="text-start fw-bold"
+                >
+                  <strong>{{ sentence }}</strong>
+                </p>
+              </div>
             </div>
-          </div>
-          <div class="row" style="background: rgba(255, 255, 255, 0.9)">
-            <p>
-              本页面仍在测试中，目前以1920x1080分辨率100%缩放为基础制作，其他分辨率或缩放下可能无法正常工作。
-            </p>
-            <p>
-              点击投屏将会复制投稿文本到左边空白中，并用当前时间自动回复投稿。
-            </p>
+            <nav class="my-3 mx-5" style="width: 600px">
+              <div class="container-fluid">
+                <ul class="nav justify-content-end">
+                  <li class="nav-item mx-1">
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-primary m-1 col-sm-12"
+                      :disabled="shrinkBtnDisabled"
+                      v-on:click="onFontResizeClick(false)"
+                    >
+                      缩小
+                    </button>
+                  </li>
+                  <li class="nav-item mx-1">
+                    <button
+                      type="button"
+                      :disabled="enlargeBtnDisabled"
+                      class="btn btn-sm btn-primary m-1 col-sm-12"
+                      v-on:click="onFontResizeClick(true)"
+                    >
+                      放大
+                    </button>
+                  </li>
+                  <li class="nav-item mx-1">
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-primary m-1 col-sm-12"
+                      v-on:click="onFontSizeResetClick()"
+                    >
+                      重置
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            </nav>
           </div>
         </div>
         <div class="col">
@@ -221,6 +251,12 @@
           </div>
         </div>
       </div>
+      <div class="row" style="background: rgba(255, 255, 255, 0.9)">
+        <p>
+          本页面仍在测试中，目前以1920x1080分辨率100%缩放为基础制作，其他分辨率或缩放下可能无法正常工作。
+        </p>
+        <p>点击投屏将会复制投稿文本到左边空白中，并用当前时间自动回复投稿。</p>
+      </div>
     </div>
   </div>
 </template>
@@ -234,6 +270,10 @@ const orderDeriction = [
   { by: "word_count", reversed: true },
   { by: "word_count", reversed: false },
 ];
+
+const fontSizes = ["fs-6", "fs-5", "fs-4", "fs-3", "fs-2", "fs-1"];
+const defaultFontSizeIdx = 1;
+var currentFontSizeIdx = defaultFontSizeIdx;
 
 export default {
   // TODO: merge LiveView and OwnerView using setup() as they share the exactly the same component construction, only difference is the template
@@ -364,6 +404,30 @@ export default {
         },
       });
     },
+    onFontResizeClick(enlarge) {
+      if (enlarge) {
+        if (currentFontSizeIdx < fontSizes.length - 1) {
+          this.fsClass = fontSizes[++currentFontSizeIdx];
+        }
+      } else {
+        if (currentFontSizeIdx > 0) {
+          this.fsClass = fontSizes[--currentFontSizeIdx];
+        }
+      }
+      this.shrinkBtnDisabled = currentFontSizeIdx <= 0;
+      this.enlargeBtnDisabled = currentFontSizeIdx >= fontSizes.length - 1;
+      console.log(
+        currentFontSizeIdx,
+        this.shrinkBtnDisabled,
+        this.enlargeBtnDisabled
+      );
+    },
+    onFontSizeResetClick() {
+      currentFontSizeIdx = defaultFontSizeIdx;
+      this.fsClass = fontSizes[currentFontSizeIdx];
+      this.shrinkBtnDisabled = false;
+      this.enlargeBtnDisabled = false;
+    },
   },
   computed: {
     formatTime() {
@@ -419,6 +483,9 @@ export default {
       total_count: 0,
       navbarStyling: {},
       projected_text: "",
+      fsClass: fontSizes[defaultFontSizeIdx],
+      enlargeBtnDisabled: false,
+      shrinkBtnDisabled: false,
     };
   },
 };
