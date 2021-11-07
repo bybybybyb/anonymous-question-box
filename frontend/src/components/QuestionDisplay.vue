@@ -25,12 +25,12 @@
                     </p>
                   </div>
                 </div>
-                <button
+                <label
                   class="btn btn-outline-primary btn-sm mx-5 my-3"
                   v-on:click="textCardShowAllToggle"
                 >
                   {{ showAllToggleText }}
-                </button>
+                </label>
               </div>
             </div>
           </div>
