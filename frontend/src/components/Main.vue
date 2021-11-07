@@ -40,7 +40,7 @@
                     :style="setBtnColor('umy')"
                     v-on:click="newQuestion('umy')"
                   >
-                    呜米和妹妹的棉花糖
+                    呜米一家人的棉花糖
                   </button>
                 </div>
               </div>
