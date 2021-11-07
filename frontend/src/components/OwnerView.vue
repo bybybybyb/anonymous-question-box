@@ -168,20 +168,21 @@
         </div>
       </div>
     </div>
-  </div>
-  <div class="modal" tabindex="-1" id="answerModal">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
-      <div class="modal-content">
-        <div class="modal-header">
-          <button
-            type="button"
-            class="btn-close"
-            data-bs-dismiss="modal"
-            aria-label="Close"
-          ></button>
-        </div>
-        <div class="modal-body">
-          <answer-view :changeQuestion="uuid"></answer-view>
+
+    <div class="modal" tabindex="-1" id="answerModal">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="Close"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <answer-view :changeQuestion="uuid"></answer-view>
+          </div>
         </div>
       </div>
     </div>
