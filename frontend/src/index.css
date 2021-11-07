@@ -31,22 +31,22 @@
 }
 
 .body-background-texture-merry-dark {
-  background: url(./assets/merry_light_grey.svg), #2c3e50;
+  background: url(./assets/merry_light_grey.svg) bottom center, #2c3e50;
   background-size: 500px 500px;
 }
 
 .body-background-texture-merry-light {
-  background: url(./assets/merry_dark_blue.svg);
+  background: url(./assets/merry_dark_blue.svg) bottom center;
   background-size: 500px 500px;
 }
 
 .body-background-texture-umy-dark {
-  background: url(./assets/umy_light_grey.svg), #3a1213;
+  background: url(./assets/umy_light_grey.svg) bottom center, #3a1213;
   background-size: 500px 500px;
 }
 
 .body-background-texture-umy-light {
-  background: url(./assets/umy_dark_red.svg);
+  background: url(./assets/umy_dark_red.svg) bottom center;
   background-size: 500px 500px;
 }
 
