@@ -11,7 +11,10 @@
               <div class="card">
                 <h5 class="card-title mt-3">您的投稿</h5>
                 <h6>投稿类型： {{ receiver }}</h6>
-                <div class="card-body overflow-auto" style="max-height: 300px">
+                <div
+                  class="card-body overflow-auto"
+                  :style="{ 'max-height': maxHeight + 'px' }"
+                >
                   <div style="line-break: anywhere">
                     <p
                       v-for="(sentence, i) in formatText(question_text)"
@@ -22,6 +25,12 @@
                     </p>
                   </div>
                 </div>
+                <button
+                  class="btn btn-outline-primary btn-sm mx-5 my-3"
+                  v-on:click="textCardShowAllToggle"
+                >
+                  {{ showAllToggleText }}
+                </button>
               </div>
             </div>
           </div>
@@ -57,6 +66,7 @@
 </template>
 
 <script>
+const defaultTextCardMaxHeight = 300;
 export default {
   name: "QuestionDisplay",
   props: {
@@ -84,10 +94,23 @@ export default {
         return [];
       };
     },
+    textCardShowAllToggle() {
+      return () => {
+        this.maxHeight =
+          this.maxHeight === defaultTextCardMaxHeight
+            ? 10000
+            : defaultTextCardMaxHeight;
+        this.showAllToggleText =
+          this.showAllToggleText === "展开全部" ? "收缩显示" : "展开全部";
+      };
+    },
   },
   beforeCreate() {},
   data() {
-    return {};
+    return {
+      maxHeight: defaultTextCardMaxHeight,
+      showAllToggleText: "展开全部",
+    };
   },
 };
 </script>
