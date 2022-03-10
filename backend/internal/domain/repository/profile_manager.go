@@ -1,10 +1,11 @@
 package repository
 
 import (
+	"time"
+
 	"github.com/anonymous-question-box/internal/domain/model"
 	"github.com/anonymous-question-box/internal/infrastructure"
 	"github.com/spf13/viper"
-	"time"
 )
 
 type LocalProfileManager struct{}
@@ -26,6 +27,11 @@ func (p *LocalProfileManager) GetFlightTimeByOwnerNameAndQuestionType(ownerName,
 		return questionType.StartTime, questionType.EndTime, true
 	}
 	return time.Time{}, time.Time{}, false
+}
+
+func (p *LocalProfileManager) IsImageSupportedByOwnerNameAndQuestionType(ownerName, qTypeName string) bool {
+	questionType := getQuestionType(ownerName, qTypeName)
+	return questionType != nil && questionType.SupportImage
 }
 
 func getQuestionType(ownerName, qTypeName string) *model.QuestionType {
