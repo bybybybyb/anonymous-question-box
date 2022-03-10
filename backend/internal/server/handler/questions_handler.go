@@ -3,21 +3,24 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/anonymous-question-box/internal/domain/model"
-	"github.com/anonymous-question-box/internal/domain/repository"
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/anonymous-question-box/internal/domain/model"
+	"github.com/anonymous-question-box/internal/domain/repository"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type QuestionsHandler struct {
 	ProfileManager  repository.ProfileManager
 	TokenManager    repository.TokenManager
 	QuestionManager repository.QuestionManager
+	TempFileRepo    repository.TempFileRepo
+	PersistFileRepo repository.PersistFileRepo
 	VisitChan       chan *model.VisitStatus
 }
 
@@ -80,6 +83,28 @@ func (q *QuestionsHandler) SubmitNewQuestion(c *gin.Context) {
 		}
 		if now.After(endTime) {
 			c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("投稿已于 %s 截止", endTime.Format(time.RFC3339))})
+			return
+		}
+	}
+	if !q.ProfileManager.IsImageSupportedByOwnerNameAndQuestionType(req.Owner, req.Type) && len(req.ImageIDs) > 0 {
+		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: "本提问箱不支持图片上传"})
+		return
+	} else {
+		images := []*model.ImageMetadata{}
+		for _, imageID := range req.ImageIDs {
+			if tempFilePath, filename := q.TempFileRepo.GetTempFilePathAndNameByID(imageID); tempFilePath != "" {
+				key := strings.Join([]string{req.UUID, imageID, filename}, "/")
+				err := q.PersistFileRepo.Upload(c, key, tempFilePath)
+				if err != nil {
+					c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("图片上传失败，错误信息：%s", err.Error())})
+					return
+				}
+				images = append(images, &model.ImageMetadata{QuestionUUID: req.UUID, Key: key})
+			}
+		}
+		statusErr := q.QuestionManager.StoreImageMetadata(c, images)
+		if statusErr != nil {
+			c.AbortWithStatusJSON(statusErr.Code(), ErrorResp{Error: fmt.Sprintf("图片上传失败，错误信息：%s", statusErr.Error())})
 			return
 		}
 	}
