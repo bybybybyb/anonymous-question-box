@@ -86,14 +86,14 @@ func (q *QuestionsHandler) SubmitNewQuestion(c *gin.Context) {
 			return
 		}
 	}
-	if !q.ProfileManager.IsImageSupportedByOwnerNameAndQuestionType(req.Owner, req.Type) && len(req.ImageIDs) > 0 {
+	if !q.ProfileManager.IsImageSupportedByOwnerNameAndQuestionType(req.Owner, req.Type) && len(req.Images) > 0 {
 		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: "本提问箱不支持图片上传"})
 		return
 	} else {
 		images := []*model.ImageMetadata{}
-		for _, imageID := range req.ImageIDs {
-			if tempFilePath, filename := q.TempFileRepo.GetTempFilePathAndNameByID(imageID); tempFilePath != "" {
-				key := strings.Join([]string{req.UUID, imageID, filename}, "/")
+		for _, image := range req.Images {
+			if tempFilePath := q.TempFileRepo.GetTempFilePathByID(image.ID); tempFilePath != "" {
+				key := strings.Join([]string{req.UUID, image.ID, image.Filename}, "/")
 				err := q.PersistFileRepo.Upload(c, key, tempFilePath)
 				if err != nil {
 					c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("图片上传失败，错误信息：%s", err.Error())})

@@ -34,7 +34,7 @@ type TempFileRepo interface {
 	GenerateTempFileID() (string, error)
 	StoreTempFileChunk(id string, reader io.Reader) error
 	RemoveTempFileByIdentifier(id string) error
-	GetTempFilePathAndNameByID(id string) (string, string)
+	GetTempFilePathByID(id string) string
 }
 
 type PersistFileRepo interface {
