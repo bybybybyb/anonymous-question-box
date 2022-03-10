@@ -2,8 +2,11 @@ package repository
 
 import (
 	"context"
-	"github.com/anonymous-question-box/internal/domain/model"
+	"io"
+	"net/url"
 	"time"
+
+	"github.com/anonymous-question-box/internal/domain/model"
 )
 
 type TokenManager interface {
@@ -18,9 +21,23 @@ type QuestionManager interface {
 	UpdateAnswer(ctx context.Context, question *model.Question) StatusError
 	MarkAsDeleted(ctx context.Context, uuid string) StatusError
 	RecordVisit(ctx context.Context, PerQuestionVisitMap map[string]*model.VisitStatus) StatusError
+	StoreImageMetadata(ctx context.Context, imageMetadata []*model.ImageMetadata) StatusError
 }
 
 type ProfileManager interface {
 	GetRuneLimitByOwnerNameAndQuestionType(ownerName, qTypeName string) (int32, bool)
 	GetFlightTimeByOwnerNameAndQuestionType(ownerName, qTypeName string) (time.Time, time.Time, bool)
+	IsImageSupportedByOwnerNameAndQuestionType(ownerName, qTypeName string) bool
+}
+
+type TempFileRepo interface {
+	GenerateTempFileID() (string, error)
+	StoreTempFileChunk(id string, reader io.Reader) error
+	RemoveTempFileByIdentifier(id string) error
+	GetTempFilePathAndNameByID(id string) (string, string)
+}
+
+type PersistFileRepo interface {
+	GetPresignedURL(ctx context.Context, bucket, key string) (*url.URL, error)
+	Upload(ctx context.Context, key string, filepath string) error
 }

@@ -17,4 +17,16 @@ type Question struct {
 	AnsweredBy    string    `json:"answered_by"`
 	LastVisitedAt time.Time `json:"last_visited_at"`
 	VisitCount    int32     `json:"visit_count"`
+	ImageIDs      []string  `json:"image_ids"`
+	Images        []Image   `json:"images"`
+}
+
+type Image struct {
+	Filename string `json:"filename"`
+	URL      string `json:"url"`
+}
+
+type ImageMetadata struct {
+	QuestionUUID string
+	Key          string
 }
