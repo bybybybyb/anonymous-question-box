@@ -17,7 +17,7 @@ type Question struct {
 	AnsweredBy    string    `json:"answered_by"`
 	LastVisitedAt time.Time `json:"last_visited_at"`
 	VisitCount    int32     `json:"visit_count"`
-	Images        []Image   `json:"images"`
+	Images        []*Image  `json:"images"`
 }
 
 type Image struct {

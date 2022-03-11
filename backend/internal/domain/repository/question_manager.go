@@ -252,7 +252,7 @@ func (q *SQLiteQuestionManager) GetImageMetadataByUUID(ctx context.Context, uuid
 		var key, filename string
 		var order int32
 		rows.Scan(&key, filename, order)
-		images = append(images, &model.ImageMetadata{})
+		images = append(images, &model.ImageMetadata{Key: key, Filename: filename, Order: order})
 	}
 	return images, nil
 }
