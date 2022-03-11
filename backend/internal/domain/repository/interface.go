@@ -39,6 +39,6 @@ type TempFileRepo interface {
 }
 
 type PersistFileRepo interface {
-	GetPresignedURL(ctx context.Context, bucket, key string) (*url.URL, error)
+	GetPresignedURL(ctx context.Context, key string) (*url.URL, error)
 	Upload(ctx context.Context, key string, filepath string) error
 }
