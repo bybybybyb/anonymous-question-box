@@ -30,5 +30,6 @@ type Image struct {
 type ImageMetadata struct {
 	QuestionUUID string
 	Key          string
+	Filename     string
 	Order        int32
 }

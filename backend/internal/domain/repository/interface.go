@@ -22,6 +22,7 @@ type QuestionManager interface {
 	MarkAsDeleted(ctx context.Context, uuid string) StatusError
 	RecordVisit(ctx context.Context, PerQuestionVisitMap map[string]*model.VisitStatus) StatusError
 	StoreImageMetadata(ctx context.Context, imageMetadata []*model.ImageMetadata) StatusError
+	GetImageMetadataByUUID(ctx context.Context, uuid string) ([]*model.ImageMetadata, StatusError)
 }
 
 type ProfileManager interface {

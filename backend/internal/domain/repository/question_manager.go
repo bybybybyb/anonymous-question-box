@@ -4,12 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/anonymous-question-box/internal/domain/model"
-	"github.com/anonymous-question-box/internal/infrastructure"
 	"net/http"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/anonymous-question-box/internal/domain/model"
+	"github.com/anonymous-question-box/internal/infrastructure"
 )
 
 type SQLiteQuestionManager struct{}
@@ -231,6 +232,41 @@ func (q *SQLiteQuestionManager) RecordVisit(ctx context.Context, perQuestionVisi
 	if len(updateVals) > 0 {
 		updateSql := strings.Join(updateValStrs, "; ")
 		_, err = infrastructure.DBConn.ExecContext(ctx, updateSql, updateVals...)
+		if err != nil {
+			return E(err, http.StatusInternalServerError)
+		}
+	}
+	return nil
+}
+
+func (q *SQLiteQuestionManager) GetImageMetadataByUUID(ctx context.Context, uuid string) ([]*model.ImageMetadata, StatusError) {
+	rows, err := infrastructure.DBConn.QueryContext(ctx, "SELECT `key`, `filename`, `image_order` FROM `image` WHERE `uuid` = ?", uuid)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, E(err, http.StatusNotFound)
+		}
+		return nil, E(err, http.StatusInternalServerError)
+	}
+	images := make([]*model.ImageMetadata, 0)
+	for rows.Next() {
+		var key, filename string
+		var order int32
+		rows.Scan(&key, filename, order)
+		images = append(images, &model.ImageMetadata{})
+	}
+	return images, nil
+}
+
+func (q *SQLiteQuestionManager) StoreImageMetadata(ctx context.Context, imageMetadata []*model.ImageMetadata) StatusError {
+	insertValStrs := []string{}
+	insertVals := []interface{}{}
+	for _, image := range imageMetadata {
+		insertValStrs = append(insertValStrs, "(?, ?, ?, ?)")
+		insertVals = append(insertVals, image.QuestionUUID, image.Key, image.Filename, image.Order)
+	}
+	if len(insertVals) > 0 {
+		insertSql := "INSERT INTO `image` (`uuid`, `key`, `filename`, `image_order`) VALUES " + strings.Join(insertValStrs, ", ")
+		_, err := infrastructure.DBConn.ExecContext(ctx, insertSql, insertVals...)
 		if err != nil {
 			return E(err, http.StatusInternalServerError)
 		}

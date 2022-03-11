@@ -99,7 +99,7 @@ func (q *QuestionsHandler) SubmitNewQuestion(c *gin.Context) {
 					c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("图片上传失败，错误信息：%s", err.Error())})
 					return
 				}
-				images = append(images, &model.ImageMetadata{QuestionUUID: req.UUID, Key: key})
+				images = append(images, &model.ImageMetadata{QuestionUUID: req.UUID, Filename: image.Filename, Key: key, Order: image.Order})
 			}
 		}
 		statusErr := q.QuestionManager.StoreImageMetadata(c, images)
