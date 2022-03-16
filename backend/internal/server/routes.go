@@ -1,24 +1,50 @@
 package server
 
 import (
+	"net/http"
+	"net/url"
+	"os"
+	"sync"
+	"time"
+
 	"github.com/anonymous-question-box/internal/domain/model"
 	"github.com/anonymous-question-box/internal/domain/repository"
 	"github.com/anonymous-question-box/internal/infrastructure"
 	"github.com/anonymous-question-box/internal/server/handler"
 	"github.com/anonymous-question-box/internal/usecase"
 	"github.com/gin-gonic/gin"
-	"net/http"
-	"sync"
-	"time"
+	"github.com/spf13/viper"
 )
 
 func SetupRoutes() (*gin.Engine, chan bool, *sync.WaitGroup) {
-	qManager := &repository.SQLiteQuestionManager{}
 	visitChan := make(chan *model.VisitStatus)
 	exit := make(chan bool)
-	authHandler := &handler.AuthHandler{TokenManager: &repository.JWTManager{}}
-	questionsHandler := &handler.QuestionsHandler{ProfileManager: &repository.LocalProfileManager{}, TokenManager: &repository.JWTManager{}, QuestionManager: qManager, VisitChan: visitChan}
 	wg := &sync.WaitGroup{}
+
+	ossID := os.Getenv("OSS_ID")
+	if ossID == "" {
+		ossID = viper.GetString("oss_id")
+	}
+	ossKey := os.Getenv("OSS_KEY")
+	if ossKey == "" {
+		ossKey = viper.GetString("oss_key")
+	}
+	ossURL, err := url.Parse(viper.GetString("oss_url"))
+	if err != nil {
+		panic(err)
+	}
+	qManager := &repository.SQLiteQuestionManager{}
+	tempFileRepo := &repository.LocalTempFileRepo{RootDir: viper.GetString("temp_file_root_dir"), IDToLocalPath: make(map[string]string), Mutex: &sync.Mutex{}}
+	authHandler := &handler.AuthHandler{TokenManager: &repository.JWTManager{}}
+	questionsHandler := &handler.QuestionsHandler{
+		ProfileManager:  &repository.LocalProfileManager{},
+		TokenManager:    &repository.JWTManager{},
+		QuestionManager: qManager,
+		TempFileRepo:    tempFileRepo,
+		PersistFileRepo: repository.NewTencentOSSPersistFileRepo(ossURL, ossID, ossKey, viper.GetString("oss_bucket")),
+		VisitChan:       visitChan}
+	fileHandler := &handler.FilepondHandler{TempFileRepo: tempFileRepo, QuestionManager: qManager}
+
 	visitMonitor := usecase.VisitMonitor{
 		QuestionManager:     qManager,
 		VisitChan:           visitChan,
@@ -29,10 +55,10 @@ func SetupRoutes() (*gin.Engine, chan bool, *sync.WaitGroup) {
 		Wg:                  wg,
 	}
 	go visitMonitor.Run()
-	return setupRoutes(authHandler, questionsHandler), exit, wg
+	return setupRoutes(authHandler, questionsHandler, fileHandler), exit, wg
 }
 
-func setupRoutes(authHandler *handler.AuthHandler, questionsHandler *handler.QuestionsHandler) *gin.Engine {
+func setupRoutes(authHandler *handler.AuthHandler, questionsHandler *handler.QuestionsHandler, fileHandler *handler.FilepondHandler) *gin.Engine {
 	r := gin.Default()
 	// some basic one liner handlers
 	r.GET("/checkalive", func(c *gin.Context) {
@@ -42,6 +68,9 @@ func setupRoutes(authHandler *handler.AuthHandler, questionsHandler *handler.Que
 		c.JSON(http.StatusOK, infrastructure.WebsiteProfile)
 	})
 	r.GET("/new", questionsHandler.NewQuestionToken)
+
+	r.POST("/image/process", fileHandler.Process)
+	r.DELETE("/image/process", fileHandler.Delete)
 
 	userAuthorized := r.Group("/questions", authHandler.Authenticate, authHandler.BlockOwner)
 	userAuthorized.GET("/question", questionsHandler.GetQuestion)

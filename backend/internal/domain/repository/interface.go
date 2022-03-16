@@ -32,10 +32,10 @@ type ProfileManager interface {
 }
 
 type TempFileRepo interface {
-	GenerateTempFileID() (string, error)
-	StoreTempFileChunk(id string, reader io.Reader) error
-	RemoveTempFileByIdentifier(id string) error
-	GetTempFilePathByID(id string) string
+	GenerateTempFileID() string
+	StoreTempFile(id, filename string, file io.Reader) error
+	RemoveTempFileByID(id string) error
+	GetTempFilePathByID(id string) (string, bool)
 }
 
 type PersistFileRepo interface {

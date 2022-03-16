@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -92,14 +94,18 @@ func (q *QuestionsHandler) SubmitNewQuestion(c *gin.Context) {
 	} else {
 		images := []*model.ImageMetadata{}
 		for _, image := range req.Images {
-			if tempFilePath := q.TempFileRepo.GetTempFilePathByID(image.ID); tempFilePath != "" {
-				key := strings.Join([]string{req.UUID, image.ID, image.Filename}, "/")
+			if tempFilePath, ok := q.TempFileRepo.GetTempFilePathByID(image.ID); ok {
+				filename := image.ID + filepath.Ext(image.Filename)
+				key := strings.Join([]string{req.UUID, filename}, "/")
 				err := q.PersistFileRepo.Upload(c, key, tempFilePath)
 				if err != nil {
 					c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("图片上传失败，错误信息：%s", err.Error())})
 					return
 				}
-				images = append(images, &model.ImageMetadata{QuestionUUID: req.UUID, Filename: image.Filename, Key: key, Order: image.Order})
+				if err := q.TempFileRepo.RemoveTempFileByID(image.ID); err != nil {
+					log.Printf("failed to remove local temp file by id %s, filepath %s, err: %s, skipping\n", image.ID, tempFilePath, err.Error())
+				}
+				images = append(images, &model.ImageMetadata{QuestionUUID: req.UUID, Filename: filename, Key: key, Order: image.Order})
 			}
 		}
 		statusErr := q.QuestionManager.StoreImageMetadata(c, images)
