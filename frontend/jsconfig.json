@@ -2,5 +2,7 @@
 	"include": [
 		"./src/**/*"
 	],
-	"allowSyntheticDefaultImports": true
+	"compilerOptions": {
+		"allowSyntheticDefaultImports": true
+	},
 }

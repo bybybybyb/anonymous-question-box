@@ -3,21 +3,26 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"path/filepath"
+	"strings"
+	"time"
+	"unicode/utf8"
+
 	"github.com/anonymous-question-box/internal/domain/model"
 	"github.com/anonymous-question-box/internal/domain/repository"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"io/ioutil"
-	"net/http"
-	"strings"
-	"time"
-	"unicode/utf8"
 )
 
 type QuestionsHandler struct {
 	ProfileManager  repository.ProfileManager
 	TokenManager    repository.TokenManager
 	QuestionManager repository.QuestionManager
+	TempFileRepo    repository.TempFileRepo
+	PersistFileRepo repository.PersistFileRepo
 	VisitChan       chan *model.VisitStatus
 }
 
@@ -83,6 +88,32 @@ func (q *QuestionsHandler) SubmitNewQuestion(c *gin.Context) {
 			return
 		}
 	}
+	if !q.ProfileManager.IsImageSupportedByOwnerNameAndQuestionType(req.Owner, req.Type) && len(req.Images) > 0 {
+		c.AbortWithStatusJSON(http.StatusBadRequest, ErrorResp{Error: "本提问箱不支持图片上传"})
+		return
+	} else {
+		images := []*model.ImageMetadata{}
+		for _, image := range req.Images {
+			if tempFilePath, ok := q.TempFileRepo.GetTempFilePathByID(image.ID); ok {
+				filename := image.ID + filepath.Ext(image.Filename)
+				key := strings.Join([]string{req.UUID, filename}, "/")
+				err := q.PersistFileRepo.Upload(c, key, tempFilePath)
+				if err != nil {
+					c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("图片上传失败，错误信息：%s", err.Error())})
+					return
+				}
+				if err := q.TempFileRepo.RemoveTempFileByID(image.ID); err != nil {
+					log.Printf("failed to remove local temp file by id %s, filepath %s, err: %s, skipping\n", image.ID, tempFilePath, err.Error())
+				}
+				images = append(images, &model.ImageMetadata{QuestionUUID: req.UUID, Filename: filename, Key: key, Order: image.Order})
+			}
+		}
+		statusErr := q.QuestionManager.StoreImageMetadata(c, images)
+		if statusErr != nil {
+			c.AbortWithStatusJSON(statusErr.Code(), ErrorResp{Error: fmt.Sprintf("图片上传失败，错误信息：%s", statusErr.Error())})
+			return
+		}
+	}
 	statusErr := q.QuestionManager.InsertQuestion(c, req)
 	if statusErr != nil {
 		c.AbortWithStatusJSON(statusErr.Code(), ErrorResp{Error: fmt.Sprintf("提交失败，错误信息：%s，请联系网站管理员", statusErr.Error())})
@@ -100,15 +131,23 @@ func (q *QuestionsHandler) GetQuestion(c *gin.Context) {
 	if c.GetBool("is_admin") {
 		uuid = c.Param("uuid")
 	}
-	question, err := q.QuestionManager.GetQuestionByUUID(c, uuid, c.GetBool("is_admin"))
-	if err != nil {
-		switch err.Code() {
+	question, statusErr := q.QuestionManager.GetQuestionByUUID(c, uuid, c.GetBool("is_admin"))
+	if statusErr != nil {
+		switch statusErr.Code() {
 		case http.StatusNotFound:
-			c.AbortWithStatusJSON(http.StatusNotFound, ErrorResp{Error: "投稿不存在或已销毁"})
+			c.AbortWithStatusJSON(statusErr.Code(), ErrorResp{Error: "投稿不存在或已销毁"})
 		case http.StatusInternalServerError:
-			c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("查询投稿失败，错误信息： %s，请联系网站管理员", err.Error())})
+			c.AbortWithStatusJSON(statusErr.Code(), ErrorResp{Error: fmt.Sprintf("查询投稿失败，错误信息： %s，请联系网站管理员", statusErr.Error())})
 		}
 		return
+	}
+	if q.ProfileManager.IsImageSupportedByOwnerNameAndQuestionType(question.Owner, question.Type) {
+		images, statusErr := q.assembleImages(c, question.UUID)
+		if statusErr != nil {
+			c.AbortWithStatusJSON(statusErr.Code(), ErrorResp{Error: fmt.Sprintf("查询投稿失败，错误信息： %s，请联系网站管理员", statusErr.Error())})
+			return
+		}
+		question.Images = images
 	}
 	if !c.GetBool("is_admin") && question.AnsweredAt != time.Unix(0, 0) {
 		q.VisitChan <- &model.VisitStatus{
@@ -159,6 +198,16 @@ func (q *QuestionsHandler) ListQuestions(c *gin.Context) {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("查询投稿失败，错误信息： %s，请联系网站管理员", statusErr.Error())})
 		}
 		return
+	}
+	if q.ProfileManager.IsImageSupportedByOwnerNameAndQuestionType(req.Owner, req.Type) {
+		for _, question := range questions {
+			images, statusErr := q.assembleImages(c, question.UUID)
+			if statusErr != nil {
+				c.AbortWithStatusJSON(statusErr.Code(), ErrorResp{Error: fmt.Sprintf("查询投稿失败，错误信息： %s，请联系网站管理员", statusErr.Error())})
+				return
+			}
+			question.Images = images
+		}
 	}
 	type resp struct {
 		Questions  []*model.Question `json:"questions"`
@@ -229,4 +278,24 @@ func (q *QuestionsHandler) DeleteQuestion(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusOK)
+}
+
+func (q *QuestionsHandler) assembleImages(c *gin.Context, uuid string) ([]*model.Image, repository.StatusError) {
+	images := []*model.Image{}
+	imageMetadata, statusErr := q.QuestionManager.GetImageMetadataByUUID(c, uuid)
+	if statusErr != nil {
+		return nil, statusErr
+	}
+	for _, metadata := range imageMetadata {
+		url, err := q.PersistFileRepo.GetPresignedURL(c, metadata.Key)
+		if err != nil {
+			return nil, repository.E(err, http.StatusInternalServerError)
+		}
+		images = append(images, &model.Image{
+			Order:    metadata.Order,
+			Filename: metadata.Filename,
+			URL:      url.String(),
+		})
+	}
+	return images, nil
 }

@@ -26,6 +26,7 @@ type QuestionType struct {
 	EndTimeStr   string    `mapstructure:"end_time" json:"end_time,omitempty"`
 	EndTime      time.Time `json:"-"`
 	Theme        Theme     `mapstructure:"theme" json:"theme"`
+	SupportImage bool      `mapstructure:"support_image" json:"support_image"`
 }
 
 type Theme struct {
