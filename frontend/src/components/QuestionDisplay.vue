@@ -1,7 +1,5 @@
 <template>
-  <div>
-    <div class="container">
-      <div class="row">
+  <div class="container">
         <div class="col-12 col-md-6">
           <div
             class="card shadow-lg my-3"
@@ -45,16 +43,7 @@
                 <h5 class="card-title m-3">
                   {{ generateAnswerTitle(answered_at) }}
                 </h5>
-                <div class="card-body overflow-auto" style="max-height: 300px">
-                  <div style="line-break: anywhere">
-                    <p
-                      v-for="(sentence, i) in formatText(answer_text)"
-                      v-bind:key="i"
-                      class="lh-lg text-start"
-                    >
-                      {{ sentence }}
-                    </p>
-                  </div>
+                  </p>
                 </div>
               </div>
             </div>

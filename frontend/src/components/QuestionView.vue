@@ -1,25 +1,19 @@
 <template>
   <div>
     <Header :hideBackBtn="true"></Header>
-    <div v-if="just_submitted">
-      <QuestionSubmission :token="token" />
-      <QuestionDisplay
-        :receiver="receiver"
-        :question_text="question_text"
-        :asked_at="asked_at"
-        :answer_text="answer_text"
-        :answered_at="answered_at"
-      />
-    </div>
-    <div v-else>
-      <QuestionDisplay
-        :receiver="receiver"
-        :question_text="question_text"
-        :asked_at="asked_at"
-        :answer_text="answer_text"
-        :answered_at="answered_at"
-      />
-      <QuestionSubmission :token="token" />
+    <div class="row">
+      <div class="col-12" :class="just_submitted ? 'order-1' : 'order-2'">
+        <QuestionSubmission :token="token" />
+      </div>
+      <div class="col-12" :class="just_submitted ? 'order-2' : 'order-1'">
+        <QuestionDisplay
+          :receiver="receiver"
+          :question_text="question_text"
+          :asked_at="asked_at"
+          :answer_text="answer_text"
+          :answered_at="answered_at"
+        />
+      </div>
     </div>
   </div>
 </template>
