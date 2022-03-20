@@ -53,6 +53,13 @@
               <h5 class="col-12 m-1" :style="h5Style">
                 当前字数： {{ currentLength }}/{{ maxLength }}
               </h5>
+              <file-pond
+                name="test"
+                ref="pond"
+                v-bind:files="imageFiles"
+                v-bind:acceptedFileTypes="acceptedFileTypes"
+                v-on:init="handleFilePondInit"
+              />
               <button
                 class="btn shadow col-sm-5 col-12"
                 :class="[submitBtnActiveClass, submitBtnStyleClass]"
@@ -125,6 +132,28 @@
 
 <script>
 import Header from "./Header.vue";
+import vueFilePond, { setOptions } from "vue-filepond";
+import "filepond/dist/filepond.min.css";
+import "filepond-plugin-image-preview/dist/filepond-plugin-image-preview.min.css";
+import FilePondPluginFileValidateSize from "filepond-plugin-file-validate-size";
+import FilePondPluginFileValidateType from "filepond-plugin-file-validate-type";
+import FilePondPluginImagePreview from "filepond-plugin-image-preview";
+import zh_cn from "filepond/locale/zh-cn";
+
+setOptions(zh_cn);
+setOptions({
+  allowMultiple: true,
+  fileValidateTypeLabelExpectedTypes: "请上传图片文件",
+  labelIdle: "直接把图片拖到这里，或点击此处浏览上传",
+  maxFileSize: "10MB",
+  maxFiles: 9,
+  server: "/api/image/process",
+});
+const FilePond = vueFilePond(
+  FilePondPluginFileValidateType,
+  FilePondPluginFileValidateSize,
+  FilePondPluginImagePreview
+);
 const storagePrefix = "questionNew_";
 let currentQuestionTypePrefix = "";
 let prevBgClass = "";
@@ -132,11 +161,16 @@ export default {
   name: "QuestionNew",
   components: {
     Header,
+    FilePond,
   },
   props: {
     owner: String,
   },
   methods: {
+    handleFilePondInit() {
+      console.log("FilePond has initialized");
+      // FilePond instance methods are available on `this.$refs.pond`
+    },
     onNewInput() {
       this.currentLength = this.new_question_text.trim().length;
       localStorage.setItem(
@@ -162,6 +196,7 @@ export default {
       this.onNewInput();
 
       // style changes
+      // TODO: do not put style changes in code
       // body background
       let newBgClass =
         this.ownerProfiles[this.owner].question_types[this.type].theme
@@ -190,6 +225,16 @@ export default {
       const authHeader = {
         headers: { Authorization: `Bearer ${this.token}` },
       };
+      let images = [];
+      let i = 0;
+      for (let f of this.$refs.pond.getFiles()) {
+        console.log(f);
+        images.push({
+          image_id: f.serverId,
+          order: i++,
+          filename: f.filename,
+        });
+      }
       this.axios
         .post(
           "/api/questions/submit",
@@ -197,6 +242,7 @@ export default {
             owner: this.owner,
             type: this.type,
             text: this.new_question_text,
+            images: images,
           },
           authHeader
         )
@@ -292,6 +338,8 @@ export default {
       cardBackgroundStyle: "background: rgba(255,255,255,0.9)",
       formStyleClass: "bg-light text-dark",
       h5Style: "color:black",
+      imageFiles: [],
+      acceptedFileTypes: ["image/*"],
     };
   },
 };
