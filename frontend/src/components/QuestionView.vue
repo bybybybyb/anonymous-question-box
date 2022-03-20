@@ -1,6 +1,6 @@
 <template>
-  <div>
-    <Header :hideBackBtn="true"></Header>
+  <Header :hideBackBtn="true"></Header>
+  <div class="container">
     <div class="row">
       <div class="col-12" :class="just_submitted ? 'order-1' : 'order-2'">
         <QuestionSubmission :token="token" />
@@ -12,6 +12,7 @@
           :asked_at="asked_at"
           :answer_text="answer_text"
           :answered_at="answered_at"
+          :images="images"
         />
       </div>
     </div>
@@ -49,6 +50,7 @@ export default {
         this.asked_at = resp.data.asked_at;
         this.answer_text = resp.data.answer;
         this.answered_at = resp.data.answered_at;
+        this.images = resp.data.images;
 
         currentBgClass =
           this.ownerProfiles[this.owner].question_types[this.type].theme
@@ -82,6 +84,7 @@ export default {
       asked_at: "",
       answer_text: "",
       answered_at: "",
+      images: [],
     };
   },
 };
