@@ -1,11 +1,12 @@
-import './index.css'
-import "bootstrap/dist/css/bootstrap.min.css"
-import "bootstrap"
-import { createApp } from 'vue'
-import { createRouter, createWebHashHistory } from 'vue-router'
-import axios from 'axios'
-import VueAxios from 'vue-axios'
-import App from './App.vue'
+import "./index.css";
+import "normalize-scss";
+import "bootstrap/dist/css/bootstrap.min.css";
+import "bootstrap";
+import { createApp } from "vue";
+import { createRouter, createWebHashHistory } from "vue-router";
+import axios from "axios";
+import VueAxios from "vue-axios";
+import App from "./App.vue";
 import OwnerView from "./components/OwnerView.vue";
 import QuestionNew from "./components/QuestionNew.vue";
 import QuestionView from "./components/QuestionView.vue";
@@ -15,11 +16,31 @@ import Main from "./components/Main.vue";
 
 const routes = [
   { name: "homepage", path: "/", component: Main },
-  { name: "owners", path: "/owner/:owner/dashboard", component: OwnerView, props: true },
-  { name: "live", path: "/owner/:owner/live", component: LiveView, props: true },
+  {
+    name: "owners",
+    path: "/owner/:owner/dashboard",
+    component: OwnerView,
+    props: true,
+  },
+  {
+    name: "live",
+    path: "/owner/:owner/live",
+    component: LiveView,
+    props: true,
+  },
   { name: "question", path: "/question", component: QuestionView, props: true },
-  { name: "question-new", path: "/question/:owner/new", component: QuestionNew, props: true },
-  { name: "answer", path: "/question/answer", component: AnswerView, props: true },
+  {
+    name: "question-new",
+    path: "/question/:owner/new",
+    component: QuestionNew,
+    props: true,
+  },
+  {
+    name: "answer",
+    path: "/question/answer",
+    component: AnswerView,
+    props: true,
+  },
   { path: "/:catchAll(.*)", redirect: "/" },
 ];
 
@@ -30,7 +51,8 @@ const router = createRouter({
 
 (async () => {
   await axios
-    .get("/api/profiles").then((resp) => {
+    .get("/api/profiles")
+    .then((resp) => {
       const ownerProfiles = resp.data.owner_profiles;
       const websiteMetadata = resp.data.metadata;
       const profileProvider = {
@@ -41,16 +63,16 @@ const router = createRouter({
             websiteMetadata: websiteMetadata,
           };
         },
-      }
+      };
       const app = createApp(App);
       app.config.globalProperties.$scrollToTop = () => window.scrollTo(0, 0);
       app.use(VueAxios, axios);
       app.use(router);
       app.mixin(profileProvider);
-      app.mount('#app');
-    }).catch((err) => {
+      app.mount("#app");
+    })
+    .catch((err) => {
       console.log(err.response);
       alert("提问箱好像坏掉了，请稍后再试！万分抱歉！");
     });
-})()
-
+})();

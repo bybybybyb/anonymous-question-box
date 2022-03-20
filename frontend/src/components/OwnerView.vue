@@ -5,11 +5,7 @@
       <div class="card" style="background: rgba(255, 255, 255, 0.9)">
         <div class="card-header">
           <nav
-            class="
-              navbar navbar-expand-lg navbar-light
-              justify-content-between
-              border border-1
-            "
+            class="navbar navbar-expand-lg navbar-light justify-content-between border border-1"
             :style="navbarStyling"
           >
             <div class="container-fluid">
