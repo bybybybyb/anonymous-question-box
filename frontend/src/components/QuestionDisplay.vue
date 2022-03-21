@@ -20,7 +20,7 @@
                   <div class="row">
                     <div class="col">
                       <swiper
-                        v-if="images.length > 0"
+                        v-if="images"
                         ref="slide"
                         :style="{
                           '--swiper-navigation-color': '#000',
@@ -32,7 +32,7 @@
                         :loop="true"
                         :slides-per-view="1"
                         :initialSlide="1"
-                        navigation
+                        :navigation="images.length > 1"
                         :pagination="{ clickable: true }"
                       >
                         <swiper-slide
@@ -54,7 +54,6 @@
                                 :alt="image.filename"
                                 class="img-fluid img-thumbnail"
                                 style="max-height: 300px"
-                                v-show="false"
                                 v-on:click="
                                   showFullscreenImg(image.url, image.filename)
                                 "
@@ -128,7 +127,7 @@
     id="fullscreenImg"
     tabindex="-1"
     aria-hidden="true"
-    v-if="images.length > 0"
+    v-if="images"
   >
     <div class="modal-dialog modal-dialog-centered modal-lg">
       <div class="modal-content">
@@ -206,11 +205,6 @@ export default {
           this.showAllToggleText === "展开显示" ? "收缩显示" : "展开显示";
       };
     },
-  },
-  mounted() {
-    for (let img of this.images) {
-      console.log(img);
-    }
   },
   methods: {
     showFullscreenImg(url, alt) {
