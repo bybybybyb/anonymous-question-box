@@ -18,67 +18,24 @@
               >
                 <div class="container">
                   <div class="row">
-                    <div class="col">
-                      <swiper
-                        v-if="images"
-                        ref="slide"
-                        :style="{
-                          '--swiper-navigation-color': '#000',
-                          '--swiper-pagination-color': '#000',
-                          'max-height': '500px',
-                        }"
-                        :modules="modules"
-                        :spaceBetween="20"
-                        :loop="true"
-                        :slides-per-view="1"
-                        :initialSlide="1"
-                        :navigation="images.length > 1"
-                        :pagination="{ clickable: true }"
-                      >
-                        <swiper-slide
-                          class="swiper-slide"
-                          v-for="image in images"
-                          v-bind:key="image.order"
-                        >
-                          <div
-                            class="d-flex justify-content-center align-items-center"
-                            style="height: 300px"
-                          >
-                            <a
-                              data-bs-toggle="modal"
-                              href="#fullscreenImg"
-                              role="button"
-                            >
-                              <img
-                                :src="image.url"
-                                :alt="image.filename"
-                                class="img-fluid img-thumbnail"
-                                style="max-height: 300px"
-                                v-on:click="
-                                  showFullscreenImg(image.url, image.filename)
-                                "
-                              />
-                            </a>
-                          </div>
-                        </swiper-slide>
-                      </swiper>
+                    <div class="col-12">
+                      <image-display :images="images" />
                     </div>
-                  </div>
-                  <div
-                    class="row"
-                    :style="{
-                      'line-break': 'anywhere',
-                    }"
-                    ref="questionText"
-                  >
-                    <div class="col">
-                      <p
-                        v-for="(sentence, i) in formatText(question_text)"
-                        v-bind:key="i"
-                        class="lh-lg text-start"
+                    <div class="col-12 mt-3">
+                      <div
+                        :style="{
+                          'line-break': 'anywhere',
+                        }"
+                        ref="questionText"
                       >
-                        {{ sentence }}
-                      </p>
+                        <p
+                          v-for="(sentence, i) in formatText(question_text)"
+                          v-bind:key="i"
+                          class="lh-lg text-start"
+                        >
+                          {{ sentence }}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -122,52 +79,15 @@
       </div>
     </div>
   </div>
-  <div
-    class="modal fade"
-    id="fullscreenImg"
-    tabindex="-1"
-    aria-hidden="true"
-    v-if="images"
-  >
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-      <div class="modal-content">
-        <div class="modal-body">
-          <img
-            :src="fullscreenImgUrl"
-            :alt="fullscreenImgAlt"
-            class="img-fluid"
-          />
-        </div>
-        <div class="modal-footer">
-          <button
-            type="button"
-            class="btn btn-secondary"
-            data-bs-dismiss="modal"
-          >
-            关闭
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
 </template>
 
 <script>
 const defaultCardMaxHeight = 500;
-
-import { Navigation, Pagination } from "swiper";
-import { Swiper, SwiperSlide } from "swiper/vue";
-import "swiper/css";
-import "swiper/css/zoom";
-import "swiper/css/navigation";
-import "swiper/css/pagination";
-import "swiper/css/scrollbar";
-
+import ImageDisplay from "./ImageDisplay.vue";
 export default {
   name: "QuestionDisplay",
   components: {
-    Swiper,
-    SwiperSlide,
+    ImageDisplay,
   },
   props: {
     receiver: String,
@@ -206,12 +126,6 @@ export default {
       };
     },
   },
-  methods: {
-    showFullscreenImg(url, alt) {
-      this.fullscreenImgUrl = url;
-      this.fullscreenImgAlt = alt;
-    },
-  },
   updated() {
     this.isLongText =
       this.$refs.questionText.clientHeight > defaultCardMaxHeight;
@@ -220,10 +134,7 @@ export default {
     return {
       questionCardMaxHeight: defaultCardMaxHeight,
       showAllToggleText: "展开显示",
-      fullscreenImgUrl: "",
-      fullscreenImgAlt: "",
       isLongText: false,
-      modules: [Navigation, Pagination],
     };
   },
 };
