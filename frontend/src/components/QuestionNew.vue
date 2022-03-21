@@ -57,11 +57,16 @@
               <file-pond
                 name="mht"
                 ref="pond"
+                class="filepond"
                 itemInsertLocation="after"
+                :allowDrop="true"
+                :allowBrowse="true"
+                :allowMultiple="true"
                 v-bind:files="imageFiles"
                 v-bind:acceptedFileTypes="acceptedFileTypes"
-                v-on:initfile="onProcessFileStart"
-                v-on:processfile="onProcessFile"
+                v-on:init="onFilepondInitReady"
+                v-on:initfile="onFileUpdateStart"
+                v-on:updatefiles="onFileUpdated"
                 v-if="supportImage"
               />
               <button
@@ -179,7 +184,6 @@ import { Modal } from "bootstrap";
 
 setOptions(zh_cn);
 setOptions({
-  allowMultiple: true,
   fileValidateTypeLabelExpectedTypes: "请上传图片文件",
   labelIdle: "请把图片拖到这里，或点击此处浏览。请上传至少1张！",
   maxFileSize: "10MB",
@@ -204,11 +208,18 @@ export default {
     owner: String,
   },
   methods: {
-    onProcessFileStart() {
+    onFilepondInitReady() {
+      if (this.supportImage) {
+        const input = document.querySelector(".filepond input");
+        input.removeAttribute("required");
+        input.removeAttribute("capture");
+      }
+    },
+    onFileUpdateStart() {
       this.isProcessingFile = true;
       this.submitBtnActiveClass = "disabled";
     },
-    onProcessFile() {
+    onFileUpdated() {
       this.isProcessingFile = false;
       this.submitBtnActiveClass = "";
     },
@@ -377,6 +388,7 @@ export default {
         alert("提问箱好像坏掉了，请保存好您的投稿，并通知管理员前来查看！");
       });
   },
+  mounted() {},
   beforeUnmount() {
     // change back the body background
     document.body.classList.remove("body-background-" + prevBgClass);
