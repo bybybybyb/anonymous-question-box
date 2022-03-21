@@ -2,10 +2,10 @@
   <Header :hideBackBtn="true"></Header>
   <div class="container">
     <div class="row">
-      <div class="col-12" :class="just_submitted ? 'order-1' : 'order-2'">
+      <div class="col-12" :class="justSubmitted ? 'order-1' : 'order-2'">
         <QuestionSubmission :token="token" />
       </div>
-      <div class="col-12" :class="just_submitted ? 'order-2' : 'order-1'">
+      <div class="col-12" :class="justSubmitted ? 'order-2' : 'order-1'">
         <QuestionDisplay
           :receiver="receiver"
           :question_text="question_text"
@@ -27,7 +27,7 @@ let currentBgClass = "";
 export default {
   name: "QuestionView",
   props: {
-    just_submitted: Boolean,
+    justSubmitted: Boolean,
   },
   components: {
     Header,

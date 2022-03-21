@@ -8,7 +8,7 @@
         <div class="card">
           <div class="card-body">
             <h1>感谢投稿！</h1>
-            <div class="contaienr">
+            <div class="container">
               <p class="mx-3">
                 请妥善保存下方二维码和链接，这将是你找回投稿的唯一方式！
               </p>
@@ -17,6 +17,7 @@
                 class="col-6 my-4"
                 :value="question_url"
                 :size="200"
+                style="max-width: 100%; height: auto"
               ></qrcode-vue>
               <div class="col-md-12">
                 <router-link :to="{ name: 'question', query: { token: token } }"

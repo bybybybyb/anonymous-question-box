@@ -6,27 +6,42 @@
   color: #2c3e50;
 }
 
+/* Hide scrollbar for Chrome, Safari and Opera */
+body::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+body {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
 .body-background-striped-merry {
-  background-image: linear-gradient(135deg,
-      #769cd2 25%,
-      #f79fb8 25%,
-      #f79fb8 50%,
-      #769cd2 50%,
-      #769cd2 75%,
-      #f79fb8 75%,
-      #f79fb8 100%);
+  background-image: linear-gradient(
+    135deg,
+    #769cd2 25%,
+    #f79fb8 25%,
+    #f79fb8 50%,
+    #769cd2 50%,
+    #769cd2 75%,
+    #f79fb8 75%,
+    #f79fb8 100%
+  );
   background-size: 90px 90px;
 }
 
 .body-background-striped-umy {
-  background-image: linear-gradient(45deg,
-      #c42e30 25%,
-      #504141 25%,
-      #504141 50%,
-      #c42e30 50%,
-      #c42e30 75%,
-      #504141 75%,
-      #504141 100%);
+  background-image: linear-gradient(
+    45deg,
+    #c42e30 25%,
+    #504141 25%,
+    #504141 50%,
+    #c42e30 50%,
+    #c42e30 75%,
+    #504141 75%,
+    #504141 100%
+  );
   background-size: 90px 90px;
 }
 
