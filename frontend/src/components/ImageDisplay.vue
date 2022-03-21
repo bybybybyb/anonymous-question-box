@@ -1,19 +1,19 @@
 <template>
   <swiper
-    v-if="images"
     ref="slide"
     :style="{
       '--swiper-navigation-color': '#000',
       '--swiper-pagination-color': '#000',
-      'max-height': '500px',
+      'max-height': slideHeight,
     }"
     :modules="modules"
     :spaceBetween="20"
-    :loop="true"
-    :slides-per-view="1"
     :initialSlide="1"
     :navigation="images.length > 1"
+    :loop="true"
+    :slides-per-view="1"
     :pagination="{ clickable: true }"
+    class="border-bottom"
   >
     <swiper-slide
       class="swiper-slide"
@@ -22,27 +22,26 @@
     >
       <div
         class="d-flex justify-content-center align-items-center"
-        style="height: 300px"
+        :style="{ height: slideHeight }"
       >
-        <a data-bs-toggle="modal" href="#fullscreenImg" role="button">
+        <a
+          data-bs-toggle="modal"
+          href="#fullscreenImg"
+          role="button"
+          :style="enableClickToFullscreen ? '' : 'pointer-events: none;'"
+        >
           <img
             :src="image.url"
             :alt="image.filename"
-            class="img-fluid img-thumbnail"
-            style="max-height: 300px"
+            class="img-fluid pt-2 pb-2"
+            :style="{ 'max-height': slideHeight }"
             v-on:click="showFullscreenImg(image.url, image.filename)"
           />
         </a>
       </div>
     </swiper-slide>
   </swiper>
-  <div
-    class="modal fade"
-    id="fullscreenImg"
-    tabindex="-1"
-    aria-hidden="true"
-    v-if="images"
-  >
+  <div class="modal fade" id="fullscreenImg" tabindex="-1" v-if="images">
     <div class="modal-dialog modal-dialog-centered modal-lg">
       <div class="modal-content">
         <div class="modal-body">
@@ -77,6 +76,8 @@ import "swiper/css/scrollbar";
 export default {
   name: "ImageDisplay",
   props: {
+    slideHeight: String,
+    enableClickToFullscreen: Boolean,
     images: Array,
   },
   components: {

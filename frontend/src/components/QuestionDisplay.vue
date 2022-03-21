@@ -19,7 +19,11 @@
                 <div class="container">
                   <div class="row">
                     <div class="col-12">
-                      <image-display :images="images" />
+                      <image-display
+                        :images="images"
+                        :slideHeight="questionCardMaxHeight - 200 + 'px'"
+                        :enableClickToFullscreen="true"
+                      />
                     </div>
                     <div class="col-12 mt-3">
                       <div
