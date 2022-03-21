@@ -290,7 +290,6 @@ export default {
       if (this.supportImage) {
         let i = 0;
         for (let f of this.$refs.pond.getFiles()) {
-          console.log(f.serverId, f.filename, i);
           images.push({
             image_id: f.serverId,
             order: i++,
@@ -298,7 +297,7 @@ export default {
           });
         }
         if (this.newQuestionText.length === 0) {
-          this.newQuestionText = ["共" + i + "张", "无描述，未署名"].join("\n");
+          this.newQuestionText = "共" + i + "张，无描述，未署名。";
         }
       }
       try {
@@ -337,7 +336,10 @@ export default {
         }
       } finally {
         this.loadingOverlayKeyboard = true;
-        this.$refs.loadingOverlayClose.click();
+        const loadingOverlay = Modal.getInstance(
+          document.querySelector("#loadingOverlay")
+        );
+        loadingOverlay.hide();
       }
     },
   },
@@ -379,11 +381,6 @@ export default {
     // change back the body background
     document.body.classList.remove("body-background-" + prevBgClass);
     document.body.classList.add("bg-light");
-    const loadingOverlay = Modal.getInstance(
-      document.querySelector("#loadingOverlay")
-    );
-    loadingOverlay.hide();
-    loadingOverlay.dispose();
   },
   data() {
     return {
