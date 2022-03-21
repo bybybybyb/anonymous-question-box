@@ -233,7 +233,7 @@ export default {
         ? (this.submitBtnActiveClass = "")
         : (this.submitBtnActiveClass = "disabled");
       if (this.supportImage)
-        !this.isProcessingFile && this.imageFiles.length > 0
+        !this.isProcessingFile
           ? (this.submitBtnActiveClass = "")
           : (this.submitBtnActiveClass = "disabled");
     },
