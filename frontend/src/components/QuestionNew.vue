@@ -22,14 +22,14 @@
                     <input
                       class="form-check-input"
                       type="radio"
-                      :name="q_type.name + '_reciver_radio'"
-                      :id="q_type.name + '_reciver_radio'"
+                      :name="q_type.name + '_receiver_radio'"
+                      :id="q_type.name + '_receiver_radio'"
                       :value="q_type.name"
                       v-model="type"
                     />
                     <label
                       class="form-check-label"
-                      :for="q_type.name + '_reciver_radio'"
+                      :for="q_type.name + '_receiver_radio'"
                     >
                       {{ q_type.description }}
                     </label>
@@ -45,25 +45,34 @@
                 class="col-12 form-control overflow-auto"
                 rows="15"
                 :class="formStyleClass"
-                v-model="new_question_text"
                 :maxlength="maxLength"
+                :placeholder="textPlaceholder"
+                v-model="newQuestionText"
                 v-on:keyup="onNewInput"
                 v-on:input="onNewInput"
               ></textarea>
               <h5 class="col-12 m-1" :style="h5Style">
                 当前字数： {{ currentLength }}/{{ maxLength }}
               </h5>
+              <file-pond
+                name="mht"
+                ref="pond"
+                itemInsertLocation="after"
+                v-bind:files="imageFiles"
+                v-bind:acceptedFileTypes="acceptedFileTypes"
+                v-on:initfile="onProcessFileStart"
+                v-on:processfile="onProcessFile"
+                v-if="supportImage"
+              />
               <button
                 class="btn shadow col-sm-5 col-12"
                 :class="[submitBtnActiveClass, submitBtnStyleClass]"
                 data-bs-toggle="modal"
                 data-bs-target="#submitConfirmModal"
+                ref="submitBtn"
               >
                 提交
               </button>
-              <h5 class="col-12 m-2" :style="h5Style">
-                小提示：尚未成功提交的草稿将被暂存于您的浏览器储存中。
-              </h5>
             </div>
           </div>
         </div>
@@ -112,9 +121,43 @@
               class="btn"
               :class="confirmBtnStyleClass"
               v-on:click="submit"
-              data-bs-dismiss="modal"
+              data-bs-toggle="modal"
+              data-bs-target="#loadingOverlay"
             >
               确认提交
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="modal fade"
+      tabindex="-1"
+      :data-bs-backdrop="loadingOverlayBackdrop"
+      aria-hidden="true"
+      id="loadingOverlay"
+      ref="loadingOverlay"
+    >
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">图片处理中...</h5>
+          </div>
+          <div class="modal-body">
+            <div class="spinner-border" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <h5 class="modal-title">如长时间未响应，请刷新页面重试。</h5>
+            <button
+              type="button"
+              class="btn"
+              v-show="false"
+              data-bs-dismiss="modal"
+              ref="loadingOverlayClose"
+            >
+              close
             </button>
           </div>
         </div>
@@ -125,6 +168,29 @@
 
 <script>
 import Header from "./Header.vue";
+import vueFilePond, { setOptions } from "vue-filepond";
+import "filepond/dist/filepond.min.css";
+import "filepond-plugin-image-preview/dist/filepond-plugin-image-preview.min.css";
+import FilePondPluginFileValidateSize from "filepond-plugin-file-validate-size";
+import FilePondPluginFileValidateType from "filepond-plugin-file-validate-type";
+import FilePondPluginImagePreview from "filepond-plugin-image-preview";
+import zh_cn from "filepond/locale/zh-cn";
+import { Modal } from "bootstrap";
+
+setOptions(zh_cn);
+setOptions({
+  allowMultiple: true,
+  fileValidateTypeLabelExpectedTypes: "请上传图片文件",
+  labelIdle: "请把图片拖到这里，或点击此处浏览。请上传至少1张！",
+  maxFileSize: "10MB",
+  maxFiles: 9,
+  server: "/api/image/process",
+});
+const FilePond = vueFilePond(
+  FilePondPluginFileValidateType,
+  FilePondPluginFileValidateSize,
+  FilePondPluginImagePreview
+);
 const storagePrefix = "questionNew_";
 let currentQuestionTypePrefix = "";
 let prevBgClass = "";
@@ -132,36 +198,42 @@ export default {
   name: "QuestionNew",
   components: {
     Header,
+    FilePond,
   },
   props: {
     owner: String,
   },
   methods: {
+    onProcessFileStart() {
+      this.isProcessingFile = true;
+      this.submitBtnActiveClass = "disabled";
+    },
+    onProcessFile() {
+      this.isProcessingFile = false;
+      this.submitBtnActiveClass = "";
+    },
     onNewInput() {
-      this.currentLength = this.new_question_text.trim().length;
+      this.currentLength = this.newQuestionText.trim().length;
       localStorage.setItem(
         storagePrefix + currentQuestionTypePrefix + "draft",
-        this.new_question_text
+        this.newQuestionText
       );
       this.currentLength > 0
         ? (this.submitBtnActiveClass = "")
         : (this.submitBtnActiveClass = "disabled");
+      if (this.supportImage)
+        !this.isProcessingFile && this.imageFiles.length > 0
+          ? (this.submitBtnActiveClass = "")
+          : (this.submitBtnActiveClass = "disabled");
     },
-    onReceiverChange() {
+    profileChanges() {
       this.maxLength =
         this.ownerProfiles[this.owner].question_types[this.type].rune_limit;
-      currentQuestionTypePrefix = "_" + [this.owner, this.type].join("_") + "_";
-      let localVal = localStorage.getItem(
-        storagePrefix + currentQuestionTypePrefix + "draft"
-      );
-      if (localVal && localVal !== "") {
-        this.new_question_text = localVal;
-      } else {
-        this.new_question_text = "";
-      }
-      this.onNewInput();
+      this.supportImage =
+        this.ownerProfiles[this.owner].question_types[this.type].support_image;
 
       // style changes
+      // TODO: do not put style changes in code
       // body background
       let newBgClass =
         this.ownerProfiles[this.owner].question_types[this.type].theme
@@ -185,46 +257,90 @@ export default {
         this.confirmBtnStyleClass = "btn-outline-danger";
         this.formStyleClass = "bg-light text-dark";
       }
+
+      this.supportImage
+        ? (this.textPlaceholder = [
+            "最高支持上传9张图片，单张大小限制为10MB;",
+            "图片展示顺序将保持和上传先后顺序相同;",
+            "（可选）请在此输入描述或者署名;",
+            "尚未成功提交的文字草稿将被暂存于您的浏览器储存中，但刷新页面后图片需要重新上传，请注意。",
+          ].join("\n"))
+        : (this.textPlaceholder =
+            "尚未成功提交的草稿将被暂存于您的浏览器储存中。");
     },
-    submit() {
+    onReceiverChange() {
+      this.profileChanges();
+      currentQuestionTypePrefix = "_" + [this.owner, this.type].join("_") + "_";
+      let localVal = localStorage.getItem(
+        storagePrefix + currentQuestionTypePrefix + "draft"
+      );
+      if (localVal && localVal !== "") {
+        this.newQuestionText = localVal;
+      } else {
+        this.newQuestionText = "";
+      }
+      this.onNewInput();
+    },
+    async submit() {
+      this.loadingOverlayKeyboard = false;
       const authHeader = {
         headers: { Authorization: `Bearer ${this.token}` },
       };
-      this.axios
-        .post(
+      let images = [];
+      if (this.supportImage) {
+        let i = 0;
+        for (let f of this.$refs.pond.getFiles()) {
+          images.push({
+            image_id: f.serverId,
+            order: i++,
+            filename: f.filename,
+          });
+        }
+        if (this.newQuestionText.length === 0) {
+          this.newQuestionText = "共" + i + "张，无描述，未署名。";
+        }
+      }
+      try {
+        await this.axios.post(
           "/api/questions/submit",
           {
             owner: this.owner,
             type: this.type,
-            text: this.new_question_text,
+            text: this.newQuestionText,
+            images: images,
           },
           authHeader
-        )
-        .then(() => {
-          localStorage.setItem(
-            storagePrefix + currentQuestionTypePrefix + "draft",
-            ""
-          );
+        );
+
+        localStorage.setItem(
+          storagePrefix + currentQuestionTypePrefix + "draft",
+          ""
+        );
+        this.$router.push({
+          name: "question",
+          query: { token: this.token },
+          params: { justSubmitted: true },
+        });
+      } catch (err) {
+        console.log(err);
+        if (err.response.status === 400) {
+          alert("您的投稿好像不太对劲？ " + err.response.data.error);
+        } else if (err.response.status === 409) {
           this.$router.push({
             name: "question",
             query: { token: this.token },
             params: { just_submitted: true },
           });
-        })
-        .catch((err) => {
-          console.log(err.response);
-          if (err.response.status === 400) {
-            alert("您的投稿好像不太对劲？ " + err.response.data.error);
-          } else if (err.response.status === 409) {
-            this.$router.push({
-              name: "question",
-              query: { token: this.token },
-              params: { just_submitted: true },
-            });
-          } else {
-            alert("提问箱好像坏掉了，请保存好您的投稿，并通知管理员前来查看！");
-          }
-        });
+        } else {
+          alert("提问箱好像坏掉了，请保存好您的投稿，并通知管理员前来查看！");
+        }
+      } finally {
+        this.loadingOverlayKeyboard = true;
+        const loadingOverlay = Modal.getInstance(
+          document.querySelector("#loadingOverlay")
+        );
+        loadingOverlay.hide();
+      }
     },
   },
   beforeMount() {
@@ -240,21 +356,14 @@ export default {
     }
     // change body background
     document.body.classList.remove("bg-light");
-    let newBgClass =
-      this.ownerProfiles[this.owner].question_types[this.type].theme
-        .background_class;
-    document.body.classList.add("body-background-" + newBgClass);
-
-    this.maxLength =
-      this.ownerProfiles[this.owner].question_types[this.type].rune_limit;
-    prevBgClass = newBgClass;
+    this.profileChanges();
 
     currentQuestionTypePrefix = "_" + [this.owner, this.type].join("_") + "_";
     let localVal = localStorage.getItem(
       storagePrefix + currentQuestionTypePrefix + "draft"
     );
     if (localVal && localVal !== "") {
-      this.new_question_text = localVal;
+      this.newQuestionText = localVal;
       this.onNewInput();
     }
     this.$scrollToTop();
@@ -277,11 +386,9 @@ export default {
     return {
       type: "normal",
       token: "",
-      question_text: "",
-      asked_at: "",
-      answer_text: "",
-      answered_at: "",
-      new_question_text: "",
+      supportImage: false,
+      textPlaceHolder: "",
+      newQuestionText: "",
       questionTypes: [],
       currentLength: 0,
       maxLength: 500,
@@ -292,6 +399,10 @@ export default {
       cardBackgroundStyle: "background: rgba(255,255,255,0.9)",
       formStyleClass: "bg-light text-dark",
       h5Style: "color:black",
+      imageFiles: [],
+      acceptedFileTypes: ["image/*"],
+      loadingOverlayBackdrop: "static",
+      isProcessingFile: false,
     };
   },
 };

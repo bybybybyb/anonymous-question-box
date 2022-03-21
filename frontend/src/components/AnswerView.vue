@@ -5,15 +5,35 @@
         <div class="col-12">
           <div class="card shadow-lg my-3">
             <h6 class="card-title m-3">投稿时间：{{ asked_at }}</h6>
-            <div class="card-body overflow-auto" style="height: 400px">
-              <div style="line-break: anywhere">
-                <p
-                  v-for="(sentence, i) in formatText(question_text)"
-                  v-bind:key="i"
-                  class="lh-lg text-start"
-                >
-                  {{ sentence }}
-                </p>
+            <div class="card-body overflow-auto">
+              <div class="container">
+                <div class="row">
+                  <div class="col-12" v-if="images.length > 0">
+                    <image-display :images="images" slideHeight="300px" />
+                  </div>
+                  <div
+                    class="col-12 mt-3 d-flex justify-content-end"
+                    v-if="images.length > 0"
+                  >
+                    <button
+                      class="btn btn-outline-info btn-sm"
+                      v-on:click="toFullscreen()"
+                    >
+                      图片全屏
+                    </button>
+                  </div>
+                  <div class="col-12 mt-3">
+                    <div style="line-break: anywhere">
+                      <p
+                        v-for="(sentence, i) in formatText(question_text)"
+                        v-bind:key="i"
+                        class="lh-lg text-start"
+                      >
+                        {{ sentence }}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -67,11 +87,13 @@
 
 <script>
 import Header from "./Header.vue";
+import ImageDisplay from "./ImageDisplay.vue";
 const storagePrefix = "AnswerView_draft_";
 export default {
   name: "AnswerView",
-  components: { Header },
-  props: ["changeQuestion"],
+  components: { Header, ImageDisplay },
+  props: { changeQuestion: String },
+  emits: ["fullscreenImg"],
   watch: {
     changeQuestion: function (uuid) {
       this.uuid = uuid;
@@ -79,6 +101,9 @@ export default {
     },
   },
   methods: {
+    toFullscreen() {
+      this.$emit("fullscreenImg", this.images);
+    },
     onNewInput() {
       localStorage.setItem(storagePrefix + this.uuid, this.answer_text);
     },
@@ -104,6 +129,7 @@ export default {
           this.answered_at = this.formatTime(resp.data.answered_at);
           this.last_visited_at = this.formatTime(resp.data.last_visited_at);
           this.visit_count = resp.data.visit_count;
+          this.images = resp.data.images;
           if (this.answer_text.length === 0) {
             let localVal = localStorage.getItem(storagePrefix + this.uuid);
             if (localVal && localVal !== "") {
@@ -158,6 +184,7 @@ export default {
       last_visited_at: "",
       visit_count: 0,
       uuid: "",
+      images: [],
     };
   },
 };

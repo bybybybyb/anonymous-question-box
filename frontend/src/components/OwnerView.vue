@@ -5,11 +5,7 @@
       <div class="card" style="background: rgba(255, 255, 255, 0.9)">
         <div class="card-header">
           <nav
-            class="
-              navbar navbar-expand-lg navbar-light
-              justify-content-between
-              border border-1
-            "
+            class="navbar navbar-expand-lg navbar-light justify-content-between border border-1"
             :style="navbarStyling"
           >
             <div class="container-fluid">
@@ -125,7 +121,8 @@
               <div class="col-12 col-sm-2">
                 <a
                   class="btn btn-sm btn-outline-danger m-1"
-                  v-on:click="deleteQuestion(q.uuid)"
+                  data-bs-toggle="modal"
+                  data-bs-target="#confirmDeleteModal"
                 >
                   删除
                 </a>
@@ -137,6 +134,38 @@
                 >
                   打开
                 </a>
+              </div>
+              <div class="modal fade" id="confirmDeleteModal" tabindex="-1">
+                <div class="modal-dialog modal-dialog-centered modal-sm">
+                  <div class="modal-content">
+                    <div class="modal-header">
+                      <h5 class="modal-title">确认删除？</h5>
+                      <button
+                        type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                        aria-label="Close"
+                      ></button>
+                    </div>
+                    <div class="modal-body">
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-outline-danger mx-1"
+                        data-bs-dismiss="modal"
+                        v-on:click="deleteQuestion(q.uuid)"
+                      >
+                        确认
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-outline-secondary mx-1"
+                        data-bs-dismiss="modal"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -169,8 +198,46 @@
       </div>
     </div>
 
-    <div class="modal" tabindex="-1" id="answerModal">
-      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal fade" tabindex="-1" id="answerModal">
+      <div
+        class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-md-down"
+      >
+        <div class="modal-content">
+          <div class="modal-header">
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="Close"
+            ></button>
+            <button
+              type="button"
+              id="btnOpenImgModal"
+              ref="btnOpenImgModal"
+              v-show="false"
+              data-bs-toggle="modal"
+              data-bs-target="imgModal"
+            >
+              switch
+            </button>
+          </div>
+          <div class="modal-body">
+            <answer-view
+              :changeQuestion="uuid"
+              v-on:fullscreenImg="switchToImgModal($event)"
+            ></answer-view>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="modal fade"
+      tabindex="-1"
+      id="imgModal"
+      ref="imgModal"
+      style="max-height: 100vh"
+    >
+      <div class="modal-dialog modal-dialog-scrollable modal-lg">
         <div class="modal-content">
           <div class="modal-header">
             <button
@@ -181,7 +248,23 @@
             ></button>
           </div>
           <div class="modal-body">
-            <answer-view :changeQuestion="uuid"></answer-view>
+            <div class="container">
+              <div class="row">
+                <div class="col-12">
+                  <image-display :images="images" slideHeight="80vh" />
+                </div>
+                <div class="col-12 d-flex justify-content-end pt-3">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-info"
+                    data-bs-toggle="modal"
+                    data-bs-target="#answerModal"
+                  >
+                    返回投稿
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -193,9 +276,11 @@
 import Header from "./Header.vue";
 import Pagination from "v-pagination-3";
 import AnswerView from "./AnswerView.vue";
+import ImageDisplay from "./ImageDisplay.vue";
+import { Modal } from "bootstrap";
 const storagePrefix = "ownerView_";
 const storagePrefixAnswerView = "AnswerView_draft_";
-const orderDeriction = [
+const orderDirection = [
   { by: "asked_at", reversed: true },
   { by: "asked_at", reversed: false },
   { by: "word_count", reversed: true },
@@ -209,11 +294,17 @@ export default {
     Pagination,
     Header,
     AnswerView,
+    ImageDisplay,
   },
   props: {
     owner: String,
   },
   methods: {
+    switchToImgModal(images) {
+      this.images = images;
+      Modal.getOrCreateInstance(document.querySelector("#answerModal")).hide();
+      Modal.getOrCreateInstance(document.querySelector("#imgModal")).show();
+    },
     onQueryChange(resetPage, needRetry = false) {
       if (resetPage) this.queryParams["page"] = 1;
       this.axios
@@ -223,9 +314,9 @@ export default {
             owner: this.owner,
             type: this.queryParams["type"],
             order_params: {
-              by: orderDeriction[this.queryParams["order_params_index"]].by,
+              by: orderDirection[this.queryParams["order_params_index"]].by,
               reversed:
-                orderDeriction[this.queryParams["order_params_index"]].reversed,
+                orderDirection[this.queryParams["order_params_index"]].reversed,
             },
             reply_status: +this.queryParams["reply_status"],
             day_limit: +this.queryParams["day_limit"],
@@ -389,6 +480,7 @@ export default {
         page: 1,
       },
       rows: [],
+      images: [],
       total_count: 0,
       navbarStyling: {},
       projected_text: "",

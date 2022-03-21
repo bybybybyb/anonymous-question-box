@@ -61,10 +61,7 @@
           <div class="row">
             <div class="mx-5 my-3" style="width: 1070px">
               <nav
-                class="
-                  border-top border-start border-end border-1 border-dark
-                  navbar navbar-expand-lg navbar-light
-                "
+                class="border-top border-start border-end border-1 border-dark navbar navbar-expand-lg navbar-light"
                 :style="navbarStyling"
               >
                 <div class="container-fluid">
@@ -166,11 +163,7 @@
                 </div>
               </nav>
               <div
-                class="
-                  card
-                  border-start border-end border-bottom border-1 border-dark
-                  overflow-auto
-                "
+                class="card border-start border-end border-bottom border-1 border-dark overflow-auto"
                 style="height: 745px; border-radius: 0rem"
               >
                 <div class="card">
@@ -196,11 +189,7 @@
                               <li class="list-group-item">
                                 <button
                                   type="button"
-                                  class="
-                                    btn btn-sm btn-outline-warning
-                                    m-1
-                                    col-sm-12
-                                  "
+                                  class="btn btn-sm btn-outline-warning m-1 col-sm-12"
                                   v-on:click="
                                     projectQuestion(
                                       q.uuid,
@@ -213,13 +202,7 @@
                                 </button>
                                 <button
                                   type="button"
-                                  class="
-                                    btn
-                                    d-none d-sm-block
-                                    btn-sm btn-outline-danger
-                                    m-1
-                                    col-sm-12
-                                  "
+                                  class="btn d-none d-sm-block btn-sm btn-outline-danger m-1 col-sm-12"
                                   :value="q.uuid"
                                   v-on:click="deleteQuestion"
                                 >

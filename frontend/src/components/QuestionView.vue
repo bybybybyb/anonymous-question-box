@@ -1,25 +1,20 @@
 <template>
-  <div>
-    <Header :hideBackBtn="true"></Header>
-    <div v-if="just_submitted">
-      <QuestionSubmission :token="token" />
-      <QuestionDisplay
-        :receiver="receiver"
-        :question_text="question_text"
-        :asked_at="asked_at"
-        :answer_text="answer_text"
-        :answered_at="answered_at"
-      />
-    </div>
-    <div v-else>
-      <QuestionDisplay
-        :receiver="receiver"
-        :question_text="question_text"
-        :asked_at="asked_at"
-        :answer_text="answer_text"
-        :answered_at="answered_at"
-      />
-      <QuestionSubmission :token="token" />
+  <Header :hideBackBtn="true"></Header>
+  <div class="container">
+    <div class="row">
+      <div class="col-12" :class="justSubmitted ? 'order-1' : 'order-2'">
+        <QuestionSubmission :token="token" />
+      </div>
+      <div class="col-12" :class="justSubmitted ? 'order-2' : 'order-1'">
+        <QuestionDisplay
+          :receiver="receiver"
+          :question_text="question_text"
+          :asked_at="asked_at"
+          :answer_text="answer_text"
+          :answered_at="answered_at"
+          :images="images"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -32,7 +27,7 @@ let currentBgClass = "";
 export default {
   name: "QuestionView",
   props: {
-    just_submitted: Boolean,
+    justSubmitted: Boolean,
   },
   components: {
     Header,
@@ -55,6 +50,7 @@ export default {
         this.asked_at = resp.data.asked_at;
         this.answer_text = resp.data.answer;
         this.answered_at = resp.data.answered_at;
+        this.images = resp.data.images;
 
         currentBgClass =
           this.ownerProfiles[this.owner].question_types[this.type].theme
@@ -88,6 +84,7 @@ export default {
       asked_at: "",
       answer_text: "",
       answered_at: "",
+      images: [],
     };
   },
 };
