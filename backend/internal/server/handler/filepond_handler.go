@@ -3,7 +3,6 @@ package handler
 import (
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 
 	"github.com/anonymous-question-box/internal/domain/repository"
@@ -16,7 +15,6 @@ type FilepondHandler struct {
 }
 
 func (f *FilepondHandler) GenerateFileID(c *gin.Context) {
-	log.Printf("POST: %+v", c.Request)
 	c.String(http.StatusOK, "%s", f.TempFileRepo.GenerateTempFileID())
 }
 
@@ -27,7 +25,6 @@ func (f *FilepondHandler) Delete(c *gin.Context) {
 }
 
 func (f *FilepondHandler) Process(c *gin.Context) {
-	log.Printf("POST: %+v", c.Request.Form)
 	id := f.TempFileRepo.GenerateTempFileID()
 	form, _ := c.MultipartForm()
 	for _, fileReaders := range form.File {
