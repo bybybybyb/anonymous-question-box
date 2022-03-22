@@ -23,6 +23,7 @@
                         :images="images"
                         :slideHeight="questionCardMaxHeight - 200 + 'px'"
                         :enableClickToFullscreen="true"
+                        :withNavigation="false"
                       />
                     </div>
                     <div class="col-12 mt-3">
