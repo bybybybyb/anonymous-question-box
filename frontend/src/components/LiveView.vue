@@ -270,11 +270,12 @@
                       <div class="card">
                         <div class="card-body">
                           <image-display
-                            v-if="q.images.length > 0"
+                            v-if="q.images && q.images.length > 0"
                             :images="q.images"
                             :slidesPerView="5"
                             :loop="false"
                             slideHeight="400px"
+                            slideWidth="auto"
                           />
                           <p
                             v-for="(sentence, i) in formatText(q.text)"
