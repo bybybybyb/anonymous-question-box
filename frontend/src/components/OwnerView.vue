@@ -245,7 +245,11 @@
             <div class="container">
               <div class="row">
                 <div class="col-12">
-                  <image-display :images="images" slideHeight="80vh" />
+                  <image-display
+                    :images="images"
+                    slideHeight="80vh"
+                    :withNavigation="false"
+                  />
                 </div>
                 <div class="col-12 d-flex justify-content-end pt-3">
                   <button
@@ -282,7 +286,6 @@ const orderDirection = [
 ];
 
 export default {
-  // TODO: merge LiveView and OwnerView using setup() as they share the exactly the same component construction, only difference is the template
   name: "OwnerView",
   components: {
     Pagination,

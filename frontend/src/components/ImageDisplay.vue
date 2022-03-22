@@ -10,7 +10,7 @@
     :modules="modules"
     :spaceBetween="10"
     :initialSlide="0"
-    :navigation="images.length > 1"
+    :navigation="images.length > 1 && withNavigation"
     :loop="loop"
     :slides-per-view="slidesPerView"
     :pagination="{ clickable: true }"
@@ -25,17 +25,12 @@
         class="d-flex justify-content-center align-items-center"
         :style="{ height: slideHeight }"
       >
-        <a
-          data-bs-toggle="modal"
-          href="#fullscreenImg"
-          role="button"
-          :style="enableClickToFullscreen ? '' : 'pointer-events: none;'"
-        >
+        <a v-on:click="onModalToggleClicked($event)">
           <img
             :src="image.url"
             :alt="image.filename"
             class="img-fluid"
-            :class="slidesPerView > 1 ? '' : 'p-5'"
+            :class="slidesPerView > 1 || !withNavigation ? 'pb-5' : 'p-5'"
             :style="{ 'max-height': slideHeight }"
             v-on:click="showFullscreenImg(image.url, image.filename)"
           />
@@ -69,6 +64,7 @@
 <script>
 import { Navigation, Pagination } from "swiper";
 import { Swiper, SwiperSlide } from "swiper/vue";
+import { Modal } from "bootstrap";
 import "swiper/css";
 import "swiper/css/zoom";
 import "swiper/css/navigation";
@@ -90,6 +86,10 @@ export default {
       default: 1,
       type: Number,
     },
+    withNavigation: {
+      default: true,
+      type: Boolean,
+    },
     enableClickToFullscreen: {
       default: false,
       type: Boolean,
@@ -108,6 +108,13 @@ export default {
     SwiperSlide,
   },
   methods: {
+    onModalToggleClicked(event) {
+      if (this.enableClickToFullscreen) {
+        Modal.getOrCreateInstance(
+          document.querySelector("#fullscreenImg")
+        ).show();
+      }
+    },
     showFullscreenImg(url, alt) {
       this.fullscreenImgUrl = url;
       this.fullscreenImgAlt = alt;

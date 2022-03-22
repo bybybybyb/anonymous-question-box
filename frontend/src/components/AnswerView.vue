@@ -9,7 +9,11 @@
               <div class="container">
                 <div class="row">
                   <div class="col-12" v-if="images.length > 0">
-                    <image-display :images="images" slideHeight="300px" />
+                    <image-display
+                      :images="images"
+                      slideHeight="300px"
+                      :withNavigation="false"
+                    />
                   </div>
                   <div
                     class="col-12 mt-3 d-flex justify-content-end"
