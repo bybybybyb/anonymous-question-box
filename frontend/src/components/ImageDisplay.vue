@@ -5,13 +5,14 @@
       '--swiper-navigation-color': '#000',
       '--swiper-pagination-color': '#000',
       'max-height': slideHeight,
+      'max-width': slideWidth,
     }"
     :modules="modules"
-    :spaceBetween="20"
-    :initialSlide="1"
+    :spaceBetween="10"
+    :initialSlide="0"
     :navigation="images.length > 1"
-    :loop="true"
-    :slides-per-view="1"
+    :loop="loop"
+    :slides-per-view="slidesPerView"
     :pagination="{ clickable: true }"
     class="border-bottom"
   >
@@ -33,7 +34,8 @@
           <img
             :src="image.url"
             :alt="image.filename"
-            class="img-fluid pt-2 pb-2"
+            class="img-fluid"
+            :class="slidesPerView > 1 ? '' : 'p-5'"
             :style="{ 'max-height': slideHeight }"
             v-on:click="showFullscreenImg(image.url, image.filename)"
           />
@@ -76,9 +78,30 @@ import "swiper/css/scrollbar";
 export default {
   name: "ImageDisplay",
   props: {
-    slideHeight: String,
-    enableClickToFullscreen: Boolean,
-    images: Array,
+    slideHeight: {
+      default: "400px",
+      type: String,
+    },
+    slideWidth: {
+      default: "100%",
+      type: String,
+    },
+    slidesPerView: {
+      default: 1,
+      type: Number,
+    },
+    enableClickToFullscreen: {
+      default: false,
+      type: Boolean,
+    },
+    loop: {
+      default: true,
+      type: Boolean,
+    },
+    images: {
+      default: [],
+      type: Array,
+    },
   },
   components: {
     Swiper,
