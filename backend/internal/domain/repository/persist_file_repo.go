@@ -5,7 +5,6 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"time"
@@ -56,12 +55,9 @@ func (t *TencentOSSPersistFileRepo) GetPresignedURL(ctx context.Context, path st
 	}
 	sign := md5.Sum([]byte(fmt.Sprintf("%s%s%d", t.cdnKey, path, now)))
 	signedURL := fmt.Sprintf("%s%s?%s=%s&%s=%d", t.cdnURL, path, "sign", hex.EncodeToString(sign[:]), "t", now)
-	log.Printf("signed url: %s, path: %s, key: %s, ts: %d", signedURL, path, t.cdnKey, now)
 	return url.ParseRequestURI(signedURL)
 }
 func (t *TencentOSSPersistFileRepo) Upload(ctx context.Context, key string, filepath string) error {
-	log.Printf("start uploading %s to tencent cos\n", key)
 	_, _, err := t.client.Object.Upload(ctx, key, filepath, nil)
-	log.Printf("done uploading %s to tencent cos\n", key)
 	return err
 }
