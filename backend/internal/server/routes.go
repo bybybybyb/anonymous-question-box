@@ -2,7 +2,6 @@ package server
 
 import (
 	"net/http"
-	"net/url"
 	"os"
 	"sync"
 	"time"
@@ -29,19 +28,24 @@ func SetupRoutes() (*gin.Engine, chan bool, *sync.WaitGroup) {
 	if ossKey == "" {
 		ossKey = viper.GetString("oss_key")
 	}
-	ossURL, err := url.Parse(viper.GetString("oss_url"))
-	if err != nil {
-		panic(err)
+	ossCDNKey := os.Getenv("OSS_CDN_KEY")
+	if ossCDNKey == "" {
+		ossCDNKey = viper.GetString("oss_cdn_key")
 	}
 	qManager := &repository.SQLiteQuestionManager{}
 	tempFileRepo := &repository.LocalTempFileRepo{RootDir: viper.GetString("temp_file_root_dir"), IDToLocalPath: make(map[string]string), Mutex: &sync.Mutex{}}
+	persistFileRepo, err := repository.NewTencentOSSPersistFileRepo(viper.GetString("oss_url"), viper.GetString("oss_cdn_url"), ossID, ossKey, ossCDNKey, viper.GetString("oss_bucket"))
+	if err != nil {
+		panic(err)
+	}
+
 	authHandler := &handler.AuthHandler{TokenManager: &repository.JWTManager{}}
 	questionsHandler := &handler.QuestionsHandler{
 		ProfileManager:  &repository.LocalProfileManager{},
 		TokenManager:    &repository.JWTManager{},
 		QuestionManager: qManager,
 		TempFileRepo:    tempFileRepo,
-		PersistFileRepo: repository.NewTencentOSSPersistFileRepo(ossURL, ossID, ossKey, viper.GetString("oss_bucket")),
+		PersistFileRepo: persistFileRepo,
 		VisitChan:       visitChan}
 	fileHandler := &handler.FilepondHandler{TempFileRepo: tempFileRepo, QuestionManager: qManager}
 
