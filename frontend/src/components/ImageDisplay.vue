@@ -10,7 +10,7 @@
     :modules="modules"
     :spaceBetween="10"
     :initialSlide="0"
-    :navigation="images.length > 1 && withNavigation"
+    :navigation="images && images.length > 1 && withNavigation"
     :loop="loop"
     :slides-per-view="slidesPerView"
     :pagination="{ clickable: true }"
