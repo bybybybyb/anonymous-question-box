@@ -9,7 +9,7 @@
             id="slideProjectArea"
             class="my-4 mx-5"
             style="
-              max-width: 60vw;
+              max-width: 45vw;
               max-height: 70vh;
               resize: vertical;
               overflow: auto;
@@ -29,7 +29,7 @@
             id="textProjectArea"
             class="card shadow-md my-4 mx-5 border border-3 border-dark"
             style="
-              max-width: 60vw;
+              max-width: 45vw;
               max-height: 70vh;
               height: 500px;
               width: 800px;
@@ -275,7 +275,7 @@
                             :slidesPerView="5"
                             :loop="false"
                             slideHeight="400px"
-                            slideWidth="auto"
+                            slideWidth="40vw"
                           />
                           <p
                             v-for="(sentence, i) in formatText(q.text)"
