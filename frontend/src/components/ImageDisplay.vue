@@ -5,13 +5,14 @@
       '--swiper-navigation-color': '#000',
       '--swiper-pagination-color': '#000',
       'max-height': slideHeight,
+      'max-width': slideWidth,
     }"
     :modules="modules"
-    :spaceBetween="20"
-    :initialSlide="1"
-    :navigation="images.length > 1"
-    :loop="true"
-    :slides-per-view="1"
+    :spaceBetween="10"
+    :initialSlide="0"
+    :navigation="images.length > 1 && withNavigation"
+    :loop="loop"
+    :slides-per-view="slidesPerView"
     :pagination="{ clickable: true }"
     class="border-bottom"
   >
@@ -24,16 +25,12 @@
         class="d-flex justify-content-center align-items-center"
         :style="{ height: slideHeight }"
       >
-        <a
-          data-bs-toggle="modal"
-          href="#fullscreenImg"
-          role="button"
-          :style="enableClickToFullscreen ? '' : 'pointer-events: none;'"
-        >
+        <a v-on:click="onModalToggleClicked($event)">
           <img
             :src="image.url"
             :alt="image.filename"
-            class="img-fluid pt-2 pb-2"
+            class="img-fluid"
+            :class="slidesPerView > 1 || !withNavigation ? 'pb-5' : 'p-5'"
             :style="{ 'max-height': slideHeight }"
             v-on:click="showFullscreenImg(image.url, image.filename)"
           />
@@ -67,6 +64,7 @@
 <script>
 import { Navigation, Pagination } from "swiper";
 import { Swiper, SwiperSlide } from "swiper/vue";
+import { Modal } from "bootstrap";
 import "swiper/css";
 import "swiper/css/zoom";
 import "swiper/css/navigation";
@@ -76,15 +74,47 @@ import "swiper/css/scrollbar";
 export default {
   name: "ImageDisplay",
   props: {
-    slideHeight: String,
-    enableClickToFullscreen: Boolean,
-    images: Array,
+    slideHeight: {
+      default: "400px",
+      type: String,
+    },
+    slideWidth: {
+      default: "100%",
+      type: String,
+    },
+    slidesPerView: {
+      default: 1,
+      type: Number,
+    },
+    withNavigation: {
+      default: true,
+      type: Boolean,
+    },
+    enableClickToFullscreen: {
+      default: false,
+      type: Boolean,
+    },
+    loop: {
+      default: true,
+      type: Boolean,
+    },
+    images: {
+      default: [],
+      type: Array,
+    },
   },
   components: {
     Swiper,
     SwiperSlide,
   },
   methods: {
+    onModalToggleClicked(event) {
+      if (this.enableClickToFullscreen) {
+        Modal.getOrCreateInstance(
+          document.querySelector("#fullscreenImg")
+        ).show();
+      }
+    },
     showFullscreenImg(url, alt) {
       this.fullscreenImgUrl = url;
       this.fullscreenImgAlt = alt;

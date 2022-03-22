@@ -140,17 +140,11 @@
                   <div class="modal-content">
                     <div class="modal-header">
                       <h5 class="modal-title">确认删除？</h5>
-                      <button
-                        type="button"
-                        class="btn-close"
-                        data-bs-dismiss="modal"
-                        aria-label="Close"
-                      ></button>
                     </div>
                     <div class="modal-body">
                       <button
                         type="button"
-                        class="btn btn-sm btn-outline-danger mx-1"
+                        class="btn btn-sm btn-danger mx-1"
                         data-bs-dismiss="modal"
                         v-on:click="deleteQuestion(q.uuid)"
                       >
@@ -158,7 +152,7 @@
                       </button>
                       <button
                         type="button"
-                        class="btn btn-sm btn-outline-secondary mx-1"
+                        class="btn btn-sm btn-secondary mx-1"
                         data-bs-dismiss="modal"
                       >
                         取消
@@ -251,7 +245,11 @@
             <div class="container">
               <div class="row">
                 <div class="col-12">
-                  <image-display :images="images" slideHeight="80vh" />
+                  <image-display
+                    :images="images"
+                    slideHeight="80vh"
+                    :withNavigation="false"
+                  />
                 </div>
                 <div class="col-12 d-flex justify-content-end pt-3">
                   <button
@@ -288,7 +286,6 @@ const orderDirection = [
 ];
 
 export default {
-  // TODO: merge LiveView and OwnerView using setup() as they share the exactly the same component construction, only difference is the template
   name: "OwnerView",
   components: {
     Pagination,

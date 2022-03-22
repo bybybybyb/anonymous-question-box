@@ -2,228 +2,287 @@
   <div>
     <Header :hideHomepageBtn="true"></Header>
     <div class="container-fluid">
-      <div class="row">
+      <div class="row flex-nowrap">
         <div class="col">
-          <div class="div" style="width: 600px; height: 600px">
-            <div
-              class="card shadow-lg my-3 mx-5 border border-3 border-dark"
-              style="width: 600px; height: 400px"
-            >
-              <div class="card-body overflow-auto">
-                <p
-                  v-for="(sentence, i) in formatText(projected_text)"
-                  v-bind:key="i"
-                  :class="fsClass"
-                  class="text-start fw-bold"
-                >
-                  <strong>{{ sentence }}</strong>
-                </p>
-              </div>
+          <div
+            ref="slideProjectArea"
+            id="slideProjectArea"
+            class="my-4 mx-5"
+            style="
+              max-width: 60vw;
+              max-height: 70vh;
+              resize: vertical;
+              overflow: auto;
+            "
+            :style="{
+              width: Math.max(400, projectAreaWidth) + 'px',
+            }"
+          >
+            <image-display
+              :images="images"
+              :slideHeight="Math.max(300, slideAreaHeight) + 'px'"
+              :slideWidth="Math.max(400, projectAreaWidth) + 'px'"
+            />
+          </div>
+          <div
+            ref="textProjectArea"
+            id="textProjectArea"
+            class="card shadow-md my-4 mx-5 border border-3 border-dark"
+            style="
+              max-width: 60vw;
+              max-height: 70vh;
+              height: 500px;
+              width: 800px;
+              resize: both;
+              overflow: auto;
+            "
+          >
+            <div class="card-body overflow-auto">
+              <p
+                v-for="(sentence, i) in formatText(projected_text)"
+                v-bind:key="i"
+                :class="fsClass"
+                class="text-start fw-bold"
+              >
+                <strong>{{ sentence }}</strong>
+              </p>
             </div>
-            <nav class="my-3 mx-5" style="width: 600px">
+          </div>
+          <nav class="mb-5 mx-4">
+            <div class="container-fluid">
+              <ul class="nav justify-content-start">
+                <li class="nav-item mx-1 my-1">文字大小调节</li>
+                <li class="nav-item mx-1">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary col-sm-12"
+                    :disabled="shrinkBtnDisabled"
+                    v-on:click="onFontResizeClick(false)"
+                  >
+                    缩小
+                  </button>
+                </li>
+                <li class="nav-item mx-1">
+                  <button
+                    type="button"
+                    :disabled="enlargeBtnDisabled"
+                    class="btn btn-sm btn-primary col-sm-12"
+                    v-on:click="onFontResizeClick(true)"
+                  >
+                    放大
+                  </button>
+                </li>
+                <li class="nav-item mx-1">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary col-sm-12"
+                    v-on:click="onFontSizeResetClick()"
+                  >
+                    重置
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </nav>
+        </div>
+        <div class="col">
+          <div class="container mt-4">
+            <nav
+              class="my-2 navbar navbar-expand-lg navbar-light"
+              :style="navbarStyling"
+            >
               <div class="container-fluid">
-                <ul class="nav justify-content-end">
-                  <li class="nav-item mx-1">
-                    <button
-                      type="button"
-                      class="btn btn-sm btn-primary m-1 col-sm-12"
-                      :disabled="shrinkBtnDisabled"
-                      v-on:click="onFontResizeClick(false)"
+                <ul class="navbar-nav d-flex" style="flex-wrap: wrap">
+                  <li class="nav-item mx-1 my-1" style="max-width: 200px">
+                    <select
+                      class="form-select"
+                      aria-label="Default select example"
+                      id="question_type"
+                      v-on:change="onQueryChange(true)"
+                      v-model="queryParams['type']"
                     >
-                      缩小
-                    </button>
+                      <option
+                        v-for="q_type in ownerProfiles[owner].question_types"
+                        v-bind:key="q_type.name"
+                        :value="q_type.name"
+                      >
+                        {{ q_type.description }}
+                      </option>
+                    </select>
                   </li>
-                  <li class="nav-item mx-1">
-                    <button
-                      type="button"
-                      :disabled="enlargeBtnDisabled"
-                      class="btn btn-sm btn-primary m-1 col-sm-12"
-                      v-on:click="onFontResizeClick(true)"
+                  <li class="nav-item mx-1 my-1">
+                    <select
+                      class="form-select"
+                      aria-label="Default select example"
+                      id="reply_status"
+                      v-on:change="onQueryChange(true)"
+                      v-model="queryParams['reply_status']"
                     >
-                      放大
-                    </button>
+                      <option selected value="0">全部</option>
+                      <option value="-1">未回复</option>
+                      <option value="1">已回复</option>
+                    </select>
                   </li>
-                  <li class="nav-item mx-1">
-                    <button
-                      type="button"
-                      class="btn btn-sm btn-primary m-1 col-sm-12"
-                      v-on:click="onFontSizeResetClick()"
+                  <li class="nav-item mx-1 my-1">
+                    <select
+                      class="form-select"
+                      aria-label="Default select example"
+                      id="day_limit"
+                      v-on:change="onQueryChange(true)"
+                      v-model="queryParams['day_limit']"
                     >
-                      重置
-                    </button>
+                      <option value="1">1天内</option>
+                      <option selected value="7">7天内</option>
+                      <option value="30">30天内</option>
+                      <option value="180">180天内</option>
+                      <option value="365">1年内</option>
+                    </select>
+                  </li>
+                  <li class="nav-item mx-1 my-1">
+                    <select
+                      class="form-select"
+                      aria-label="Default select example"
+                      id="order"
+                      v-on:change="onQueryChange(false)"
+                      v-model="queryParams['order_params_index']"
+                    >
+                      <option selected value="0">时间降序</option>
+                      <option value="1">时间升序</option>
+                      <option value="2">字数降序</option>
+                      <option value="3">字数升序</option>
+                    </select>
+                  </li>
+                  <li class="nav-item mx-1 my-1">
+                    <select
+                      class="form-select"
+                      aria-label="Default select example"
+                      id="order"
+                      v-on:change="onQueryChange(true)"
+                      v-model="queryParams['page_size']"
+                    >
+                      <option selected value="5">每页5条</option>
+                      <option value="10">每页10条</option>
+                      <option value="20">每页20条</option>
+                      <option value="50">每页50条</option>
+                    </select>
+                  </li>
+                  <li
+                    class="nav-item mx-1 my-1 align-self-end"
+                    style="height: 38px"
+                  >
+                    <pagination
+                      v-model="queryParams['page']"
+                      :records="total_count"
+                      :per-page="queryParams['page_size']"
+                      :options="{
+                        chunk: 5,
+                        format: false,
+                        chunksNavigation: 'scroll',
+                        edgeNavigation: true,
+                        texts: {
+                          count: '',
+                          first: '<<',
+                          last: '>>',
+                        },
+                      }"
+                      @paginate="onQueryChange(false)"
+                    />
                   </li>
                 </ul>
               </div>
             </nav>
           </div>
-        </div>
-        <div class="col">
-          <div class="row">
-            <div class="mx-5 my-3" style="width: 1070px">
-              <nav
-                class="border-top border-start border-end border-1 border-dark navbar navbar-expand-lg navbar-light"
-                :style="navbarStyling"
-              >
-                <div class="container-fluid">
-                  <ul class="navbar-nav">
-                    <li class="nav-item mx-1 my-1">
-                      <select
-                        class="form-select"
-                        aria-label="Default select example"
-                        id="question_type"
-                        v-on:change="onQueryChange(true)"
-                        v-model="queryParams['type']"
-                      >
-                        <option
-                          v-for="q_type in ownerProfiles[owner].question_types"
-                          v-bind:key="q_type.name"
-                          :value="q_type.name"
-                        >
-                          {{ q_type.description }}
-                        </option>
-                      </select>
-                    </li>
-                    <li class="nav-item mx-1 my-1">
-                      <select
-                        class="form-select"
-                        aria-label="Default select example"
-                        id="reply_status"
-                        v-on:change="onQueryChange(true)"
-                        v-model="queryParams['reply_status']"
-                      >
-                        <option selected value="0">全部</option>
-                        <option value="-1">未回复</option>
-                        <option value="1">已回复</option>
-                      </select>
-                    </li>
-                    <li class="nav-item mx-1 my-1">
-                      <select
-                        class="form-select"
-                        aria-label="Default select example"
-                        id="day_limit"
-                        v-on:change="onQueryChange(true)"
-                        v-model="queryParams['day_limit']"
-                      >
-                        <option value="1">1天内</option>
-                        <option selected value="7">7天内</option>
-                        <option value="30">30天内</option>
-                        <option value="180">180天内</option>
-                        <option value="365">1年内</option>
-                      </select>
-                    </li>
-                    <li class="nav-item mx-1 my-1">
-                      <select
-                        class="form-select"
-                        aria-label="Default select example"
-                        id="order"
-                        v-on:change="onQueryChange(false)"
-                        v-model="queryParams['order_params_index']"
-                      >
-                        <option selected value="0">时间降序</option>
-                        <option value="1">时间升序</option>
-                        <option value="2">字数降序</option>
-                        <option value="3">字数升序</option>
-                      </select>
-                    </li>
-                    <li class="nav-item mx-1 my-1">
-                      <select
-                        class="form-select"
-                        aria-label="Default select example"
-                        id="order"
-                        v-on:change="onQueryChange(true)"
-                        v-model="queryParams['page_size']"
-                      >
-                        <option selected value="5">每页5条</option>
-                        <option value="10">每页10条</option>
-                        <option value="20">每页20条</option>
-                        <option value="50">每页50条</option>
-                      </select>
-                    </li>
-                    <li class="d-flex mx-1 my-1">
-                      <pagination
-                        v-model="queryParams['page']"
-                        :records="total_count"
-                        :per-page="queryParams['page_size']"
-                        :options="{
-                          chunk: 3,
-                          format: false,
-                          chunksNavigation: 'scroll',
-                          edgeNavigation: true,
-                          theme: 'bootstrap4',
-                          texts: {
-                            count: '',
-                            first: '首页',
-                            last: '末页',
-                          },
-                        }"
-                        @paginate="onQueryChange(false)"
-                      />
-                    </li>
-                  </ul>
-                </div>
-              </nav>
-              <div
-                class="card border-start border-end border-bottom border-1 border-dark overflow-auto"
-                style="height: 745px; border-radius: 0rem"
-              >
-                <div class="card">
-                  <div
-                    class="card shadow-lg m-2"
-                    v-for="(q, i) in rows"
-                    :key="i"
-                  >
-                    <div class="card-body">
-                      <div class="container">
-                        <div class="row">
-                          <div class="col-3">
-                            <div class="list-group">
-                              <li class="list-group-item">
-                                字数： {{ q.word_count }}
-                              </li>
-                              <li class="list-group-item">
-                                投稿时间： {{ formatTime(q.asked_at) }}
-                              </li>
-                              <li class="list-group-item">
-                                回复时间： {{ formatTime(q.answered_at) }}
-                              </li>
-                              <li class="list-group-item">
-                                <button
-                                  type="button"
-                                  class="btn btn-sm btn-outline-warning m-1 col-sm-12"
-                                  v-on:click="
-                                    projectQuestion(
-                                      q.uuid,
-                                      q.text,
-                                      q.answered_at
-                                    )
-                                  "
-                                >
-                                  ← 投屏
-                                </button>
-                                <button
-                                  type="button"
-                                  class="btn d-none d-sm-block btn-sm btn-outline-danger m-1 col-sm-12"
-                                  :value="q.uuid"
-                                  v-on:click="deleteQuestion"
-                                >
-                                  删除
-                                </button>
-                              </li>
-                            </div>
-                          </div>
-                          <div class="col-9">
-                            <div class="card">
-                              <div class="card-body">
-                                <p
-                                  v-for="(sentence, i) in formatText(q.text)"
-                                  v-bind:key="i"
-                                  class="lh-lg text-start"
-                                >
-                                  {{ sentence }}
-                                </p>
+          <div class="container overflow-auto" style="max-height: 80vh">
+            <div class="card shadow-sm my-2" v-for="(q, i) in rows" :key="i">
+              <div class="card-body">
+                <div class="container">
+                  <div class="row">
+                    <div class="col-3">
+                      <div class="list-group">
+                        <li class="list-group-item">
+                          字数： {{ q.word_count }}
+                        </li>
+                        <li class="list-group-item">
+                          投稿时间： {{ formatTime(q.asked_at) }}
+                        </li>
+                        <li class="list-group-item">
+                          回复时间： {{ formatTime(q.answered_at) }}
+                        </li>
+                        <li class="list-group-item">
+                          <button
+                            type="button"
+                            class="btn btn-sm btn-warning m-1 col-sm-12"
+                            v-on:click="
+                              projectQuestion(
+                                q.uuid,
+                                q.text,
+                                q.images,
+                                q.answered_at
+                              )
+                            "
+                          >
+                            ← 投屏
+                          </button>
+                          <button
+                            type="button"
+                            class="btn d-none d-sm-block btn-sm btn-danger m-1 col-sm-12"
+                            data-bs-toggle="modal"
+                            data-bs-target="#confirmDeleteModal"
+                          >
+                            删除
+                          </button>
+                          <div
+                            class="modal fade"
+                            id="confirmDeleteModal"
+                            tabindex="-1"
+                            data-bs-backdrop="false"
+                          >
+                            <div class="modal-dialog modal-sm">
+                              <div class="modal-content">
+                                <div class="modal-header">
+                                  <h5 class="modal-title">确认删除？</h5>
+                                </div>
+                                <div class="modal-body">
+                                  <button
+                                    type="button"
+                                    class="btn btn-sm btn-danger mx-1"
+                                    data-bs-dismiss="modal"
+                                    :value="q.uuid"
+                                    v-on:click="deleteQuestion"
+                                  >
+                                    确认
+                                  </button>
+                                  <button
+                                    type="button"
+                                    class="btn btn-sm btn-secondary mx-1"
+                                    data-bs-dismiss="modal"
+                                  >
+                                    取消
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           </div>
+                        </li>
+                      </div>
+                    </div>
+                    <div class="col-9">
+                      <div class="card">
+                        <div class="card-body">
+                          <image-display
+                            v-if="q.images.length > 0"
+                            :images="q.images"
+                            :slidesPerView="5"
+                            :loop="false"
+                            slideHeight="400px"
+                          />
+                          <p
+                            v-for="(sentence, i) in formatText(q.text)"
+                            v-bind:key="i"
+                            class="lh-lg text-start"
+                          >
+                            {{ sentence }}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -234,18 +293,13 @@
           </div>
         </div>
       </div>
-      <div class="row" style="background: rgba(255, 255, 255, 0.9)">
-        <p>
-          本页面仍在测试中，目前以1920x1080分辨率100%缩放为基础制作，其他分辨率或缩放下可能无法正常工作。
-        </p>
-        <p>点击投屏将会复制投稿文本到左边空白中，并用当前时间自动回复投稿。</p>
-      </div>
     </div>
   </div>
 </template>
 <script>
 import Header from "./Header.vue";
 import Pagination from "v-pagination-3";
+import ImageDisplay from "./ImageDisplay.vue";
 const storagePrefix = "ownerView_";
 const orderDeriction = [
   { by: "asked_at", reversed: true },
@@ -264,13 +318,15 @@ export default {
   components: {
     Pagination,
     Header,
+    ImageDisplay,
   },
   props: {
     owner: String,
   },
   methods: {
-    projectQuestion(uuid, text, answered_at) {
+    projectQuestion(uuid, text, images, answered_at) {
       this.projected_text = text;
+      this.images = images;
       // automatically answer the question if it was not answered before
       let time = Date.parse(answered_at);
       const autoReply = `已于 ${new Date().toLocaleString("zh-CN", {
@@ -452,6 +508,23 @@ export default {
     }
     this.onQueryChange();
   },
+  mounted() {
+    const ob = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        const cr = entry.contentRect;
+        switch (entry.target.id) {
+          case "slideProjectArea":
+            this.slideAreaHeight = cr.height;
+            break;
+          case "textProjectArea":
+            this.projectAreaWidth = cr.width;
+        }
+      }
+    });
+
+    ob.observe(this.$refs.slideProjectArea);
+    ob.observe(this.$refs.textProjectArea);
+  },
   data() {
     return {
       queryParams: {
@@ -465,11 +538,21 @@ export default {
       rows: [],
       total_count: 0,
       navbarStyling: {},
+      images: [],
       projected_text: "",
       fsClass: fontSizes[defaultFontSizeIdx],
       enlargeBtnDisabled: false,
       shrinkBtnDisabled: false,
+      slideAreaHeight: 300,
+      projectAreaWidth: 400,
     };
   },
 };
 </script>
+
+<style scoped>
+.modal-dialog {
+  top: 50vh;
+  left: 25vw;
+}
+</style>

@@ -86,7 +86,7 @@
 </template>
 
 <script>
-const defaultCardMaxHeight = 500;
+const defaultCardMaxHeight = 600;
 import ImageDisplay from "./ImageDisplay.vue";
 export default {
   name: "QuestionDisplay",
