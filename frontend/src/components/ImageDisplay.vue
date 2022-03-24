@@ -12,7 +12,7 @@
     :initialSlide="0"
     :navigation="images && images.length > 1 && withNavigation"
     :loop="loop"
-    :zoom="zoom"
+    :zoom="zoom ? { maxRatio: 5 } : false"
     :slides-per-view="slidesPerView"
     :pagination="{ clickable: true }"
     class="border-bottom"
