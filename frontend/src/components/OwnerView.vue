@@ -249,6 +249,7 @@
                     :images="images"
                     slideHeight="80vh"
                     :withNavigation="false"
+                    :zoom="true"
                   />
                 </div>
                 <div class="col-12 d-flex justify-content-end pt-3">
