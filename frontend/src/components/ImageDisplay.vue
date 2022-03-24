@@ -24,9 +24,10 @@
     >
       <div
         class="d-flex justify-content-center align-items-center"
+        :class="zoom ? 'swiper-zoom-container' : ''"
         :style="{ height: slideHeight }"
       >
-        <a v-on:click="onModalToggleClicked($event)">
+        <a v-if="!zoom" v-on:click="onModalToggleClicked($event)">
           <img
             :src="image.url"
             :alt="image.filename"
@@ -36,6 +37,15 @@
             v-on:click="showFullscreenImg(image.url, image.filename)"
           />
         </a>
+        <img
+          v-else
+          :src="image.url"
+          :alt="image.filename"
+          class="img-fluid"
+          :class="slidesPerView > 1 || !withNavigation ? 'pb-5' : 'p-5'"
+          :style="{ 'max-height': slideHeight }"
+          v-on:click="showFullscreenImg(image.url, image.filename)"
+        />
       </div>
     </swiper-slide>
   </swiper>
@@ -63,7 +73,7 @@
   </div>
 </template>
 <script>
-import { Navigation, Pagination } from "swiper";
+import { Navigation, Pagination, Zoom } from "swiper";
 import { Swiper, SwiperSlide } from "swiper/vue";
 import { Modal } from "bootstrap";
 import "swiper/css";
@@ -71,6 +81,7 @@ import "swiper/css/zoom";
 import "swiper/css/navigation";
 import "swiper/css/pagination";
 import "swiper/css/scrollbar";
+import "swiper/css/zoom";
 
 export default {
   name: "ImageDisplay",
@@ -128,7 +139,7 @@ export default {
   data: {
     fullscreenImgUrl: "",
     fullscreenImgAlt: "",
-    modules: [Navigation, Pagination],
+    modules: [Navigation, Pagination, Zoom],
   },
 };
 </script>
