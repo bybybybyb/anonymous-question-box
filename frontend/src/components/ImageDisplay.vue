@@ -12,6 +12,7 @@
     :initialSlide="0"
     :navigation="images && images.length > 1 && withNavigation"
     :loop="loop"
+    :zoom="zoom"
     :slides-per-view="slidesPerView"
     :pagination="{ clickable: true }"
     class="border-bottom"
@@ -96,6 +97,10 @@ export default {
     },
     loop: {
       default: true,
+      type: Boolean,
+    },
+    zoom: {
+      default: false,
       type: Boolean,
     },
     images: {

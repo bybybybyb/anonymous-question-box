@@ -20,6 +20,7 @@
           >
             <image-display
               :images="images"
+              :zoom="true"
               :slideHeight="Math.max(300, slideAreaHeight) + 'px'"
               :slideWidth="Math.max(400, projectAreaWidth) + 'px'"
             />
