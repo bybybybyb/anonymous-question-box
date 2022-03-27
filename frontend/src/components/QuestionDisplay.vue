@@ -20,6 +20,7 @@
                   <div class="row">
                     <div class="col-12">
                       <image-display
+                        :v-if="images?.length > 0"
                         :images="images"
                         :slideHeight="questionCardMaxHeight - 200 + 'px'"
                         :enableClickToFullscreen="true"

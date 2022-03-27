@@ -8,7 +8,7 @@
             <div class="card-body overflow-auto">
               <div class="container">
                 <div class="row">
-                  <div class="col-12" v-if="images.length > 0">
+                  <div class="col-12" v-if="images?.length > 0">
                     <image-display
                       :images="images"
                       slideHeight="300px"
@@ -17,7 +17,7 @@
                   </div>
                   <div
                     class="col-12 mt-3 d-flex justify-content-end"
-                    v-if="images.length > 0"
+                    v-if="images?.length > 0"
                   >
                     <button
                       class="btn btn-outline-info btn-sm"
