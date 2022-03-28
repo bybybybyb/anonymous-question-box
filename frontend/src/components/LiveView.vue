@@ -296,7 +296,7 @@
                           <image-display
                             v-if="q.images && q.images.length > 0"
                             :images="q.images"
-                            :slidesPerView="5"
+                            :slidesPerView="3"
                             :loop="false"
                             :enableClickToFullscreen="true"
                             :autoHeight="true"

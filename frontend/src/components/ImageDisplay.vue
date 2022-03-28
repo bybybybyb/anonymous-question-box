@@ -12,7 +12,7 @@
           }"
           :modules="modules"
           :autoHeight="autoHeight"
-          :spaceBetween="10"
+          :spaceBetween="30"
           :initialSlide="0"
           :navigation="images?.length > 1 && withNavigation"
           :loop="loop && images?.length > 1"
