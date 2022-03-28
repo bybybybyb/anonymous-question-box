@@ -224,13 +224,7 @@
         </div>
       </div>
     </div>
-    <div
-      class="modal fade"
-      tabindex="-1"
-      id="imgModal"
-      ref="imgModal"
-      style="max-height: 100vh"
-    >
+    <div class="modal fade" tabindex="-1" id="imgModal" ref="imgModal">
       <div class="modal-dialog modal-dialog-scrollable modal-lg">
         <div class="modal-content">
           <div class="modal-header">
@@ -242,28 +236,25 @@
             ></button>
           </div>
           <div class="modal-body">
-            <div class="container">
-              <div class="row">
-                <div class="col-12">
-                  <image-display
-                    :images="images"
-                    slideHeight="80vh"
-                    :withNavigation="false"
-                    :zoom="true"
-                  />
-                </div>
-                <div class="col-12 d-flex justify-content-end pt-3">
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-outline-info"
-                    data-bs-toggle="modal"
-                    data-bs-target="#answerModal"
-                  >
-                    返回投稿
-                  </button>
-                </div>
-              </div>
+            <div class="row">
+              <image-display
+                :images="images"
+                :withNavigation="false"
+                :withModal="false"
+                :autoHeight="true"
+                slideHeight="100%"
+              />
             </div>
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-info"
+              data-bs-toggle="modal"
+              data-bs-target="#answerModal"
+            >
+              返回投稿
+            </button>
           </div>
         </div>
       </div>

@@ -11,10 +11,11 @@
             'max-width': slideWidth,
           }"
           :modules="modules"
+          :autoHeight="autoHeight"
           :spaceBetween="10"
           :initialSlide="0"
           :navigation="images?.length > 1 && withNavigation"
-          :loop="loop"
+          :loop="loop && images?.length > 1"
           :zoom="zoom ? { maxRatio: 5 } : false"
           :cssMode="disableMouseTouch"
           :slides-per-view="slidesPerView"
@@ -28,10 +29,9 @@
           >
             <div
               class="d-flex justify-content-center align-items-center"
-              :class="zoom ? 'swiper-zoom-container' : ''"
               :style="{ height: slideHeight }"
             >
-              <a v-if="!zoom" v-on:click="onModalToggleClicked($event)">
+              <a v-if="withModal" v-on:click="onModalToggleClicked($event)">
                 <img
                   :src="image.url"
                   :alt="image.filename"
@@ -45,10 +45,7 @@
                 v-else
                 :src="image.url"
                 :alt="image.filename"
-                class="img-fluid"
-                :class="slidesPerView > 1 || !withNavigation ? 'pb-5' : 'p-5'"
-                :style="{ 'max-height': slideHeight }"
-                v-on:click="showFullscreenImg(image.url, image.filename)"
+                :style="{ width: '100%' }"
               />
             </div>
           </swiper-slide>
@@ -102,6 +99,10 @@ import "swiper/css/zoom";
 export default {
   name: "ImageDisplay",
   props: {
+    autoHeight: {
+      default: false,
+      type: Boolean,
+    },
     slideHeight: {
       default: "400px",
       type: String,
@@ -134,8 +135,8 @@ export default {
       default: true,
       type: Boolean,
     },
-    zoom: {
-      default: false,
+    withModal: {
+      default: true,
       type: Boolean,
     },
     images: {
