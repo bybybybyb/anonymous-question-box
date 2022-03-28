@@ -8,7 +8,7 @@
             ref="slideProjectArea"
             id="slideProjectArea"
             class="my-4 mx-5 shadow-lg"
-            style="max-width: 45vw; max-height: 70vh; overflow: auto"
+            style="max-width: 45vw; max-height: 70vh; overflow: hidden"
             :style="
               withImages
                 ? {
