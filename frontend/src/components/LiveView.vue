@@ -592,4 +592,8 @@ export default {
   top: 50vh;
   left: 25vw;
 }
+
+#site-header {
+  max-height: 5vh;
+}
 </style>
