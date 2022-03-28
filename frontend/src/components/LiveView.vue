@@ -7,7 +7,7 @@
           <div
             ref="slideProjectArea"
             id="slideProjectArea"
-            class="my-4 mx-5 shadow"
+            class="my-4 mx-5 shadow-lg"
             style="max-width: 45vw; max-height: 70vh; overflow: auto"
             :style="
               withImages
