@@ -1,5 +1,8 @@
 <template>
-  <nav class="navbar navbar-expand-md navbar-dark bg-dark">
+  <nav
+    class="navbar navbar-expand-md navbar-dark bg-dark"
+    style="max-height: 5vh"
+  >
     <div class="container-fluid">
       <span class="navbar-brand m-1 mb-0 h1">
         <img src="../assets/marshmallow_light.svg" alt="" height="20" />

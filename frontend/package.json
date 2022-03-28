@@ -19,6 +19,7 @@
     "qrcode.vue": "^3.3.3",
     "swiper": "^8.0.7",
     "v-pagination-3": "^0.1.7",
+    "v-viewer": "^3.0.10",
     "vue": "^3.2.31",
     "vue-axios": "^3.4.1",
     "vue-filepond": "^7.0.2",

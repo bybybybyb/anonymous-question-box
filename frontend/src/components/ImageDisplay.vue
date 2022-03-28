@@ -1,56 +1,72 @@
 <template>
-  <swiper
-    ref="slide"
-    :style="{
-      '--swiper-navigation-color': '#000',
-      '--swiper-pagination-color': '#000',
-      'max-height': slideHeight,
-      'max-width': slideWidth,
-    }"
-    :modules="modules"
-    :spaceBetween="10"
-    :initialSlide="0"
-    :navigation="images && images.length > 1 && withNavigation"
-    :loop="loop"
-    :zoom="zoom ? { maxRatio: 5 } : false"
-    :slides-per-view="slidesPerView"
-    :pagination="{ clickable: true }"
-    class="border-bottom"
-  >
-    <swiper-slide
-      class="swiper-slide"
-      v-for="image in images"
-      v-bind:key="image.order"
-    >
-      <div
-        class="d-flex justify-content-center align-items-center"
-        :class="zoom ? 'swiper-zoom-container' : ''"
-        :style="{ height: slideHeight }"
-      >
-        <a v-if="!zoom" v-on:click="onModalToggleClicked($event)">
-          <img
-            :src="image.url"
-            :alt="image.filename"
-            class="img-fluid"
-            :class="slidesPerView > 1 || !withNavigation ? 'pb-5' : 'p-5'"
-            :style="{ 'max-height': slideHeight }"
-            v-on:click="showFullscreenImg(image.url, image.filename)"
-          />
-        </a>
-        <img
-          v-else
-          :src="image.url"
-          :alt="image.filename"
-          class="img-fluid"
-          :class="slidesPerView > 1 || !withNavigation ? 'pb-5' : 'p-5'"
-          :style="{ 'max-height': slideHeight }"
-          v-on:click="showFullscreenImg(image.url, image.filename)"
-        />
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col">
+        <swiper
+          ref="slide"
+          :style="{
+            '--swiper-navigation-color': '#000',
+            '--swiper-pagination-color': '#000',
+            'max-height': slideHeight,
+            'max-width': slideWidth,
+          }"
+          :modules="modules"
+          :spaceBetween="10"
+          :initialSlide="0"
+          :navigation="images?.length > 1 && withNavigation"
+          :loop="loop"
+          :zoom="zoom ? { maxRatio: 5 } : false"
+          :cssMode="disableMouseTouch"
+          :slides-per-view="slidesPerView"
+          :pagination="{ clickable: true }"
+          class="border-bottom"
+        >
+          <swiper-slide
+            class="swiper-slide"
+            v-for="image in images"
+            v-bind:key="image.order"
+          >
+            <div
+              class="d-flex justify-content-center align-items-center"
+              :class="zoom ? 'swiper-zoom-container' : ''"
+              :style="{ height: slideHeight }"
+            >
+              <a v-if="!zoom" v-on:click="onModalToggleClicked($event)">
+                <img
+                  :src="image.url"
+                  :alt="image.filename"
+                  class="img-fluid"
+                  :class="slidesPerView > 1 || !withNavigation ? 'pb-5' : 'p-5'"
+                  :style="{ 'max-height': slideHeight }"
+                  v-on:click="showFullscreenImg(image.url, image.filename)"
+                />
+              </a>
+              <img
+                v-else
+                :src="image.url"
+                :alt="image.filename"
+                class="img-fluid"
+                :class="slidesPerView > 1 || !withNavigation ? 'pb-5' : 'p-5'"
+                :style="{ 'max-height': slideHeight }"
+                v-on:click="showFullscreenImg(image.url, image.filename)"
+              />
+            </div>
+          </swiper-slide>
+        </swiper>
       </div>
-    </swiper-slide>
-  </swiper>
-  <div class="modal fade" id="fullscreenImg" tabindex="-1" v-if="images">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
+    </div>
+  </div>
+  <div
+    class="modal fade"
+    :id="fullscreenImgModalId"
+    tabindex="-1"
+    v-if="images"
+    data-bs-backdrop="false"
+  >
+    <div
+      class="modal-dialog modal-dialog-centered modal-lg"
+      :style="modalStyle"
+    >
       <div class="modal-content">
         <div class="modal-body">
           <img
@@ -106,6 +122,14 @@ export default {
       default: false,
       type: Boolean,
     },
+    disableDoubleClick: {
+      default: false,
+      type: Boolean,
+    },
+    disableMouseTouch: {
+      default: false,
+      type: Boolean,
+    },
     loop: {
       default: true,
       type: Boolean,
@@ -118,6 +142,10 @@ export default {
       default: [],
       type: Array,
     },
+    modalStyle: {
+      default: {},
+      type: Object,
+    },
   },
   components: {
     Swiper,
@@ -127,7 +155,7 @@ export default {
     onModalToggleClicked(event) {
       if (this.enableClickToFullscreen) {
         Modal.getOrCreateInstance(
-          document.querySelector("#fullscreenImg")
+          document.querySelector("#" + this.fullscreenImgModalId)
         ).show();
       }
     },
@@ -136,9 +164,18 @@ export default {
       this.fullscreenImgAlt = alt;
     },
   },
+  beforeMount() {
+    this.fullscreenImgModalId =
+      "fullscreenImg" +
+      Math.random()
+        .toString(36)
+        .replace(/[^a-z]+/g, "")
+        .substr(0, 5);
+  },
   data: {
     fullscreenImgUrl: "",
     fullscreenImgAlt: "",
+    fullscreenImgModalId: "",
     modules: [Navigation, Pagination, Zoom],
   },
 };

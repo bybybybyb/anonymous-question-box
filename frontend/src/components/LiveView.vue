@@ -7,23 +7,35 @@
           <div
             ref="slideProjectArea"
             id="slideProjectArea"
-            class="my-4 mx-5"
-            style="
-              max-width: 45vw;
-              max-height: 70vh;
-              resize: vertical;
-              overflow: auto;
+            class="my-4 mx-5 shadow"
+            style="max-width: 45vw; max-height: 70vh; overflow: auto"
+            :style="
+              withImages
+                ? {
+                    width: '45vw',
+                    height: '85vh',
+                  }
+                : {}
             "
-            :style="{
-              width: Math.max(400, projectAreaWidth) + 'px',
-            }"
           >
-            <image-display
+            <viewer
               :images="images"
-              :zoom="true"
-              :slideHeight="Math.max(300, slideAreaHeight) + 'px'"
-              :slideWidth="Math.max(400, projectAreaWidth) + 'px'"
-            />
+              :options="{
+                inline: true,
+                button: false,
+                fullscreen: false,
+                title: false,
+                navbar: false,
+                zoomRatio: 0.5,
+              }"
+            >
+              <img
+                v-for="img in images"
+                :key="img.order"
+                :src="img.url"
+                class="img-fluid visually-hidden"
+              />
+            </viewer>
           </div>
           <div
             ref="textProjectArea"
@@ -37,6 +49,14 @@
               resize: both;
               overflow: auto;
             "
+            :style="
+              withImages
+                ? {
+                    width: '45vw',
+                    height: '10vh',
+                  }
+                : {}
+            "
           >
             <div class="card-body overflow-auto">
               <p
@@ -49,7 +69,7 @@
               </p>
             </div>
           </div>
-          <nav class="mb-5 mx-4">
+          <nav class="mx-4">
             <div class="container-fluid">
               <ul class="nav justify-content-start">
                 <li class="nav-item mx-1 my-1">文字大小调节</li>
@@ -86,7 +106,7 @@
             </div>
           </nav>
         </div>
-        <div class="col">
+        <div class="col" style="max-width: 48.5vw">
           <div class="container mt-4">
             <nav
               class="my-2 navbar navbar-expand-lg navbar-light"
@@ -275,8 +295,13 @@
                             :images="q.images"
                             :slidesPerView="5"
                             :loop="false"
+                            :enableClickToFullscreen="true"
                             slideHeight="400px"
                             slideWidth="40vw"
+                            :modalStyle="{
+                              left: '25vw',
+                              'max-width': '30vw',
+                            }"
                           />
                           <p
                             v-for="(sentence, i) in formatText(q.text)"
@@ -303,7 +328,7 @@ import Header from "./Header.vue";
 import Pagination from "v-pagination-3";
 import ImageDisplay from "./ImageDisplay.vue";
 const storagePrefix = "ownerView_";
-const orderDeriction = [
+const orderDirection = [
   { by: "asked_at", reversed: true },
   { by: "asked_at", reversed: false },
   { by: "word_count", reversed: true },
@@ -367,9 +392,9 @@ export default {
             owner: this.owner,
             type: this.queryParams["type"],
             order_params: {
-              by: orderDeriction[this.queryParams["order_params_index"]].by,
+              by: orderDirection[this.queryParams["order_params_index"]].by,
               reversed:
-                orderDeriction[this.queryParams["order_params_index"]].reversed,
+                orderDirection[this.queryParams["order_params_index"]].reversed,
             },
             reply_status: +this.queryParams["reply_status"],
             day_limit: +this.queryParams["day_limit"],
@@ -383,6 +408,10 @@ export default {
         .then((resp) => {
           this.rows = resp.data.questions;
           this.total_count = resp.data.total;
+          this.withImages =
+            this.ownerProfiles[this.owner].question_types[
+              this.queryParams["type"]
+            ].support_image;
         })
         .catch((err) => {
           console.log(err.response);
@@ -537,6 +566,7 @@ export default {
         page_size: 5,
         page: 1,
       },
+      withImages: false,
       rows: [],
       total_count: 0,
       navbarStyling: {},

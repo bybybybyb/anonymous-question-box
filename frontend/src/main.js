@@ -1,11 +1,13 @@
 import "./index.css";
 import "normalize-scss";
+import "viewerjs/dist/viewer.css";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "bootstrap";
 import { createApp } from "vue";
 import { createRouter, createWebHashHistory } from "vue-router";
 import axios from "axios";
 import VueAxios from "vue-axios";
+import VueViewer from "v-viewer";
 import App from "./App.vue";
 import OwnerView from "./components/OwnerView.vue";
 import QuestionNew from "./components/QuestionNew.vue";
@@ -68,6 +70,7 @@ const router = createRouter({
       app.config.globalProperties.$scrollToTop = () => window.scrollTo(0, 0);
       app.use(VueAxios, axios);
       app.use(router);
+      app.use(VueViewer);
       app.mixin(profileProvider);
       app.mount("#app");
     })
