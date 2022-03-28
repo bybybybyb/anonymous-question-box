@@ -16,7 +16,7 @@
           :initialSlide="0"
           :navigation="images?.length > 1 && withNavigation"
           :loop="loop && images?.length > 1"
-          :zoom="zoom ? { maxRatio: 5 } : false"
+          :zoom="false"
           :cssMode="disableMouseTouch"
           :slides-per-view="slidesPerView"
           :pagination="{ clickable: true }"
@@ -63,6 +63,7 @@
     <div
       class="modal-dialog modal-dialog-centered modal-lg"
       :style="modalStyle"
+      :class="modalClass"
     >
       <div class="modal-content">
         <div class="modal-body">
@@ -146,6 +147,10 @@ export default {
     modalStyle: {
       default: {},
       type: Object,
+    },
+    modalClass: {
+      default: "",
+      type: String,
     },
   },
   components: {

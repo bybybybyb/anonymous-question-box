@@ -24,6 +24,7 @@
                 inline: true,
                 button: false,
                 fullscreen: false,
+                backdrop: false,
                 title: false,
                 navbar: false,
                 zoomRatio: 0.5,
@@ -258,7 +259,9 @@
                             tabindex="-1"
                             data-bs-backdrop="false"
                           >
-                            <div class="modal-dialog modal-sm">
+                            <div
+                              class="modal-dialog modal-dialog-scrollable modal-sm"
+                            >
                               <div class="modal-content">
                                 <div class="modal-header">
                                   <h5 class="modal-title">确认删除？</h5>
@@ -296,12 +299,14 @@
                             :slidesPerView="5"
                             :loop="false"
                             :enableClickToFullscreen="true"
-                            slideHeight="400px"
+                            :autoHeight="true"
+                            slideHeight="100%"
                             slideWidth="40vw"
                             :modalStyle="{
                               left: '25vw',
                               'max-width': '30vw',
                             }"
+                            modalClass="modal-dialog-scrollable"
                           />
                           <p
                             v-for="(sentence, i) in formatText(q.text)"
