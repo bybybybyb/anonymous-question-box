@@ -5,7 +5,7 @@
         <swiper
           ref="slide"
           :style="{
-            '--swiper-navigation-color': '#000',
+            '--swiper-navigation-color': '#198754',
             '--swiper-pagination-color': '#000',
             'max-height': slideHeight,
             'max-width': slideWidth,
