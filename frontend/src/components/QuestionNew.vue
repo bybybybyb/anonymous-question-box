@@ -126,8 +126,9 @@
               class="btn"
               :class="confirmBtnStyleClass"
               v-on:click="submit"
-              data-bs-toggle="modal"
-              data-bs-target="#loadingOverlay"
+              :data-bs-target="supportImage ? '#loadingOverlay' : undefined"
+              :data-bs-dismiss="supportImage ? undefined : 'modal'"
+              :data-bs-toggle="supportImage ? 'modal' : undefined"
             >
               确认提交
             </button>
@@ -138,7 +139,7 @@
     <div
       class="modal fade"
       tabindex="-1"
-      :data-bs-backdrop="loadingOverlayBackdrop"
+      data-bs-backdrop="static"
       aria-hidden="true"
       id="loadingOverlay"
       ref="loadingOverlay"
@@ -155,15 +156,6 @@
           </div>
           <div class="modal-footer">
             <h5 class="modal-title">如长时间未响应，请刷新页面重试。</h5>
-            <button
-              type="button"
-              class="btn"
-              v-show="false"
-              data-bs-dismiss="modal"
-              ref="loadingOverlayClose"
-            >
-              close
-            </button>
           </div>
         </div>
       </div>
@@ -414,7 +406,6 @@ export default {
       h5Style: "color:black",
       imageFiles: [],
       acceptedFileTypes: ["image/*"],
-      loadingOverlayBackdrop: "static",
       isProcessingFile: false,
     };
   },
