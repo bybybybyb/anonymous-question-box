@@ -177,7 +177,7 @@ import { Modal } from "bootstrap";
 setOptions(zh_cn);
 setOptions({
   fileValidateTypeLabelExpectedTypes: "请上传图片文件",
-  labelIdle: "请把图片拖到这里，或点击此处浏览。请上传至少1张！",
+  labelIdle: "请把图片拖到这里，或点击此处浏览。",
   maxFileSize: "10MB",
   maxFiles: 9,
   server: "/api/image/process",
@@ -263,11 +263,11 @@ export default {
 
       this.supportImage
         ? (this.textPlaceholder = [
-            "最高支持上传9张图片，单张大小限制为10MB;",
-            "图片展示顺序将保持和上传先后顺序相同;",
-            "（可选）请在此输入描述或者署名;",
-            "尚未成功提交的文字草稿将被暂存于您的浏览器储存中，但刷新页面后图片需要重新上传，请注意。",
-          ].join("\n"))
+            "1.最高支持上传9张图片，单张大小限制为10MB; ",
+            "2.图片展示顺序将保持和上传先后顺序相同; ",
+            "3.（可选）请在此输入描述或者署名; ",
+            "4.尚未成功提交的文字草稿将被暂存于您的浏览器储存中，但刷新页面后图片需要重新上传，请注意。 ",
+          ].join("\r\n"))
         : (this.textPlaceholder =
             "尚未成功提交的草稿将被暂存于您的浏览器储存中。");
     },

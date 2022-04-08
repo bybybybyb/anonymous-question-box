@@ -168,10 +168,10 @@
                       v-on:change="onQueryChange(false)"
                       v-model="queryParams['order_params_index']"
                     >
-                      <option selected value="0">时间降序</option>
-                      <option value="1">时间升序</option>
-                      <option value="2">字数降序</option>
-                      <option value="3">字数升序</option>
+                      <option selected value="0">时间从新到旧</option>
+                      <option value="1">时间从旧到新</option>
+                      <option value="2">字数从多到少</option>
+                      <option value="3">字数从少到多</option>
                     </select>
                   </li>
                   <li class="nav-item mx-1 my-1">
