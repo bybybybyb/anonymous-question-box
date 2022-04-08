@@ -137,9 +137,10 @@
       </div>
     </div>
     <div
-      class="modal fade"
+      class="modal"
       tabindex="-1"
       data-bs-backdrop="static"
+      data-bs-keyboard="false"
       aria-hidden="true"
       id="loadingOverlay"
       ref="loadingOverlay"
@@ -285,7 +286,6 @@ export default {
       this.onNewInput();
     },
     async submit() {
-      this.loadingOverlayKeyboard = false;
       const authHeader = {
         headers: { Authorization: `Bearer ${this.token}` },
       };
@@ -338,7 +338,6 @@ export default {
           alert("提问箱好像坏掉了，请保存好您的投稿，并通知管理员前来查看！");
         }
       } finally {
-        this.loadingOverlayKeyboard = true;
         const loadingOverlay = Modal.getInstance(
           document.querySelector("#loadingOverlay")
         );
@@ -386,6 +385,10 @@ export default {
     // change back the body background
     document.body.classList.remove("body-background-" + prevBgClass);
     document.body.classList.add("bg-light");
+    const loadingOverlay = Modal.getInstance(
+      document.querySelector("#loadingOverlay")
+    );
+    loadingOverlay.dispose();
   },
   data() {
     return {
