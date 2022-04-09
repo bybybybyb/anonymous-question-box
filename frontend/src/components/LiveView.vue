@@ -5,15 +5,16 @@
       <div class="row flex-nowrap">
         <div class="col">
           <div
-            ref="slideProjectArea"
-            id="slideProjectArea"
-            class="my-4 mx-5 shadow-lg"
+            ref="imageProjectArea"
+            id="imageProjectArea"
+            class="my-4 mx-5 shadow"
             style="max-width: 45vw; max-height: 70vh; overflow: hidden"
             :style="
               withImages
                 ? {
+                    resize: 'vertical',
                     width: '45vw',
-                    height: '85vh',
+                    height: focusToggle.currentImageHeight,
                   }
                 : {}
             "
@@ -41,22 +42,24 @@
           <div
             ref="textProjectArea"
             id="textProjectArea"
-            class="card shadow-md my-4 mx-5 border border-3 border-dark"
+            class="card shadow my-4 mx-5 border border-dark"
             style="
               max-width: 45vw;
               max-height: 70vh;
               height: 500px;
               width: 800px;
-              resize: both;
               overflow: auto;
             "
             :style="
               withImages
                 ? {
                     width: '45vw',
-                    height: '10vh',
+                    height: focusToggle.currentTextHeight,
+                    resize: 'vertical',
                   }
-                : {}
+                : {
+                    resize: 'both',
+                  }
             "
           >
             <div class="card-body overflow-auto">
@@ -101,6 +104,15 @@
                     v-on:click="onFontSizeResetClick()"
                   >
                     重置
+                  </button>
+                </li>
+                <li class="nav-item mx-1">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary col-sm-12"
+                    v-on:click="onFocusToggleClick()"
+                  >
+                    {{ focusToggle.buttonText }}
                   </button>
                 </li>
               </ul>
@@ -345,7 +357,6 @@ const defaultFontSizeIdx = 1;
 var currentFontSizeIdx = defaultFontSizeIdx;
 
 export default {
-  // TODO: merge LiveView and OwnerView using setup() as they share the exactly the same component construction, only difference is the template
   name: "LiveView",
   components: {
     Pagination,
@@ -359,6 +370,10 @@ export default {
     projectQuestion(uuid, text, images, answered_at) {
       this.projected_text = text;
       this.images = images;
+      this.focusToggle.currentImageHeight = this.focusToggle.imageHeight;
+      this.focusToggle.currentImageWidth = this.focusToggle.imageWidth;
+      // this.focusToggle.currentTextHeight = this.focusToggle.textHeight;
+      // this.focusToggle.currentTextWidth = this.focusToggle.textWidth;
       // automatically answer the question if it was not answered before
       let time = Date.parse(answered_at);
       const autoReply = `已于 ${new Date().toLocaleString("zh-CN", {
@@ -503,6 +518,18 @@ export default {
       this.shrinkBtnDisabled = false;
       this.enlargeBtnDisabled = false;
     },
+    onFocusToggleClick() {
+      const tmp = this.focusToggle.imageHeight;
+      this.focusToggle.imageHeight = this.focusToggle.textHeight;
+      this.focusToggle.textHeight = tmp;
+      this.focusToggle.currentImageHeight = this.focusToggle.imageHeight;
+      this.focusToggle.currentTextHeight = this.focusToggle.textHeight;
+      console.log(
+        `image height ${this.focusToggle.imageHeight}, text height ${this.focusToggle.textHeight}, current image height ${this.focusToggle.currentImageHeight}, current text height ${this.focusToggle.currentTextHeight}`
+      );
+      this.focusToggle.buttonText =
+        this.focusToggle.buttonText === "强调图片" ? "强调文字" : "强调图片";
+    },
   },
   computed: {
     formatTime() {
@@ -549,16 +576,27 @@ export default {
       for (let entry of entries) {
         const cr = entry.contentRect;
         switch (entry.target.id) {
-          case "slideProjectArea":
-            this.slideAreaHeight = cr.height;
+          case "imageProjectArea":
+            // console.log(
+            //   `image project area height: ${cr.height}, width: ${cr.width}`
+            // );
+            this.focusToggle.imageHeight = Math.round(cr.height) + 1 + "px";
+            // console.log(`focusToggle: ${JSON.stringify(this.focusToggle)}`);
+            console.log(`image project area: ${JSON.stringify(cr)}`);
             break;
           case "textProjectArea":
-            this.projectAreaWidth = cr.width;
+            // console.log(
+            //   `text project area height: ${cr.height}, width: ${cr.width}`
+            // );
+            this.focusToggle.textHeight = Math.round(cr.height) + 1 + "px";
+            console.log(`text project area: ${JSON.stringify(cr)}`);
+          // this.focusToggle.currentImageWidth = this.focusToggle.imageWidth;
+          // console.log(`focusToggle: ${JSON.stringify(this.focusToggle)}`);
         }
       }
     });
 
-    ob.observe(this.$refs.slideProjectArea);
+    ob.observe(this.$refs.imageProjectArea);
     ob.observe(this.$refs.textProjectArea);
   },
   data() {
@@ -580,8 +618,18 @@ export default {
       fsClass: fontSizes[defaultFontSizeIdx],
       enlargeBtnDisabled: false,
       shrinkBtnDisabled: false,
-      slideAreaHeight: 300,
-      projectAreaWidth: 400,
+      focusToggle: {
+        imageHeight: "60vh",
+        imageWidth: "45vw",
+        textHeight: "20vh",
+        textWidth: "45vw",
+        currentImageHeight: "60vh",
+        currentImageWidth: "45vw",
+        currentTextHeight: "20vh",
+        currentTextWidth: "45vw",
+        selector: 0,
+        buttonText: "强调文字",
+      },
     };
   },
 };
