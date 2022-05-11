@@ -109,6 +109,9 @@
               <div class="col-12 col-md-5" :style="q.visit_status_color">
                 回复时间： {{ formatTime(q.answered_at) }}
               </div>
+              <div class="col-12 col-md-5" :style="q.visit_status_color">
+                {{ q.uuid }}
+              </div>
             </div>
           </div>
           <div class="card-body">
@@ -121,6 +124,7 @@
               <div class="col-12 col-sm-2">
                 <a
                   class="btn btn-sm btn-outline-danger m-1"
+                  v-on:click="openQuestion(q.uuid)"
                   data-bs-toggle="modal"
                   data-bs-target="#confirmDeleteModal"
                 >
@@ -146,7 +150,7 @@
                         type="button"
                         class="btn btn-sm btn-danger mx-1"
                         data-bs-dismiss="modal"
-                        v-on:click="deleteQuestion(q.uuid)"
+                        v-on:click="deleteQuestion()"
                       >
                         确认
                       </button>
@@ -368,9 +372,9 @@ export default {
         }
       }
     },
-    deleteQuestion(uuid) {
+    deleteQuestion() {
       this.axios
-        .delete("api/owner/questions/" + uuid + "/delete", {
+        .delete("api/owner/questions/" + this.uuid + "/delete", {
           headers: { Authorization: `Bearer ${this.$route.query.token}` },
         })
         .then(() => {

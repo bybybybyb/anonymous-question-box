@@ -262,6 +262,7 @@
                             class="btn d-none d-sm-block btn-sm btn-danger m-1 col-sm-12"
                             data-bs-toggle="modal"
                             data-bs-target="#confirmDeleteModal"
+                            v-on:click="prepareDelete(q.uuid)"
                           >
                             删除
                           </button>
@@ -283,7 +284,6 @@
                                     type="button"
                                     class="btn btn-sm btn-danger mx-1"
                                     data-bs-dismiss="modal"
-                                    :value="q.uuid"
                                     v-on:click="deleteQuestion"
                                   >
                                     确认
@@ -464,9 +464,9 @@ export default {
         }
       }
     },
-    deleteQuestion(event) {
+    deleteQuestion() {
       this.axios
-        .delete("api/owner/questions/" + event.target.value + "/delete", {
+        .delete("api/owner/questions/" + this.toDelete + "/delete", {
           headers: { Authorization: `Bearer ${this.$route.query.token}` },
         })
         .then(() => {
@@ -476,14 +476,8 @@ export default {
           console.log(err.response);
         });
     },
-    openQuestion(event) {
-      this.$router.push({
-        name: "answer",
-        query: {
-          token: this.$route.query.token,
-          uuid: event.target.value,
-        },
-      });
+    prepareDelete(uuid) {
+      this.toDelete = uuid;
     },
     openLiveView() {
       this.$router.push({
@@ -610,6 +604,7 @@ export default {
         page: 1,
       },
       withImages: false,
+      toDelete: "",
       rows: [],
       total_count: 0,
       navbarStyling: {},
