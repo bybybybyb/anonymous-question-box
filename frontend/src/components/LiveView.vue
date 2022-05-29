@@ -284,7 +284,7 @@
                                     type="button"
                                     class="btn btn-sm btn-danger mx-1"
                                     data-bs-dismiss="modal"
-                                    v-on:click="deleteQuestion"
+                                    v-on:click="deleteQuestion()"
                                   >
                                     确认
                                   </button>
@@ -292,6 +292,7 @@
                                     type="button"
                                     class="btn btn-sm btn-secondary mx-1"
                                     data-bs-dismiss="modal"
+                                    v-on:click="cancelDelete()"
                                   >
                                     取消
                                   </button>
@@ -465,19 +466,25 @@ export default {
       }
     },
     deleteQuestion() {
+      const toDelete = localStorage.getItem(storagePrefix + "opened_question");
       this.axios
-        .delete("api/owner/questions/" + this.toDelete + "/delete", {
+        .delete("api/owner/questions/" + toDelete + "/delete", {
           headers: { Authorization: `Bearer ${this.$route.query.token}` },
         })
         .then(() => {
-          this.onQueryChange();
+          this.cancelDelete();
+          this.onQueryChange(false, false);
         })
         .catch((err) => {
-          console.log(err.response);
+          console.log(err);
         });
     },
     prepareDelete(uuid) {
-      this.toDelete = uuid;
+      this.uuid = uuid;
+      localStorage.setItem(storagePrefix + "opened_question", uuid);
+    },
+    cancelDelete() {
+      localStorage.removeItem(storagePrefix + "opened_question");
     },
     openLiveView() {
       this.$router.push({

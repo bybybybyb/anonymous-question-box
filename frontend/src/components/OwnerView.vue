@@ -109,9 +109,6 @@
               <div class="col-12 col-md-5" :style="q.visit_status_color">
                 回复时间： {{ formatTime(q.answered_at) }}
               </div>
-              <div class="col-12 col-md-5" :style="q.visit_status_color">
-                {{ q.uuid }}
-              </div>
             </div>
           </div>
           <div class="card-body">
@@ -158,6 +155,7 @@
                         type="button"
                         class="btn btn-sm btn-secondary mx-1"
                         data-bs-dismiss="modal"
+                        v-on:click="closeQuestion()"
                       >
                         取消
                       </button>
@@ -373,12 +371,14 @@ export default {
       }
     },
     deleteQuestion() {
+      const toDelete = localStorage.getItem(storagePrefix + "opened_question");
       this.axios
-        .delete("api/owner/questions/" + this.uuid + "/delete", {
+        .delete("api/owner/questions/" + toDelete + "/delete", {
           headers: { Authorization: `Bearer ${this.$route.query.token}` },
         })
         .then(() => {
           localStorage.removeItem(storagePrefixAnswerView + this.uuid);
+          this.closeQuestion();
           this.onQueryChange();
         })
         .catch((err) => {
@@ -387,6 +387,10 @@ export default {
     },
     openQuestion(uuid) {
       this.uuid = uuid;
+      localStorage.setItem(storagePrefix + "opened_question", uuid);
+    },
+    closeQuestion() {
+      localStorage.removeItem(storagePrefix + "opened_question");
     },
     openLiveView() {
       this.$router.push({
