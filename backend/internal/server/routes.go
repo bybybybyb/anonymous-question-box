@@ -85,6 +85,7 @@ func setupRoutes(authHandler *handler.AuthHandler, questionsHandler *handler.Que
 	ownerAuthorized.POST("/questions", questionsHandler.ListQuestions)
 	ownerAuthorized.GET("/questions/:uuid", questionsHandler.GetQuestion)
 	ownerAuthorized.PUT("/questions/:uuid/answer", questionsHandler.AnswerQuestion)
+	ownerAuthorized.PUT("/questions/:uuid/mark", questionsHandler.UpdateQuestionMark)
 	ownerAuthorized.DELETE("/questions/:uuid/delete", questionsHandler.DeleteQuestion)
 	return r
 }

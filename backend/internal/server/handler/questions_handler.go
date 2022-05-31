@@ -170,6 +170,7 @@ func (q *QuestionsHandler) ListQuestions(c *gin.Context) {
 		Type        string      `json:"type"`
 		OrderParams orderParams `json:"order_params"`
 		Days        int32       `json:"day_limit"`
+		Marked      bool        `json:"marked"`
 		ReplyStatus int32       `json:"reply_status"`
 		PageSize    int32       `json:"page_size"`
 		Page        int32       `json:"page"`
@@ -188,8 +189,9 @@ func (q *QuestionsHandler) ListQuestions(c *gin.Context) {
 	_, ok := q.ProfileManager.GetRuneLimitByOwnerNameAndQuestionType(req.Owner, req.Type)
 	if !ok {
 		q.errResp(c, http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("未知提问箱主人 %s 或投稿类型 %s", req.Owner, req.Type)})
+		return
 	}
-	questions, totalCount, statusErr := q.QuestionManager.ListQuestions(c, req.Owner, req.Type, req.OrderParams.By, req.OrderParams.Reversed, time.Now().AddDate(0, 0, int(-req.Days)).Unix(), req.PageSize, req.Page, req.ReplyStatus)
+	questions, totalCount, statusErr := q.QuestionManager.ListQuestions(c, req.Owner, req.Type, req.OrderParams.By, req.OrderParams.Reversed, req.Marked, time.Now().AddDate(0, 0, int(-req.Days)).Unix(), req.PageSize, req.Page, req.ReplyStatus)
 	if statusErr != nil {
 		switch statusErr.Code() {
 		case http.StatusNotFound:
@@ -274,6 +276,44 @@ func (q *QuestionsHandler) DeleteQuestion(c *gin.Context) {
 			q.errResp(c, http.StatusNotFound, ErrorResp{Error: "投稿不存在或已过期销毁"})
 		case http.StatusInternalServerError:
 			q.errResp(c, http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("查询投稿失败，错误信息： %s，请联系网站管理员", statusErr.Error())})
+		}
+		return
+	}
+	c.Status(http.StatusOK)
+}
+
+// MarkQuestion marks a question so that it could be highlighted on the frontend
+func (q *QuestionsHandler) UpdateQuestionMark(c *gin.Context) {
+	uuid := c.Param("uuid")
+	type updateQuestionMarkRequest struct {
+		Mark  bool   `json:"mark"`
+		Owner string `json:"owner"`
+		Type  string `json:"type"`
+	}
+	body, err := ioutil.ReadAll(c.Request.Body)
+	if err != nil {
+		q.errResp(c, http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("无法读取标记请求，错误信息：%s", err.Error())})
+		return
+	}
+	req := &updateQuestionMarkRequest{}
+	err = json.Unmarshal(body, req)
+	if err != nil {
+		q.errResp(c, http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("无法解析标记请求，错误信息：%s", err.Error())})
+		return
+	}
+	_, ok := q.ProfileManager.GetRuneLimitByOwnerNameAndQuestionType(req.Owner, req.Type)
+	if !ok {
+		q.errResp(c, http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("未知提问箱主人 %s 或投稿类型 %s", req.Owner, req.Type)})
+		return
+	}
+	fmt.Println(uuid, req)
+	statusErr := q.QuestionManager.UpdateQuestionMark(c, uuid, req.Mark)
+	if statusErr != nil {
+		switch statusErr.Code() {
+		case http.StatusNotFound:
+			q.errResp(c, http.StatusNotFound, ErrorResp{Error: "投稿不存在或已标记"})
+		case http.StatusInternalServerError:
+			q.errResp(c, http.StatusInternalServerError, ErrorResp{Error: fmt.Sprintf("标记投稿失败，错误信息： %s，请联系网站管理员", statusErr.Error())})
 		}
 		return
 	}

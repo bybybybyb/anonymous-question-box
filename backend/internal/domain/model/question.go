@@ -18,6 +18,7 @@ type Question struct {
 	LastVisitedAt time.Time `json:"last_visited_at"`
 	VisitCount    int32     `json:"visit_count"`
 	Images        []*Image  `json:"images"`
+	Marked        bool      `json:"marked"`
 }
 
 type Image struct {

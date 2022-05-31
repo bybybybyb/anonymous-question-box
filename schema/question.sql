@@ -9,7 +9,8 @@ CREATE TABLE question (
 	answer TEXT,
 	answered_at INTEGER,
 	answered_by TEXT,
-	deleted_at INTEGER
+	deleted_at INTEGER,
+	marked_at INTEGER
 );
 
 CREATE TABLE visit (

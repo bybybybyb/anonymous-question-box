@@ -16,13 +16,14 @@ type TokenManager interface {
 
 type QuestionManager interface {
 	GetQuestionByUUID(ctx context.Context, uuid string, withVisitInfo bool) (*model.Question, StatusError)
-	ListQuestions(ctx context.Context, qOwner, qType, orderBy string, orderReversed bool, due int64, rowsPerPage, page, replyStatus int32) ([]*model.Question, int32, StatusError)
+	ListQuestions(ctx context.Context, qOwner, qType, orderBy string, orderReversed, marked bool, due int64, rowsPerPage, page, replyStatus int32) ([]*model.Question, int32, StatusError)
 	InsertQuestion(ctx context.Context, question *model.Question) StatusError
 	UpdateAnswer(ctx context.Context, question *model.Question) StatusError
 	MarkAsDeleted(ctx context.Context, uuid string) StatusError
 	RecordVisit(ctx context.Context, PerQuestionVisitMap map[string]*model.VisitStatus) StatusError
 	StoreImageMetadata(ctx context.Context, imageMetadata []*model.ImageMetadata) StatusError
 	GetImageMetadataByUUID(ctx context.Context, uuid string) ([]*model.ImageMetadata, StatusError)
+	UpdateQuestionMark(ctx context.Context, uuid string, mark bool) StatusError
 }
 
 type ProfileManager interface {

@@ -55,30 +55,33 @@ func (q *SQLiteQuestionManager) GetQuestionByUUID(ctx context.Context, uuid stri
 	}, nil
 }
 
-func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType, orderBy string, orderReversed bool, due int64, rowsPerPage, page, replyStatus int32) ([]*model.Question, int32, StatusError) {
+func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType, orderBy string, orderReversed, marked bool, due int64, rowsPerPage, page, replyStatus int32) ([]*model.Question, int32, StatusError) {
 	questions := make([]*model.Question, 0)
 	var totalCount int32
 	// sorting & filters
 	if orderBy == "" {
 		orderBy = "q.`asked_at`"
 	}
-	direction := fmt.Sprintf("`%s` ASC", orderBy)
+	direction := fmt.Sprintf(" `%s` ASC", orderBy)
 	if orderReversed {
-		direction = fmt.Sprintf("`%s` DESC", orderBy)
+		direction = fmt.Sprintf(" `%s` DESC", orderBy)
 	}
-	replyFilterStr := ""
+	filterStr := ""
 	if replyStatus < 0 {
-		replyFilterStr = "AND q.`answered_at` IS NULL"
+		filterStr = "AND q.`answered_at` IS NULL"
 	} else if replyStatus == 1 {
-		replyFilterStr = "AND q.`answered_at` IS NOT NULL"
+		filterStr = "AND q.`answered_at` IS NOT NULL"
 	} else if replyStatus == 2 {
-		replyFilterStr = "AND q.`answered_at` IS NOT NULL AND q.`answered_by` = 'manual'"
+		filterStr = "AND q.`answered_at` IS NOT NULL AND q.`answered_by` = 'manual'"
+	}
+	if marked {
+		filterStr += " AND q.`marked_at` IS NOT NULL"
 	}
 
-	attrs := "q.`id`, q.`uuid`, q.`question`, q.`word_count`, q.`answer`, q.`asked_at`, q.`answered_at`, q.`answered_by`, v.`last_visited_at`, v.`visit_count`"
+	attrs := "q.`id`, q.`uuid`, q.`question`, q.`word_count`, q.`answer`, q.`asked_at`, q.`answered_at`, q.`answered_by`, q.`marked_at`, v.`last_visited_at`, v.`visit_count`"
 	counts := "COUNT(*)"
 
-	sqlStr := buildQuery(counts, replyFilterStr, direction, false)
+	sqlStr := buildQuery(counts, filterStr, direction, false)
 	row := infrastructure.DBConn.QueryRowContext(ctx, sqlStr, qOwner, qType, due)
 	err := row.Scan(&totalCount)
 	if err != nil {
@@ -92,7 +95,7 @@ func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType
 		return questions, totalCount, nil
 	}
 
-	sqlStr = buildQuery(attrs, replyFilterStr, direction, true)
+	sqlStr = buildQuery(attrs, filterStr, direction, true)
 	rows, err := infrastructure.DBConn.QueryContext(ctx, sqlStr,
 		qOwner, qType, due, rowsPerPage, rowsPerPage*(page-1))
 
@@ -106,10 +109,10 @@ func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType
 	for rows.Next() {
 		var id, wordCount, visitCount int32
 		var askedAt, lastVisitedAt int64
-		var answeredAt sql.NullInt64
+		var answeredAt, markedAt sql.NullInt64
 		var uuid, question string
 		var answer, answeredBy sql.NullString
-		rows.Scan(&id, &uuid, &question, &wordCount, &answer, &askedAt, &answeredAt, &answeredBy, &lastVisitedAt, &visitCount)
+		rows.Scan(&id, &uuid, &question, &wordCount, &answer, &askedAt, &answeredAt, &answeredBy, &markedAt, &lastVisitedAt, &visitCount)
 		questions = append(questions, &model.Question{
 			ID:            id,
 			UUID:          uuid,
@@ -123,6 +126,7 @@ func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType
 			AnsweredBy:    answeredBy.String,
 			LastVisitedAt: time.Unix(lastVisitedAt, 0),
 			VisitCount:    visitCount,
+			Marked:        markedAt.Valid,
 		})
 	}
 
@@ -162,18 +166,18 @@ func (q *SQLiteQuestionManager) UpdateAnswer(ctx context.Context, question *mode
 }
 
 func (q *SQLiteQuestionManager) MarkAsDeleted(ctx context.Context, uuid string) StatusError {
-	result, err := infrastructure.DBConn.ExecContext(ctx, "UPDATE `question` SET `deleted_at` = ? WHERE `uuid` = ?", time.Now().Unix(), uuid)
-	if err != nil {
-		return E(err, http.StatusInternalServerError)
+	return handleResult(infrastructure.DBConn.ExecContext(ctx, "UPDATE `question` SET `deleted_at` = ? WHERE `uuid` = ?", time.Now().Unix(), uuid))
+}
+
+func (q *SQLiteQuestionManager) UpdateQuestionMark(ctx context.Context, uuid string, mark bool) StatusError {
+	var result sql.Result
+	var err error
+	if mark {
+		result, err = infrastructure.DBConn.ExecContext(ctx, "UPDATE `question` SET `marked_at` = ? WHERE `uuid` = ?", time.Now().Unix(), uuid)
+	} else {
+		result, err = infrastructure.DBConn.ExecContext(ctx, "UPDATE `question` SET `marked_at` = NULL WHERE `uuid` = ?", uuid)
 	}
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return E(err, http.StatusInternalServerError)
-	}
-	if rowsAffected != 1 {
-		return E(err, http.StatusNotFound)
-	}
-	return nil
+	return handleResult(result, err)
 }
 
 func (q *SQLiteQuestionManager) RecordVisit(ctx context.Context, perQuestionVisitMap map[string]*model.VisitStatus) StatusError {
@@ -285,4 +289,18 @@ func buildQuery(toSelect, filter, direction string, getValue bool) string {
 		sqlStr += " LIMIT ? OFFSET ?;"
 	}
 	return sqlStr
+}
+
+func handleResult(result sql.Result, err error) StatusError {
+	if err != nil {
+		return E(err, http.StatusInternalServerError)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return E(err, http.StatusInternalServerError)
+	}
+	if rowsAffected != 1 {
+		return E(err, http.StatusNotFound)
+	}
+	return nil
 }
