@@ -263,7 +263,18 @@
                         <li class="list-group-item">
                           <button
                             type="button"
-                            class="btn btn-sm btn-warning m-1 col-sm-12"
+                            class="btn btn-sm m-1 col-sm-12"
+                            :class="{
+                              'btn-warning': q.marked,
+                              'btn-outline-warning': !q.marked,
+                            }"
+                            v-on:click="markQuestion(q)"
+                          >
+                            {{ q.marked ? "取消标记" : "标记" }}
+                          </button>
+                          <button
+                            type="button"
+                            class="btn btn-sm btn-primary m-1 col-sm-12"
                             v-on:click="
                               projectQuestion(
                                 q.uuid,
@@ -483,6 +494,36 @@ export default {
           localStorage.setItem(storagePrefix + key, this.queryParams[key]);
         }
       }
+    },
+    markQuestion(q) {
+      this.axios
+        .put(
+          "api/owner/questions/" + q.uuid + "/mark",
+          {
+            owner: q.owner,
+            type: q.type,
+            mark: !q.marked,
+          },
+          {
+            headers: { Authorization: `Bearer ${this.$route.query.token}` },
+          }
+        )
+        .then((resp) => {
+          this.onQueryChange(true);
+        })
+        .catch((err) => {
+          console.log(err.response);
+          if (err.response.status === 401 || err.response.status === 403) {
+            alert(
+              "神秘代码坏掉咯，要是你知道真正的管理员是谁的话就赶紧ping他要个新的吧！"
+            );
+            this.$router.push("/");
+          } else if (err.response.status === 404) {
+          } else {
+            alert("提问箱好像坏掉了，直接ping管理员吧！");
+            this.$router.push("/");
+          }
+        });
     },
     deleteQuestion() {
       const toDelete = localStorage.getItem(storagePrefix + "opened_question");
