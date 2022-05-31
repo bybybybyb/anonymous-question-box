@@ -306,7 +306,6 @@ func (q *QuestionsHandler) UpdateQuestionMark(c *gin.Context) {
 		q.errResp(c, http.StatusBadRequest, ErrorResp{Error: fmt.Sprintf("未知提问箱主人 %s 或投稿类型 %s", req.Owner, req.Type)})
 		return
 	}
-	fmt.Println(uuid, req)
 	statusErr := q.QuestionManager.UpdateQuestionMark(c, uuid, req.Mark)
 	if statusErr != nil {
 		switch statusErr.Code() {
