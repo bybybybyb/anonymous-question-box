@@ -200,6 +200,24 @@
                       <option value="50">每页50条</option>
                     </select>
                   </li>
+                  <li class="nav-item m-1">
+                    <div class="form-check-inline">
+                      <input
+                        type="checkbox"
+                        class="btn-check form-check-input"
+                        autocomplete="off"
+                        id="markedOnlyCheckbox"
+                        v-model="markedOnly"
+                        @change="onQueryChange(true)"
+                      />
+                      <label
+                        class="btn btn-warning form-check-label"
+                        for="markedOnlyCheckbox"
+                      >
+                        {{ markedOnly ? "显示全部" : "只显示已标记" }}
+                      </label>
+                    </div>
+                  </li>
                   <li
                     class="nav-item mx-1 my-1 align-self-end"
                     style="height: 38px"
@@ -417,6 +435,7 @@ export default {
               reversed:
                 orderDirection[this.queryParams["order_params_index"]].reversed,
             },
+            marked: this.markedOnly,
             reply_status: +this.queryParams["reply_status"],
             day_limit: +this.queryParams["day_limit"],
             page_size: +this.queryParams["page_size"],
@@ -583,14 +602,14 @@ export default {
             // );
             this.focusToggle.imageHeight = Math.round(cr.height) + 1 + "px";
             // console.log(`focusToggle: ${JSON.stringify(this.focusToggle)}`);
-            console.log(`image project area: ${JSON.stringify(cr)}`);
+            // console.log(`image project area: ${JSON.stringify(cr)}`);
             break;
           case "textProjectArea":
             // console.log(
             //   `text project area height: ${cr.height}, width: ${cr.width}`
             // );
             this.focusToggle.textHeight = Math.round(cr.height) + 1 + "px";
-            console.log(`text project area: ${JSON.stringify(cr)}`);
+          // console.log(`text project area: ${JSON.stringify(cr)}`);
           // this.focusToggle.currentImageWidth = this.focusToggle.imageWidth;
           // console.log(`focusToggle: ${JSON.stringify(this.focusToggle)}`);
         }
@@ -631,6 +650,7 @@ export default {
         currentTextWidth: "45vw",
         selector: 0,
         buttonText: "强调文字",
+        markedOnly: false,
       },
     };
   },

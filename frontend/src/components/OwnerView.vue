@@ -84,6 +84,24 @@
                     <option value="50">每页50条</option>
                   </select>
                 </li>
+                <li class="nav-item m-1">
+                  <div class="form-check-inline">
+                    <input
+                      type="checkbox"
+                      class="btn-check form-check-input"
+                      autocomplete="off"
+                      id="markedOnlyCheckbox"
+                      v-model="markedOnly"
+                      @change="onQueryChange(true)"
+                    />
+                    <label
+                      class="btn btn-warning form-check-label"
+                      for="markedOnlyCheckbox"
+                    >
+                      {{ markedOnly ? "显示全部" : "只显示已标记" }}
+                    </label>
+                  </div>
+                </li>
                 <form class="form-inline">
                   <button
                     type="button"
@@ -113,12 +131,22 @@
           </div>
           <div class="card-body">
             <div class="row">
-              <div class="col-12 col-sm-10">
+              <div class="col-12 col-sm-9">
                 <p class="card-text">
                   {{ digest(q.text) }}
                 </p>
               </div>
-              <div class="col-12 col-sm-2">
+              <div class="col-12 col-sm-3">
+                <a
+                  class="btn btn-sm m-1"
+                  :class="{
+                    'btn-warning': q.marked,
+                    'btn-outline-warning': !q.marked,
+                  }"
+                  v-on:click="markQuestion(q)"
+                >
+                  {{ q.marked ? "取消标记" : "标记" }}
+                </a>
                 <a
                   class="btn btn-sm btn-outline-danger m-1"
                   v-on:click="openQuestion(q.uuid)"
@@ -309,6 +337,7 @@ export default {
               reversed:
                 orderDirection[this.queryParams["order_params_index"]].reversed,
             },
+            marked: this.markedOnly,
             reply_status: +this.queryParams["reply_status"],
             day_limit: +this.queryParams["day_limit"],
             page_size: +this.queryParams["page_size"],
@@ -319,9 +348,9 @@ export default {
           }
         )
         .then((resp) => {
-          this.rows = resp.data.questions;
+          const rows = resp.data.questions;
           this.total_count = resp.data.total;
-          for (let row of this.rows) {
+          for (let row of rows) {
             if (row.answered_by === "manual") {
               if (row.visit_count > 0) {
                 row.visit_status_color = {
@@ -338,6 +367,7 @@ export default {
               };
             }
           }
+          this.rows = rows;
         })
         .catch((err) => {
           console.log(err.response);
@@ -369,6 +399,36 @@ export default {
           localStorage.setItem(storagePrefix + key, this.queryParams[key]);
         }
       }
+    },
+    markQuestion(q) {
+      this.axios
+        .put(
+          "api/owner/questions/" + q.uuid + "/mark",
+          {
+            owner: q.owner,
+            type: q.type,
+            mark: !q.marked,
+          },
+          {
+            headers: { Authorization: `Bearer ${this.$route.query.token}` },
+          }
+        )
+        .then((resp) => {
+          this.onQueryChange(true);
+        })
+        .catch((err) => {
+          console.log(err.response);
+          if (err.response.status === 401 || err.response.status === 403) {
+            alert(
+              "神秘代码坏掉咯，要是你知道真正的管理员是谁的话就赶紧ping他要个新的吧！"
+            );
+            this.$router.push("/");
+          } else if (err.response.status === 404) {
+          } else {
+            alert("提问箱好像坏掉了，直接ping管理员吧！");
+            this.$router.push("/");
+          }
+        });
     },
     deleteQuestion() {
       const toDelete = localStorage.getItem(storagePrefix + "opened_question");
@@ -482,6 +542,7 @@ export default {
       navbarStyling: {},
       projected_text: "",
       uuid: "",
+      markedOnly: false,
     };
   },
 };
