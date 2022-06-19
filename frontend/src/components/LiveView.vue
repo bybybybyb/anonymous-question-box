@@ -8,16 +8,16 @@
             ref="imageProjectArea"
             id="imageProjectArea"
             class="my-4 mx-5 shadow"
-            style="max-width: 45vw; max-height: 70vh; overflow: hidden"
-            :style="
-              withImages
-                ? {
-                    resize: 'vertical',
-                    width: '45vw',
-                    height: focusToggle.currentImageHeight,
-                  }
-                : {}
+            style="
+              max-width: 45vw;
+              max-height: 70vh;
+              overflow: hidden;
+              resize: both;
             "
+            :style="{
+              height: projectAreaSize.displayed.imageHeight,
+              width: projectAreaSize.displayed.imageWidth,
+            }"
           >
             <viewer
               :images="images"
@@ -46,21 +46,13 @@
             style="
               max-width: 45vw;
               max-height: 70vh;
-              height: 500px;
-              width: 800px;
               overflow: auto;
+              resize: both;
             "
-            :style="
-              withImages
-                ? {
-                    width: '45vw',
-                    height: focusToggle.currentTextHeight,
-                    resize: 'vertical',
-                  }
-                : {
-                    resize: 'both',
-                  }
-            "
+            :style="{
+              height: projectAreaSize.displayed.textHeight,
+              width: projectAreaSize.displayed.textWidth,
+            }"
           >
             <div class="card-body overflow-auto">
               <p
@@ -106,15 +98,6 @@
                     重置
                   </button>
                 </li>
-                <li class="nav-item mx-1">
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-primary col-sm-12"
-                    v-on:click="onFocusToggleClick()"
-                  >
-                    {{ focusToggle.buttonText }}
-                  </button>
-                </li>
               </ul>
             </div>
           </nav>
@@ -132,7 +115,7 @@
                       class="form-select"
                       aria-label="Default select example"
                       id="question_type"
-                      v-on:change="onQueryChange(true)"
+                      v-on:change="onQueryChange(true, true, true)"
                       v-model="queryParams['type']"
                     >
                       <option
@@ -249,7 +232,7 @@
               <div class="card-body">
                 <div class="container">
                   <div class="row">
-                    <div class="col-3">
+                    <div class="col-12 col-sm-3">
                       <div class="list-group">
                         <li class="list-group-item">
                           字数： {{ q.word_count }}
@@ -332,7 +315,7 @@
                         </li>
                       </div>
                     </div>
-                    <div class="col-9">
+                    <div class="col-12 col-sm-9">
                       <div class="card">
                         <div class="card-body">
                           <image-display
@@ -397,13 +380,20 @@ export default {
     owner: String,
   },
   methods: {
+    applyProjectAreaSize() {
+      this.projectAreaSize.displayed.imageHeight =
+        this.projectAreaSize.saved.imageHeight;
+      this.projectAreaSize.displayed.imageWidth =
+        this.projectAreaSize.saved.imageWidth;
+      this.projectAreaSize.displayed.textHeight =
+        this.projectAreaSize.saved.textHeight;
+      this.projectAreaSize.displayed.textWidth =
+        this.projectAreaSize.saved.textWidth;
+    },
     projectQuestion(uuid, text, images, answered_at) {
       this.projected_text = text;
       this.images = images;
-      this.focusToggle.currentImageHeight = this.focusToggle.imageHeight;
-      this.focusToggle.currentImageWidth = this.focusToggle.imageWidth;
-      // this.focusToggle.currentTextHeight = this.focusToggle.textHeight;
-      // this.focusToggle.currentTextWidth = this.focusToggle.textWidth;
+      this.applyProjectAreaSize();
       // automatically answer the question if it was not answered before
       let time = Date.parse(answered_at);
       const autoReply = `已于 ${new Date().toLocaleString("zh-CN", {
@@ -433,7 +423,7 @@ export default {
           });
       }
     },
-    onQueryChange(resetPage, needRetry = false) {
+    onQueryChange(resetPage, needRetry = false, init = false) {
       if (resetPage) this.queryParams["page"] = 1;
       this.axios
         .post(
@@ -463,6 +453,22 @@ export default {
             this.ownerProfiles[this.owner].question_types[
               this.queryParams["type"]
             ].support_image;
+          if (init) {
+            this.projected_text = "";
+            this.images = [];
+            if (this.withImages) {
+              this.projectAreaSize.saved.imageHeight = "350px";
+              this.projectAreaSize.saved.imageWidth = "600px";
+              this.projectAreaSize.saved.textHeight = "200px";
+              this.projectAreaSize.saved.textWidth = "600px";
+            } else {
+              this.projectAreaSize.saved.imageHeight = "0px";
+              this.projectAreaSize.saved.imageWidth = "0px";
+              this.projectAreaSize.saved.textHeight = "400px";
+              this.projectAreaSize.saved.textWidth = "600px";
+            }
+            this.applyProjectAreaSize();
+          }
         })
         .catch((err) => {
           console.log(err.response);
@@ -579,18 +585,6 @@ export default {
       this.shrinkBtnDisabled = false;
       this.enlargeBtnDisabled = false;
     },
-    onFocusToggleClick() {
-      const tmp = this.focusToggle.imageHeight;
-      this.focusToggle.imageHeight = this.focusToggle.textHeight;
-      this.focusToggle.textHeight = tmp;
-      this.focusToggle.currentImageHeight = this.focusToggle.imageHeight;
-      this.focusToggle.currentTextHeight = this.focusToggle.textHeight;
-      console.log(
-        `image height ${this.focusToggle.imageHeight}, text height ${this.focusToggle.textHeight}, current image height ${this.focusToggle.currentImageHeight}, current text height ${this.focusToggle.currentTextHeight}`
-      );
-      this.focusToggle.buttonText =
-        this.focusToggle.buttonText === "强调图片" ? "强调文字" : "强调图片";
-    },
   },
   computed: {
     formatTime() {
@@ -630,35 +624,29 @@ export default {
         }
       }
     }
-    this.onQueryChange();
+    this.onQueryChange(true, true, true);
   },
-  mounted() {
+  async mounted() {
     const ob = new ResizeObserver((entries) => {
       for (let entry of entries) {
         const cr = entry.contentRect;
         switch (entry.target.id) {
           case "imageProjectArea":
-            // console.log(
-            //   `image project area height: ${cr.height}, width: ${cr.width}`
-            // );
-            this.focusToggle.imageHeight = Math.round(cr.height) + 1 + "px";
-            // console.log(`focusToggle: ${JSON.stringify(this.focusToggle)}`);
-            // console.log(`image project area: ${JSON.stringify(cr)}`);
+            this.projectAreaSize.saved.imageHeight = `${Math.round(
+              cr.height
+            )}px`;
+            this.projectAreaSize.saved.imageWidth = `${Math.round(cr.width)}px`;
             break;
           case "textProjectArea":
-            // console.log(
-            //   `text project area height: ${cr.height}, width: ${cr.width}`
-            // );
-            this.focusToggle.textHeight = Math.round(cr.height) + 1 + "px";
-          // console.log(`text project area: ${JSON.stringify(cr)}`);
-          // this.focusToggle.currentImageWidth = this.focusToggle.imageWidth;
-          // console.log(`focusToggle: ${JSON.stringify(this.focusToggle)}`);
+            // +2 抵消 line height
+            this.projectAreaSize.saved.textHeight = `${cr.height + 2}px`;
+            this.projectAreaSize.saved.textWidth = `${cr.width + 2}px`;
         }
       }
     });
 
-    ob.observe(this.$refs.imageProjectArea);
     ob.observe(this.$refs.textProjectArea);
+    ob.observe(this.$refs.imageProjectArea);
   },
   data() {
     return {
@@ -680,19 +668,22 @@ export default {
       fsClass: fontSizes[defaultFontSizeIdx],
       enlargeBtnDisabled: false,
       shrinkBtnDisabled: false,
-      focusToggle: {
-        imageHeight: "60vh",
-        imageWidth: "45vw",
-        textHeight: "20vh",
-        textWidth: "45vw",
-        currentImageHeight: "60vh",
-        currentImageWidth: "45vw",
-        currentTextHeight: "20vh",
-        currentTextWidth: "45vw",
+      projectAreaSize: {
+        displayed: {
+          textHeight: "",
+          textWidth: "",
+          imageHeight: "",
+          imageWidth: "",
+        },
+        saved: {
+          textHeight: "",
+          textWidth: "",
+          imageHeight: "",
+          imageWidth: "",
+        },
         selector: 0,
-        buttonText: "强调文字",
-        markedOnly: false,
       },
+      markedOnly: false,
     };
   },
 };
