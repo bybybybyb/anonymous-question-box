@@ -1,10 +1,11 @@
 package infrastructure
 
 import (
-	"github.com/anonymous-question-box/internal/domain/model"
-	"github.com/spf13/viper"
 	"log"
 	"time"
+
+	"github.com/anonymous-question-box/internal/domain/model"
+	"github.com/spf13/viper"
 )
 
 var WebsiteProfile *model.WebsiteProfile

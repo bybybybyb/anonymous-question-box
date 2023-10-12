@@ -15,6 +15,7 @@ import (
 	"github.com/anonymous-question-box/internal/domain/repository"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/spf13/viper"
 )
 
 type QuestionsHandler struct {
@@ -114,7 +115,15 @@ func (q *QuestionsHandler) SubmitNewQuestion(c *gin.Context) {
 			return
 		}
 	}
-	statusErr := q.QuestionManager.InsertQuestion(c, req)
+
+	markAsDeleted := false
+	filteredKeywords := viper.GetStringSlice("filtered_keywords")
+	for _, keyword := range filteredKeywords {
+		markAsDeleted = strings.Contains(req.Text, keyword) || markAsDeleted
+	}
+	fmt.Println("mark as deleted", markAsDeleted)
+
+	statusErr := q.QuestionManager.InsertQuestion(c, req, markAsDeleted)
 	if statusErr != nil {
 		q.errResp(c, statusErr.Code(), ErrorResp{Error: fmt.Sprintf("提交失败，错误信息：%s，请联系网站管理员", statusErr.Error())})
 		return
@@ -135,7 +144,7 @@ func (q *QuestionsHandler) GetQuestion(c *gin.Context) {
 	if statusErr != nil {
 		switch statusErr.Code() {
 		case http.StatusNotFound:
-			q.errResp(c, statusErr.Code(), ErrorResp{Error: "投稿不存在或已销毁"})
+			q.errResp(c, statusErr.Code(), ErrorResp{Error: "投稿不存在"})
 		case http.StatusInternalServerError:
 			q.errResp(c, statusErr.Code(), ErrorResp{Error: fmt.Sprintf("查询投稿失败，错误信息： %s，请联系网站管理员", statusErr.Error())})
 		}
