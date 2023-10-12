@@ -22,7 +22,7 @@ func (q *SQLiteQuestionManager) GetQuestionByUUID(ctx context.Context, uuid stri
 	var qOwner, qType, question string
 	var answer sql.NullString
 
-	sqlStr := "SELECT `id`, `owner`, `question_type`, `question`, `answer`, `asked_at`, `answered_at` FROM `question` WHERE `uuid` = ? AND `deleted_at` IS NULL"
+	sqlStr := "SELECT `id`, `owner`, `question_type`, `question`, `answer`, `asked_at`, `answered_at` FROM `question` WHERE `uuid` = ?"
 	err := infrastructure.DBConn.QueryRowContext(ctx, sqlStr, uuid).Scan(&id, &qOwner, &qType, &question, &answer, &askedAt, &answeredAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -133,9 +133,14 @@ func (q *SQLiteQuestionManager) ListQuestions(ctx context.Context, qOwner, qType
 	return questions, totalCount, nil
 }
 
-func (q *SQLiteQuestionManager) InsertQuestion(ctx context.Context, question *model.Question) StatusError {
-	result, err := infrastructure.DBConn.ExecContext(ctx, "INSERT INTO `question` (`uuid`, `owner`, `question_type`, `question`, `word_count`, `asked_at`) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING;",
-		question.UUID, question.Owner, question.Type, question.Text, utf8.RuneCountInString(question.Text), question.AskedAt.Unix())
+func (q *SQLiteQuestionManager) InsertQuestion(ctx context.Context, question *model.Question, markedAsDeleted bool) StatusError {
+	sql := "INSERT INTO `question` (`uuid`, `owner`, `question_type`, `question`, `word_count`, `asked_at`) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING;"
+	params := []interface{}{question.UUID, question.Owner, question.Type, question.Text, utf8.RuneCountInString(question.Text), question.AskedAt.Unix()}
+	if markedAsDeleted {
+		sql = "INSERT INTO `question` (`uuid`, `owner`, `question_type`, `question`, `word_count`, `asked_at`, `deleted_at`) VALUES (?,?,?,?,?,?,?) ON CONFLICT DO NOTHING;"
+		params = append(params, question.AskedAt.Unix())
+	}
+	result, err := infrastructure.DBConn.ExecContext(ctx, sql, params...)
 	if err != nil {
 		return E(err, http.StatusInternalServerError)
 	}
