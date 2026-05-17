@@ -262,6 +262,53 @@ def test_phase2_trusted_proxy_header_and_spoof_rejection(tmp_path: Path) -> None
     assert spoofed["ip"] == "9.9.9.9"
 
 
+def test_phase2_forwarded_for_fallback_and_owner_detail_geo(tmp_path: Path) -> None:
+    s = settings(tmp_path, geo_enabled=True, trusted_proxy_cidrs=["127.0.0.1/32"])
+    app, db = make_app_and_db(s)
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        token = new_user_token(client)
+        submit = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "hello"},
+            headers={**auth(token), "X-Forwarded-For": "10.20.30.40, 127.0.0.1"},
+        )
+        uuid = submit.json()["uuid"]
+        db.insert_ip_geo(
+            {
+                "ip": "10.20.30.40",
+                "province": "广东省",
+                "city": "广州市",
+                "region": "",
+                "addr": "广东省广州市",
+                "looked_up_at": 1,
+            }
+        )
+        owner_detail = client.get(f"/owner/questions/{uuid}", headers=auth(admin_token(s)))
+        asker_read = client.get("/questions/question", headers=auth(token))
+    assert owner_detail.status_code == 200
+    assert owner_detail.json()["ip"] == "10.20.30.40"
+    assert owner_detail.json()["ip_addr"] == "广东省广州市"
+    assert "ip" not in asker_read.json()
+    assert "ip_addr" not in asker_read.json()
+
+
+def test_phase2_x_real_ip_precedes_forwarded_for(tmp_path: Path) -> None:
+    s = settings(tmp_path, geo_enabled=True, trusted_proxy_cidrs=["127.0.0.1/32"])
+    with make_client(s, client_addr=("127.0.0.1", 50000)) as client:
+        token = new_user_token(client)
+        client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "hello"},
+            headers={**auth(token), "X-Real-IP": "10.0.0.1", "X-Forwarded-For": "10.0.0.2, 127.0.0.1"},
+        )
+        listed = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "day_limit": 1},
+            headers=auth(admin_token(s)),
+        ).json()["questions"][0]
+    assert listed["ip"] == "10.0.0.1"
+
+
 class FakeResponse:
     content = '{"pro":"广东省","city":"广州市","region":"","addr":"广东省广州市 电信"}'.encode("gbk")
 

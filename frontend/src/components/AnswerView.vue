@@ -5,6 +5,10 @@
         <div class="col-12">
           <div class="card shadow-lg my-3">
             <h6 class="card-title m-3">投稿时间：{{ asked_at }}</h6>
+            <h6 class="card-title m-3 text-muted" v-if="ip">
+              IP：{{ ip }}
+              <span v-if="ip_addr">（{{ ip_addr }}）</span>
+            </h6>
             <div class="card-body overflow-auto">
               <div class="container">
                 <div class="row">
@@ -134,6 +138,8 @@ export default {
           this.last_visited_at = this.formatTime(resp.data.last_visited_at);
           this.visit_count = resp.data.visit_count;
           this.images = resp.data.images;
+          this.ip = resp.data.ip || "";
+          this.ip_addr = resp.data.ip_addr || "";
           if (this.answer_text.length === 0) {
             let localVal = localStorage.getItem(storagePrefix + this.uuid);
             if (localVal && localVal !== "") {
@@ -189,6 +195,8 @@ export default {
       visit_count: 0,
       uuid: "",
       images: [],
+      ip: "",
+      ip_addr: "",
     };
   },
 };

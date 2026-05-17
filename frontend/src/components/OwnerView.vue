@@ -127,6 +127,10 @@
               <div class="col-12 col-md-5" :style="q.visit_status_color">
                 回复时间： {{ formatTime(q.answered_at) }}
               </div>
+              <div class="col-12 mt-1 small text-muted" v-if="q.ip">
+                IP：{{ q.ip }}
+                <span v-if="q.ip_addr">（{{ q.ip_addr }}）</span>
+              </div>
             </div>
           </div>
           <div class="card-body">

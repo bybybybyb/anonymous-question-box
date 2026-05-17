@@ -341,7 +341,7 @@ export default {
         const loadingOverlay = Modal.getInstance(
           document.querySelector("#loadingOverlay")
         );
-        loadingOverlay.hide();
+        loadingOverlay?.hide();
       }
     },
   },
@@ -388,7 +388,7 @@ export default {
     const loadingOverlay = Modal.getInstance(
       document.querySelector("#loadingOverlay")
     );
-    loadingOverlay.dispose();
+    loadingOverlay?.dispose();
   },
   data() {
     return {

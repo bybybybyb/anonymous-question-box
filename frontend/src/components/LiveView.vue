@@ -243,6 +243,10 @@
                         <li class="list-group-item">
                           回复时间： {{ formatTime(q.answered_at) }}
                         </li>
+                        <li class="list-group-item" v-if="q.ip">
+                          IP：{{ q.ip }}
+                          <span v-if="q.ip_addr">（{{ q.ip_addr }}）</span>
+                        </li>
                         <li class="list-group-item">
                           <button
                             type="button"
