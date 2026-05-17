@@ -24,7 +24,8 @@ def generate_token(settings: Settings, uuid: str) -> str:
         "exp": now + TOKEN_EXPIRATION_DAYS * 24 * 60 * 60,
         "iat": now,
     }
-    return jwt.encode(claims, settings.jwt_secret_key, algorithm="HS256")
+    encoded = jwt.encode(claims, settings.jwt_secret_key, algorithm="HS256")
+    return encoded.decode("utf-8") if isinstance(encoded, bytes) else encoded
 
 
 def validate_token(settings: Settings, encoded_token: str) -> Principal:
@@ -43,4 +44,3 @@ def bearer_token(auth_header: str | None) -> str | None:
     if len(parts) == 2:
         return parts[1]
     return None
-

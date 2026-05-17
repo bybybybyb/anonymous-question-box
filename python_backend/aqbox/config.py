@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -76,7 +76,10 @@ class Settings:
         return {"owner_profiles": profiles, "metadata": deepcopy(self.metadata)}
 
     def question_type(self, owner: str, qtype: str) -> dict[str, Any] | None:
-        return self.owner_profiles.get(owner, {}).get("question_types", {}).get(qtype)
+        question_types = self.owner_profiles.get(owner, {}).get("question_types", {})
+        if not isinstance(question_types, dict):
+            return None
+        return cast("dict[str, Any] | None", question_types.get(qtype))
 
     def rune_limit(self, owner: str, qtype: str) -> tuple[int, bool]:
         question_type = self.question_type(owner, qtype)

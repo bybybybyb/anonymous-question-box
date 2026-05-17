@@ -28,3 +28,28 @@ packages = ["aqbox"]
 [tool.pytest.ini_options]
 testpaths = ["python_backend/tests"]
 pythonpath = ["python_backend"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py311"
+src = ["python_backend"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "RET", "PT", "RUF"]
+ignore = ["RUF001"]
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+warn_return_any = true
+warn_unused_configs = true
+no_implicit_optional = true
+
+[dependency-groups]
+dev = [
+    "mypy>=2.1.0",
+    "pytest>=8.0",
+    "ruff>=0.15.13",
+    "types-pyjwt>=1.7.1",
+    "types-pyyaml>=6.0.12.20260510",
+]

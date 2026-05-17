@@ -93,4 +93,3 @@ async def lookup_and_store(db: Database, settings: Settings, ip: str, *, client:
     finally:
         if close_client:
             await client.aclose()
-

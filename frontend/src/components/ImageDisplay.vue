@@ -158,7 +158,7 @@ export default {
     SwiperSlide,
   },
   methods: {
-    onModalToggleClicked(event) {
+    onModalToggleClicked() {
       if (this.enableClickToFullscreen) {
         Modal.getOrCreateInstance(
           document.querySelector("#" + this.fullscreenImgModalId)

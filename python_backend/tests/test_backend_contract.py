@@ -4,10 +4,10 @@ from pathlib import Path
 from time import time
 
 import jwt
+import yaml
 from fastapi.testclient import TestClient
 
 from aqbox.app import create_app
-from aqbox.auth import generate_token
 from aqbox.config import Settings
 from aqbox.db import Database
 from aqbox.geo import lookup_and_store
@@ -61,6 +61,54 @@ def auth(token: str) -> dict[str, str]:
 
 def new_user_token(client: TestClient) -> str:
     return client.get("/new").json()["token"]
+
+
+def config_payload(tmp_path: Path, **overrides) -> dict:
+    payload = {
+        "db_path": str(tmp_path / "aqbox.sqlite3"),
+        "jwt_secret_key": "secret",
+        "magic_spell": "spell",
+        "filtered_keywords": ["blocked"],
+        "geo_enabled": False,
+        "trusted_proxy_cidrs": ["127.0.0.1/32", "::1/128"],
+        "visit_flush_interval_seconds": 10,
+        "owner_profiles": {
+            "owner": {
+                "name": "owner",
+                "colors": {"primary_color": "#111", "secondary_color": "#eee"},
+                "question_types": {
+                    "type": {
+                        "name": "type",
+                        "description": "Type",
+                        "rune_limit": 20,
+                        "theme": {"name": "theme", "background_class": "bg"},
+                        "support_image": True,
+                    }
+                },
+            }
+        },
+        "metadata": {"introductions": ["hello"], "console_prints": [], "admin": {}},
+    }
+    payload.update(overrides)
+    return payload
+
+
+def write_config(path: Path, payload: dict) -> None:
+    path.write_text(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+
+def config_client(
+    tmp_path: Path,
+    payload: dict | None = None,
+    *,
+    client_addr: tuple[str, int] = ("127.0.0.1", 50000),
+) -> tuple[TestClient, Path]:
+    config_path = tmp_path / "config.yaml"
+    write_config(config_path, payload or config_payload(tmp_path))
+    client = TestClient(create_app(config_path=str(config_path)), client=client_addr)
+    client.app.state.settings_provider._check_interval_seconds = 0
+    client.app.state.settings_provider._next_check_at = 0
+    return client, config_path
 
 
 def test_profiles_force_support_image_false(tmp_path: Path) -> None:
@@ -236,3 +284,146 @@ def test_pconline_gbk_lookup_cache(tmp_path: Path) -> None:
     assert row["province"] == "广东省"
     assert row["city"] == "广州市"
     assert row["addr"] == "广东省广州市 电信"
+
+
+def test_profiles_and_keywords_hot_reload_without_restart(tmp_path: Path) -> None:
+    payload = config_payload(tmp_path)
+    client, config_path = config_client(tmp_path, payload)
+    with client:
+        original = client.get("/profiles").json()
+        assert original["metadata"]["introductions"] == ["hello"]
+        token_before = new_user_token(client)
+        accepted = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "newblock text"},
+            headers=auth(token_before),
+        )
+        assert accepted.status_code == 200
+
+        payload["metadata"]["introductions"] = ["reloaded"]
+        payload["filtered_keywords"] = ["newblock"]
+        payload["owner_profiles"]["owner"]["question_types"]["type"]["rune_limit"] = 8
+        write_config(config_path, payload)
+
+        reloaded = client.get("/profiles").json()
+        assert reloaded["metadata"]["introductions"] == ["reloaded"]
+        assert reloaded["owner_profiles"]["owner"]["question_types"]["type"]["rune_limit"] == 8
+        token_after = new_user_token(client)
+        submit = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "newblock"},
+            headers=auth(token_after),
+        )
+        owner_list = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "day_limit": 1},
+            headers=auth(admin_token(settings(tmp_path))),
+        )
+    assert submit.status_code == 200
+    assert owner_list.json()["total"] == 1
+
+
+def test_invalid_config_keeps_last_good_and_marks_unhealthy(tmp_path: Path) -> None:
+    payload = config_payload(tmp_path)
+    client, config_path = config_client(tmp_path, payload)
+    with client:
+        assert client.get("/ops/health").json()["ok"] is True
+        config_path.write_text("owner_profiles: [", encoding="utf-8")
+        profiles = client.get("/profiles")
+        health = client.get("/ops/health")
+        cfg = client.get("/ops/config", headers=auth(admin_token(settings(tmp_path))))
+    assert profiles.status_code == 200
+    assert profiles.json()["metadata"]["introductions"] == ["hello"]
+    assert health.status_code == 503
+    assert health.json()["config"] is False
+    assert cfg.status_code == 200
+    assert cfg.json()["last_reload_error"]
+
+
+def test_restart_required_config_fields_do_not_hot_swap(tmp_path: Path) -> None:
+    payload = config_payload(tmp_path)
+    client, config_path = config_client(tmp_path, payload)
+    original_settings = settings(tmp_path)
+    with client:
+        old_admin = admin_token(original_settings)
+        assert client.get("/owner", headers=auth(old_admin)).status_code == 200
+
+        payload["jwt_secret_key"] = "new-secret"
+        payload["magic_spell"] = "new-spell"
+        payload["db_path"] = str(tmp_path / "other.sqlite3")
+        payload["host"] = "0.0.0.0"
+        payload["port"] = 1234
+        write_config(config_path, payload)
+
+        cfg = client.get("/ops/config", headers=auth(old_admin))
+        new_claim_settings = settings(tmp_path)
+        new_claim_settings.jwt_secret_key = "new-secret"
+        new_claim_settings.magic_spell = "new-spell"
+        new_admin = admin_token(new_claim_settings)
+        new_auth = client.get("/owner", headers=auth(new_admin))
+    assert cfg.status_code == 200
+    assert set(cfg.json()["restart_required"]) >= {"jwt_secret_key", "magic_spell", "db_path", "host", "port"}
+    assert '"secret"' not in cfg.text
+    assert "new-secret" not in cfg.text
+    assert new_auth.status_code == 401
+
+
+def test_trusted_proxy_cidrs_hot_reload(tmp_path: Path) -> None:
+    payload = config_payload(tmp_path, geo_enabled=True, trusted_proxy_cidrs=["10.0.0.0/8"])
+    client, config_path = config_client(tmp_path, payload, client_addr=("127.0.0.1", 50000))
+    s = settings(tmp_path, geo_enabled=True)
+    with client:
+        token = new_user_token(client)
+        client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "first"},
+            headers={**auth(token), "X-Real-IP": "8.8.8.8"},
+        )
+        first = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "day_limit": 1},
+            headers=auth(admin_token(s)),
+        ).json()["questions"][0]
+
+        payload["trusted_proxy_cidrs"] = ["127.0.0.1/32"]
+        write_config(config_path, payload)
+        token = new_user_token(client)
+        client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "second"},
+            headers={**auth(token), "X-Real-IP": "8.8.8.8"},
+        )
+        second = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "day_limit": 1},
+            headers=auth(admin_token(s)),
+        ).json()["questions"][0]
+    assert first["ip"] == "127.0.0.1"
+    assert second["ip"] == "8.8.8.8"
+
+
+def test_ops_config_requires_admin_and_health_is_minimal(tmp_path: Path) -> None:
+    client, _ = config_client(tmp_path)
+    with client:
+        health = client.get("/ops/health")
+        unauth = client.get("/ops/config")
+        user_token = new_user_token(client)
+        user = client.get("/ops/config", headers=auth(user_token))
+        owner = client.get("/ops/config", headers=auth(admin_token(settings(tmp_path))))
+    assert health.status_code == 200
+    assert health.json() == {"ok": True, "db": True, "config": True, "visit_worker": True}
+    assert unauth.status_code == 403
+    assert user.status_code == 401
+    assert owner.status_code == 200
+    assert "jwt_secret_key" not in owner.text
+    assert "magic_spell" not in owner.text
+
+
+def test_request_logging_redacts_query_tokens(tmp_path: Path, caplog) -> None:
+    client, _ = config_client(tmp_path)
+    with client:
+        caplog.set_level("INFO", logger="aqbox.request")
+        client.get("/profiles?token=super-secret-token")
+    messages = "\n".join(record.getMessage() for record in caplog.records)
+    assert "super-secret-token" not in messages
+    assert "/profiles?<redacted>" in messages

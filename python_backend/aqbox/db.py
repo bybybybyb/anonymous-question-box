@@ -7,7 +7,6 @@ from typing import Any
 
 from .timeutil import rfc3339_from_epoch
 
-
 PHASE1_SCHEMA = """
 CREATE TABLE IF NOT EXISTS question (
   id INTEGER PRIMARY KEY,
@@ -251,12 +250,28 @@ class Database:
         with self.lock:
             self.conn.execute(
                 "INSERT OR IGNORE INTO ip_geo (ip, province, city, region, addr, looked_up_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (data["ip"], data.get("province", ""), data.get("city", ""), data.get("region", ""), data.get("addr", ""), data["looked_up_at"]),
+                (
+                    data["ip"],
+                    data.get("province", ""),
+                    data.get("city", ""),
+                    data.get("region", ""),
+                    data.get("addr", ""),
+                    data["looked_up_at"],
+                ),
             )
             self.conn.commit()
 
+    def ping(self) -> bool:
+        try:
+            with self.lock:
+                self.conn.execute("SELECT 1").fetchone()
+            return True
+        except Exception:
+            return False
+
     @staticmethod
     def _question_from_row(row: sqlite3.Row, *, include_geo: bool) -> dict[str, Any]:
+        columns = set(row.keys())
         question = {
             "uuid": row["uuid"],
             "type": row["question_type"],
@@ -267,12 +282,12 @@ class Database:
             "answer": row["answer"] or "",
             "answered_at": rfc3339_from_epoch(row["answered_at"]),
             "answered_by": row["answered_by"] or "",
-            "last_visited_at": rfc3339_from_epoch(row["last_visited_at"] if "last_visited_at" in row.keys() else 0),
-            "visit_count": int((row["visit_count"] if "visit_count" in row.keys() else 0) or 0),
+            "last_visited_at": rfc3339_from_epoch(row["last_visited_at"] if "last_visited_at" in columns else 0),
+            "visit_count": int((row["visit_count"] if "visit_count" in columns else 0) or 0),
             "images": [],
             "marked": bool(row["marked_at"]),
         }
-        if include_geo and "ip" in row.keys():
+        if include_geo and "ip" in columns:
             question["ip"] = row["ip"] or ""
             question["ip_addr"] = row["ip_addr"] or ""
         return question

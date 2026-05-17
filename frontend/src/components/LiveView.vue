@@ -514,7 +514,7 @@ export default {
             headers: { Authorization: `Bearer ${this.$route.query.token}` },
           }
         )
-        .then((resp) => {
+        .then(() => {
           this.onQueryChange(true);
         })
         .catch((err) => {
