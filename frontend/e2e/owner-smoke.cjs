@@ -11,13 +11,34 @@ const configPath =
 const preferredOwner = process.env.AQBOX_E2E_OWNER || "";
 const preferredType = process.env.AQBOX_E2E_TYPE || "normal";
 const headed = process.env.AQBOX_E2E_HEADED === "1";
+const geoIp = process.env.AQBOX_E2E_GEO_IP || "";
+const geoAddr = process.env.AQBOX_E2E_GEO_ADDR || "";
+const geoIsp = process.env.AQBOX_E2E_GEO_ISP || "";
 
 function loadConfig() {
+  let text;
   try {
-    return yaml.load(fs.readFileSync(configPath, "utf8")) || {};
+    text = fs.readFileSync(configPath, "utf8");
   } catch (err) {
     throw new Error(`Could not read AQBOX_E2E_CONFIG at ${configPath}: ${err.message}`, { cause: err });
   }
+  try {
+    return yaml.load(text) || {};
+  } catch (err) {
+    const fallback = {
+      jwt_secret_key: yamlScalar(text, "jwt_secret_key"),
+      magic_spell: yamlScalar(text, "magic_spell"),
+    };
+    if (!fallback.jwt_secret_key || !fallback.magic_spell) {
+      throw new Error(`Could not parse AQBOX_E2E_CONFIG at ${configPath}: ${err.message}`, { cause: err });
+    }
+    return fallback;
+  }
+}
+
+function yamlScalar(text, name) {
+  const match = text.match(new RegExp(`^${name}:\\s*['"]?([^'"\n]+)['"]?\\s*$`, "m"));
+  return match ? match[1].trim() : "";
 }
 
 function b64url(input) {
@@ -70,18 +91,22 @@ async function chooseOwnerAndType(request) {
   return { owner, type };
 }
 
-async function submitViaApi(request, owner, type, text) {
+async function submitViaApi(request, owner, type, text, extraHeaders = {}) {
   const tokenResp = await request.get(`${baseUrl}/api/new`);
   if (!tokenResp.ok()) throw new Error(`GET /api/new failed: ${tokenResp.status()}`);
   const token = (await tokenResp.json()).token;
   const submitResp = await request.post(`${baseUrl}/api/questions/submit`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, ...extraHeaders },
     data: { owner, type, text, images: [] },
   });
   if (!submitResp.ok()) {
     throw new Error(`POST /api/questions/submit failed: ${submitResp.status()} ${await submitResp.text()}`);
   }
   return token;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function waitForOwnerList(page) {
@@ -96,6 +121,43 @@ async function selectQuestionType(page, type) {
   if ((await radio.count()) > 0) {
     await radio.check();
   }
+}
+
+async function assertOptionalGeoDisplay(page, owner, type, ownerToken) {
+  if (!geoIp) return [];
+
+  const geoText = `geo smoke ${Date.now()}`;
+  const askerToken = await submitViaApi(page.request, owner, type, geoText, { "X-Real-IP": geoIp });
+  let geoCard;
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await page.goto(`${baseUrl}/#/owner/${owner}/dashboard?token=${ownerToken}`);
+    await page.evaluate(() => localStorage.clear());
+    await page.goto(`${baseUrl}/#/owner/${owner}/dashboard?token=${ownerToken}`);
+    geoCard = page.locator(".card.shadow-lg.m-3").filter({ hasText: geoText }).first();
+    try {
+      await geoCard.getByText(`IP：${geoIp}`).waitFor({ timeout: 2_000 });
+      if (geoAddr) await geoCard.getByText(geoAddr).waitFor({ timeout: 2_000 });
+      if (geoIsp) await geoCard.getByText(geoIsp).waitFor({ timeout: 2_000 });
+      break;
+    } catch (err) {
+      if (attempt === 4) throw err;
+      await sleep(500);
+    }
+  }
+
+  await page.goto(`${baseUrl}/#/question?token=${askerToken}`);
+  await page.getByText(geoText).waitFor({ timeout: 10_000 });
+  const leakedIpCount = await page.getByText(geoIp).count();
+  if (leakedIpCount > 0) throw new Error("Asker view leaked the submission IP");
+  if (geoAddr && (await page.getByText(geoAddr).count()) > 0) {
+    throw new Error("Asker view leaked the submission location");
+  }
+  if (geoIsp && (await page.getByText(geoIsp).count()) > 0) {
+    throw new Error("Asker view leaked the submission ISP");
+  }
+
+  return ["geo owner display", "geo asker hidden"];
 }
 
 async function main() {
@@ -174,6 +236,8 @@ async function main() {
     await page.goto(`${baseUrl}/#/question?token=${liveToken}`);
     await page.getByText("直播中回应").waitFor({ timeout: 10_000 });
 
+    const optionalChecks = await assertOptionalGeoDisplay(page, owner, type, ownerToken);
+
     if (failures.length) throw new Error(failures.join("\n"));
     console.log(
       JSON.stringify({
@@ -187,6 +251,7 @@ async function main() {
           "manual answer",
           "asker sees answer",
           "live auto reply",
+          ...optionalChecks,
         ],
       })
     );

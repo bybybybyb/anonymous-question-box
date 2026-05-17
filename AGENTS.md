@@ -66,3 +66,14 @@ With the backend and frontend running, use the owner smoke flow:
 cd frontend
 AQBOX_E2E_CONFIG=../backend/config/config.local.yaml npm run e2e:smoke
 ```
+
+When local geo is enabled and xdb paths are configured, include the optional geo assertions:
+
+```bash
+cd frontend
+AQBOX_E2E_CONFIG=../backend/config/config.prod.local.yaml \
+AQBOX_E2E_GEO_IP=223.5.5.5 \
+AQBOX_E2E_GEO_ADDR=浙江省杭州市 \
+AQBOX_E2E_GEO_ISP=阿里 \
+npm run e2e:smoke
+```
