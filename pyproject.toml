@@ -1,7 +1,7 @@
 [project]
 name = "anonymous-question-box-python-backend"
 version = "0.1.0"
-description = "FastAPI/Pydantic rewrite of anonymous-question-box backend"
+description = "Canonical FastAPI/Pydantic backend for anonymous-question-box"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115",
@@ -22,17 +22,17 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-package-dir = {"" = "python_backend"}
+package-dir = {"" = "backend"}
 packages = ["aqbox"]
 
 [tool.pytest.ini_options]
-testpaths = ["python_backend/tests"]
-pythonpath = ["python_backend"]
+testpaths = ["backend/tests"]
+pythonpath = ["backend"]
 
 [tool.ruff]
 line-length = 140
 target-version = "py311"
-src = ["python_backend"]
+src = ["backend"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "C4", "SIM", "RET", "PT", "RUF"]

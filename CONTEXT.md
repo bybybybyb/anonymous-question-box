@@ -2,6 +2,12 @@
 
 A multi-owner anonymous Q&A site where visitors submit text questions and owners answer from an admin console. Each owner has one or more **question types** (separate boxes with different limits and themes).
 
+## Implementation Status
+
+The canonical backend is the FastAPI/Pydantic implementation in `backend/`.
+
+The original Go backend has been moved to `legacy/go_backend/` and is deprecated. Use it only as historical reference when investigating legacy behavior. Do not add new backend features there.
+
 ## Language
 
 **Owner**:

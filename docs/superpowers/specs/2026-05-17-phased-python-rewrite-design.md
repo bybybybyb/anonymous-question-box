@@ -79,7 +79,7 @@ At Python/nginx cutover, **all active question types** in deployed YAML must hav
 **Success criteria**
 
 - Existing Vue frontend works against Python on same nginx paths with no code changes.
-- `go test ./test/contract/...` green; Python pytest mirrors contract behaviors.
+- Historical `go test ./test/contract/...` parity notes are retained for migration context; current backend validation is Python pytest.
 - FilePond may still render when `GET /profiles` returns `support_image: false` after cutover YAML flip; uploads fail with 400 — acceptable until post–Phase 1 frontend cleanup.
 
 ### Phase 2 — IP geo + display
@@ -108,7 +108,7 @@ At Python/nginx cutover, **all active question types** in deployed YAML must hav
 
 ## 2. API parity matrix
 
-Routes from `backend/internal/server/routes.go`. Tags: **P1** = Phase 1 MUST match; **P2** = Phase 2 addition; **N/A** = removed in Python.
+Routes from the deprecated Go reference at `legacy/go_backend/internal/server/routes.go`. Tags: **P1** = Phase 1 MUST match; **P2** = Phase 2 addition; **N/A** = removed in Python.
 
 | Method | Path | Auth | Phase | Success | Key edge cases / errors |
 |--------|------|------|-------|---------|-------------------------|
@@ -197,8 +197,8 @@ Go today uses SELECT-then-INSERT/UPDATE batch; Python may use upsert per row for
 | Behavior catalog | `docs/contract/go-api-behavior.md` | Human + agent inventory | Python implementers, reviewers |
 | Fixture DB | `test/fixtures/contract.db` | Go test setup | Golden tests |
 | Fixture config | `test/fixtures/config.contract.yaml` | Go test setup | JWT secrets, owners, keywords |
-| Golden HTTP tests | `backend/test/contract/` | `go test ./test/contract/...` | CI on `main`; must pass before Phase 1 Python merge |
-| Testdata | `backend/test/contract/testdata/*.golden.json` | Per-endpoint bodies | Regression diffs |
+| Golden HTTP tests | `legacy/go_backend/test/contract/` | Historical `go test ./test/contract/...` | Deprecated migration aid |
+| Testdata | `legacy/go_backend/test/contract/testdata/*.golden.json` | Per-endpoint bodies | Historical regression diffs |
 
 **Workflow**
 
@@ -212,7 +212,7 @@ Go today uses SELECT-then-INSERT/UPDATE batch; Python may use upsert per row for
 
 **Cutover gate (Phase 1 — resolved)**
 
-- **Production cutover** (nginx serves Python instead of Go) is blocked until **every** catalog row tagged `MUST` has a passing test in `go test ./test/contract/...` on the commit being deployed.
+- **Historical cutover note:** nginx serving Python instead of Go was blocked on `MUST` contract coverage during migration. Current backend validation is Python pytest plus manual smoke.
 - `PHASE-2` / `PHASE-3` rows may exist without tests until their phase; they are not part of the Phase 1 gate.
 - Feature-branch Python work may proceed in parallel, but **merge to `main` and cutover** require the gate green on that commit.
 - After cutover, Python pytest must assert the same golden JSON as Go for all `MUST` cases (CI runs both).

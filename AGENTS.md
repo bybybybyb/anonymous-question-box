@@ -1,0 +1,60 @@
+# Agent Guide
+
+## Project Shape
+
+- `frontend/` is the Vue/Vite web app.
+- `backend/` is the canonical FastAPI/Pydantic backend.
+- `legacy/go_backend/` is the deprecated Go backend, retained only for historical reference.
+- `backend/config/` and `test/*.db` are local-only runtime/preview artifacts and must not be committed.
+
+## Backend Module Map
+
+- `backend/aqbox/app.py` assembles the FastAPI app and lifespan.
+- `backend/aqbox/routers.py` adapts HTTP routes to the legacy API contract.
+- `backend/aqbox/services.py` owns behavior for submissions, owner console, visits, geo, auth, and ops.
+- `backend/aqbox/repositories.py` is the service-facing SQLite boundary.
+- `backend/aqbox/db.py` owns SQLite schema bootstrap, migrations, and SQL.
+- `backend/aqbox/schemas.py` contains Pydantic request models.
+- `backend/aqbox/legacy.py` preserves legacy error envelopes and manual request parsing.
+- `backend/aqbox/settings_provider.py` handles hot reload, last-good config, and restart-required fields.
+- `backend/aqbox/geo.py` handles trusted proxy IP resolution and pconline lookup.
+
+## Hard Invariants
+
+- Preserve legacy `{"error": "..."}` envelopes on legacy routes.
+- Do not let FastAPI's default 422 response leak from legacy routes.
+- Keep JWTs wire-compatible with the Go-era frontend: HS256, `uuid`, `exp`, `iat`, `jwt_secret_key`, and admin `magic_spell`.
+- Images remain unsupported until explicitly changed: profiles report `support_image: false`, reads return `images: []`, and non-empty submit `images` returns `400`.
+- Asker routes must never expose `ip` or `ip_addr`.
+- Owner/admin routes may expose `ip` and `ip_addr`.
+- IP lookup uses pconline only; do not add ip-api.
+- Trust forwarded IP headers only when the direct peer is in `trusted_proxy_cidrs`.
+- Keyword moderation is stealth soft-delete: submitter gets success; owner normal lists hide the submission.
+- Do not add new features to `legacy/go_backend/`.
+
+## Commands
+
+```bash
+uv sync --dev
+uv run ruff check backend
+uv run ruff format --check backend
+uv run mypy backend/aqbox
+uv run pytest -q
+```
+
+```bash
+cd frontend
+npm run lint -- --max-warnings=0
+npm run build
+```
+
+## Local Preview
+
+```bash
+AQBOX_CONFIG=backend/config/config.local.yaml uv run uvicorn aqbox.main:app --app-dir backend --host 127.0.0.1 --port 3768
+```
+
+```bash
+cd frontend
+./node_modules/.bin/vite --host 127.0.0.1 --port 5173
+```

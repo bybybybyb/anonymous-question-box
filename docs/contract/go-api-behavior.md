@@ -1,8 +1,12 @@
-# Go API Behavior Catalog
+# Legacy Go API Behavior Catalog
 
 This catalog records the Phase 1 compatibility contract for the Python backend.
 The Python implementation intentionally preserves the legacy frontend-facing API
 except where noted as a documented non-parity change.
+
+The Go implementation that originally defined this behavior now lives in
+`legacy/go_backend/` and is deprecated. Current backend development happens in
+`backend/`.
 
 ## Phase 1 MUST Behaviors
 
