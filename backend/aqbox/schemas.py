@@ -42,6 +42,7 @@ class ListQuestionsRequest(BaseModel):
     page: int = 1
     include_moderated: bool = False
     moderation_source: str | None = None
+    ip_addr: str = ""
 
 
 class AnswerQuestionRequest(BaseModel):

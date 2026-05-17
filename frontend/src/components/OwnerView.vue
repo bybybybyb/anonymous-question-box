@@ -56,6 +56,24 @@
                     <option value="365">1年内</option>
                   </select>
                 </li>
+                <li class="nav-item m-1" v-if="locationOptions.length > 0">
+                  <select
+                    class="form-select"
+                    aria-label="location select"
+                    id="location_addr"
+                    v-on:change="onQueryChange(true)"
+                    v-model="queryParams['ip_addr']"
+                  >
+                    <option value="">全部地区</option>
+                    <option
+                      v-for="option in locationOptions"
+                      v-bind:key="option.addr"
+                      :value="option.addr"
+                    >
+                      {{ option.label }}（{{ option.count }}）
+                    </option>
+                  </select>
+                </li>
                 <li class="nav-item m-1">
                   <select
                     class="form-select"
@@ -74,7 +92,7 @@
                   <select
                     class="form-select"
                     aria-label="Default select example"
-                    id="order"
+                    id="page_size"
                     v-on:change="onQueryChange(true)"
                     v-model="queryParams['page_size']"
                   >
@@ -356,6 +374,7 @@ export default {
             marked: this.markedOnly,
             reply_status: +this.queryParams["reply_status"],
             day_limit: +this.queryParams["day_limit"],
+            ip_addr: this.queryParams["ip_addr"],
             page_size: +this.queryParams["page_size"],
             page: +this.queryParams["page"],
           },
@@ -366,6 +385,7 @@ export default {
         .then((resp) => {
           const rows = resp.data.questions;
           this.total_count = resp.data.total;
+          this.locationOptions = resp.data.location_options || [];
           for (let row of rows) {
             if (row.answered_by === "manual") {
               if (row.visit_count > 0) {
@@ -399,6 +419,7 @@ export default {
                 order_params_index: 0,
                 reply_status: 0,
                 day_limit: 7,
+                ip_addr: "",
                 page_size: 5,
                 page: 1,
               };
@@ -550,11 +571,13 @@ export default {
         order_params_index: 0,
         reply_status: 0,
         day_limit: 30,
+        ip_addr: "",
         page_size: 5,
         page: 1,
       },
       rows: [],
       images: [],
+      locationOptions: [],
       total_count: 0,
       navbarStyling: {},
       projected_text: "",

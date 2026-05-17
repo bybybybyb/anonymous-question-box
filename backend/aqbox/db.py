@@ -192,6 +192,7 @@ class Database:
         page: int,
         reply_status: int,
         include_geo: bool = False,
+        location_addr: str = "",
     ) -> tuple[list[dict[str, Any]], int]:
         filters = ["q.owner = ?", "q.question_type = ?", "q.asked_at > ?", "q.deleted_at IS NULL"]
         params: list[Any] = [owner, qtype, due_after]
@@ -204,6 +205,10 @@ class Database:
             filters.append("q.answered_by = 'manual'")
         if marked:
             filters.append("q.marked_at IS NOT NULL")
+        filter_by_location = include_geo and self.geo_enabled and bool(location_addr)
+        if filter_by_location:
+            filters.append("ig.addr = ?")
+            params.append(location_addr)
 
         where = " AND ".join(filters)
         direction = "DESC" if reversed_order else "ASC"
@@ -211,7 +216,7 @@ class Database:
         geo_join = " LEFT JOIN ip_geo ig ON ig.ip = q.ip" if include_geo and self.geo_enabled else ""
         offset = max(page - 1, 0) * page_size
         with self.lock:
-            total = self.conn.execute(f"SELECT COUNT(*) FROM question q WHERE {where}", params).fetchone()[0]
+            total = self.conn.execute(f"SELECT COUNT(*) FROM question q{geo_join} WHERE {where}", params).fetchone()[0]
             rows = self.conn.execute(
                 "SELECT q.id, q.uuid, q.owner, q.question_type, q.question, q.word_count, q.answer, "
                 "q.asked_at, q.answered_at, q.answered_by, q.marked_at, "
@@ -221,6 +226,74 @@ class Database:
                 [*params, page_size, offset],
             ).fetchall()
         return [self._question_from_row(row, include_geo=include_geo) for row in rows], int(total)
+
+    def list_location_options(
+        self,
+        *,
+        owner: str,
+        qtype: str,
+        marked: bool,
+        due_after: int,
+        reply_status: int,
+    ) -> list[dict[str, Any]]:
+        if not self.geo_enabled:
+            return []
+        filters = [
+            "q.owner = ?",
+            "q.question_type = ?",
+            "q.asked_at > ?",
+            "q.deleted_at IS NULL",
+            "ig.addr IS NOT NULL",
+            "ig.addr != ''",
+        ]
+        params: list[Any] = [owner, qtype, due_after]
+        if reply_status < 0:
+            filters.append("q.answered_at IS NULL")
+        elif reply_status == 1:
+            filters.append("q.answered_at IS NOT NULL")
+        elif reply_status == 2:
+            filters.append("q.answered_at IS NOT NULL")
+            filters.append("q.answered_by = 'manual'")
+        if marked:
+            filters.append("q.marked_at IS NOT NULL")
+
+        where = " AND ".join(filters)
+        with self.lock:
+            rows = self.conn.execute(
+                """
+                SELECT ig.addr, ig.isp, COUNT(*) AS count
+                FROM question q
+                JOIN ip_geo ig ON ig.ip = q.ip
+                WHERE """
+                + where
+                + """
+                GROUP BY ig.addr, ig.isp
+                ORDER BY ig.addr ASC, ig.isp ASC
+                """,
+                params,
+            ).fetchall()
+
+        grouped: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            addr = row["addr"] or ""
+            if not addr:
+                continue
+            option = grouped.setdefault(addr, {"addr": addr, "isps": set(), "count": 0})
+            if row["isp"]:
+                option["isps"].add(row["isp"])
+            option["count"] += int(row["count"] or 0)
+        result = []
+        for addr, option in grouped.items():
+            isps = sorted(option["isps"])
+            result.append(
+                {
+                    "addr": addr,
+                    "isps": isps,
+                    "label": f"{addr} / {'、'.join(isps)}" if isps else addr,
+                    "count": option["count"],
+                }
+            )
+        return sorted(result, key=lambda item: item["addr"])
 
     def update_answer(self, uuid: str, answer: str, answered_by: str, answered_at: int) -> bool:
         with self.lock:

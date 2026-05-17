@@ -190,8 +190,26 @@ class OwnerConsoleService:
             page=page,
             reply_status=req.reply_status,
             include_geo=settings.geo_enabled,
+            location_addr=req.ip_addr if settings.geo_enabled else "",
         )
-        return {"questions": questions, "total": total, "page_size": page_size, "page": page}
+        location_options = (
+            self.repo.list_location_options(
+                owner=req.owner,
+                qtype=req.type,
+                marked=req.marked,
+                due_after=due_after,
+                reply_status=req.reply_status,
+            )
+            if settings.geo_enabled
+            else []
+        )
+        return {
+            "questions": questions,
+            "total": total,
+            "page_size": page_size,
+            "page": page,
+            "location_options": location_options,
+        }
 
     def detail(self, uuid: str, settings: Settings) -> dict[str, Any]:
         question = self.repo.get(uuid, with_visit=True, include_geo=settings.geo_enabled, include_deleted=False)

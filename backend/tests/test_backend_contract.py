@@ -297,6 +297,71 @@ def test_phase2_forwarded_for_fallback_and_owner_detail_geo(tmp_path: Path) -> N
     assert "ip_isp" not in asker_read.json()
 
 
+def test_owner_location_filter_uses_cached_addr_and_dedupes_isp(tmp_path: Path) -> None:
+    s = settings(tmp_path, geo_enabled=True, trusted_proxy_cidrs=["127.0.0.1/32"])
+    app, db = make_app_and_db(s)
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        for ip, text in [
+            ("8.8.8.8", "hangzhou one"),
+            ("1.1.1.1", "hangzhou two"),
+            ("9.9.9.9", "beijing"),
+        ]:
+            token = new_user_token(client)
+            submit = client.post(
+                "/questions/submit",
+                json={"owner": "owner", "type": "type", "text": text},
+                headers={**auth(token), "X-Real-IP": ip},
+            )
+            assert submit.status_code == 200
+        db.insert_ip_geo(
+            {
+                "ip": "8.8.8.8",
+                "addr": "浙江省杭州市",
+                "isp": "阿里",
+                "provider": "ip2region",
+                "looked_up_at": 1,
+            }
+        )
+        db.insert_ip_geo(
+            {
+                "ip": "1.1.1.1",
+                "addr": "浙江省杭州市",
+                "isp": "电信",
+                "provider": "ip2region",
+                "looked_up_at": 1,
+            }
+        )
+        db.insert_ip_geo(
+            {
+                "ip": "9.9.9.9",
+                "addr": "北京市",
+                "isp": "联通",
+                "provider": "ip2region",
+                "looked_up_at": 1,
+            }
+        )
+
+        unfiltered = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "day_limit": 1},
+            headers=auth(admin_token(s)),
+        ).json()
+        filtered = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "day_limit": 1, "ip_addr": "浙江省杭州市"},
+            headers=auth(admin_token(s)),
+        ).json()
+
+    hangzhou_option = next(option for option in unfiltered["location_options"] if option["addr"] == "浙江省杭州市")
+    assert hangzhou_option["count"] == 2
+    assert set(hangzhou_option["isps"]) == {"阿里", "电信"}
+    assert "阿里" in hangzhou_option["label"]
+    assert "电信" in hangzhou_option["label"]
+    assert filtered["total"] == 2
+    assert {question["text"] for question in filtered["questions"]} == {"hangzhou one", "hangzhou two"}
+    assert {option["addr"] for option in filtered["location_options"]} == {"浙江省杭州市", "北京市"}
+
+
 def test_phase2_x_real_ip_precedes_forwarded_for(tmp_path: Path) -> None:
     s = settings(tmp_path, geo_enabled=True, trusted_proxy_cidrs=["127.0.0.1/32"])
     with make_client(s, client_addr=("127.0.0.1", 50000)) as client:

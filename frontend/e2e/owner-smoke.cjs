@@ -116,6 +116,12 @@ async function waitForOwnerList(page) {
   );
 }
 
+async function gotoWithClearedStorage(page, url) {
+  await page.goto(baseUrl);
+  await page.evaluate(() => localStorage.clear());
+  await page.goto(url);
+}
+
 async function selectQuestionType(page, type) {
   const radio = page.locator(`#${type}_receiver_radio`);
   if ((await radio.count()) > 0) {
@@ -131,9 +137,7 @@ async function assertOptionalGeoDisplay(page, owner, type, ownerToken) {
   let geoCard;
 
   for (let attempt = 0; attempt < 5; attempt++) {
-    await page.goto(`${baseUrl}/#/owner/${owner}/dashboard?token=${ownerToken}`);
-    await page.evaluate(() => localStorage.clear());
-    await page.goto(`${baseUrl}/#/owner/${owner}/dashboard?token=${ownerToken}`);
+    await gotoWithClearedStorage(page, `${baseUrl}/#/owner/${owner}/dashboard?token=${ownerToken}`);
     geoCard = page.locator(".card.shadow-lg.m-3").filter({ hasText: geoText }).first();
     try {
       await geoCard.getByText(`IP：${geoIp}`).waitFor({ timeout: 2_000 });
@@ -144,6 +148,13 @@ async function assertOptionalGeoDisplay(page, owner, type, ownerToken) {
       if (attempt === 4) throw err;
       await sleep(500);
     }
+  }
+
+  const optionalChecks = ["geo owner display", "geo asker hidden"];
+  if (geoAddr) {
+    await Promise.all([waitForOwnerList(page), page.locator("#location_addr").selectOption(geoAddr)]);
+    await page.getByText(geoText).waitFor({ timeout: 10_000 });
+    optionalChecks.push("geo location filter");
   }
 
   await page.goto(`${baseUrl}/#/question?token=${askerToken}`);
@@ -157,7 +168,7 @@ async function assertOptionalGeoDisplay(page, owner, type, ownerToken) {
     throw new Error("Asker view leaked the submission ISP");
   }
 
-  return ["geo owner display", "geo asker hidden"];
+  return optionalChecks;
 }
 
 async function main() {
@@ -181,9 +192,7 @@ async function main() {
     const unique = `playwright smoke ${Date.now()}`;
     const answer = `manual answer ${Date.now()}`;
 
-    await page.goto(`${baseUrl}/#/question/${owner}/new`);
-    await page.evaluate(() => localStorage.clear());
-    await page.goto(`${baseUrl}/#/question/${owner}/new`);
+    await gotoWithClearedStorage(page, `${baseUrl}/#/question/${owner}/new`);
     await selectQuestionType(page, type);
     await page.locator("textarea").fill(unique);
     await page.getByRole("button", { name: "提交" }).click();
@@ -194,9 +203,7 @@ async function main() {
     const askerUrl = page.url();
     if (!askerUrl.includes("token=")) throw new Error("Submission URL does not include asker token");
 
-    await page.goto(`${baseUrl}/#/owner/${owner}/dashboard?token=${ownerToken}`);
-    await page.evaluate(() => localStorage.clear());
-    await page.goto(`${baseUrl}/#/owner/${owner}/dashboard?token=${ownerToken}`);
+    await gotoWithClearedStorage(page, `${baseUrl}/#/owner/${owner}/dashboard?token=${ownerToken}`);
     await page.getByText(unique).waitFor({ timeout: 10_000 });
 
     await Promise.all([waitForOwnerList(page), page.locator("#reply_status").selectOption("-1")]);
@@ -204,7 +211,7 @@ async function main() {
     await Promise.all([waitForOwnerList(page), page.locator("#reply_status").selectOption("0")]);
     await Promise.all([waitForOwnerList(page), page.locator("#day_limit").selectOption("30")]);
     await Promise.all([waitForOwnerList(page), page.locator("#order").first().selectOption("2")]);
-    await Promise.all([waitForOwnerList(page), page.locator("select").nth(4).selectOption("10")]);
+    await Promise.all([waitForOwnerList(page), page.locator("#page_size").selectOption("10")]);
     await page.getByText(unique).waitFor({ timeout: 10_000 });
 
     const card = page.locator(".card.shadow-lg.m-3").filter({ hasText: unique }).first();
@@ -226,9 +233,7 @@ async function main() {
 
     const liveText = `live auto ${Date.now()}`;
     const liveToken = await submitViaApi(page.request, owner, type, liveText);
-    await page.goto(`${baseUrl}/#/owner/${owner}/live?token=${ownerToken}`);
-    await page.evaluate(() => localStorage.clear());
-    await page.goto(`${baseUrl}/#/owner/${owner}/live?token=${ownerToken}`);
+    await gotoWithClearedStorage(page, `${baseUrl}/#/owner/${owner}/live?token=${ownerToken}`);
     await page.getByText(liveText).waitFor({ timeout: 10_000 });
     await page.locator(".card.shadow-sm.my-2").filter({ hasText: liveText }).first().getByText("← 投屏").click();
     await page.locator("#textProjectArea").getByText(liveText).waitFor({ timeout: 10_000 });

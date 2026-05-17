@@ -28,6 +28,7 @@ class SubmissionRepository:
         page: int,
         reply_status: int,
         include_geo: bool = False,
+        location_addr: str = "",
     ) -> tuple[list[dict[str, Any]], int]:
         return self.db.list_questions(
             owner=owner,
@@ -40,6 +41,24 @@ class SubmissionRepository:
             page=page,
             reply_status=reply_status,
             include_geo=include_geo,
+            location_addr=location_addr,
+        )
+
+    def list_location_options(
+        self,
+        *,
+        owner: str,
+        qtype: str,
+        marked: bool,
+        due_after: int,
+        reply_status: int,
+    ) -> list[dict[str, Any]]:
+        return self.db.list_location_options(
+            owner=owner,
+            qtype=qtype,
+            marked=marked,
+            due_after=due_after,
+            reply_status=reply_status,
         )
 
     def answer(self, uuid: str, answer: str, answered_by: str, answered_at: int) -> bool:
