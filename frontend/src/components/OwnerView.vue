@@ -129,7 +129,9 @@
               </div>
               <div class="col-12 mt-1 small text-muted" v-if="q.ip">
                 IP：{{ q.ip }}
-                <span v-if="q.ip_addr">（{{ q.ip_addr }}）</span>
+                <span v-if="q.ip_addr || q.ip_isp"
+                  >（{{ [q.ip_addr, q.ip_isp].filter(Boolean).join(" / ") }}）</span
+                >
               </div>
             </div>
           </div>
@@ -310,6 +312,7 @@ const orderDirection = [
   { by: "word_count", reversed: true },
   { by: "word_count", reversed: false },
 ];
+const queryDebounceMs = 200;
 
 export default {
   name: "OwnerView",
@@ -328,7 +331,16 @@ export default {
       Modal.getOrCreateInstance(document.querySelector("#answerModal")).hide();
       Modal.getOrCreateInstance(document.querySelector("#imgModal")).show();
     },
-    onQueryChange(resetPage, needRetry = false) {
+    onQueryChange(resetPage, needRetry = false, debounce = true) {
+      if (debounce) {
+        clearTimeout(this.queryDebounceTimer);
+        this.queryDebounceTimer = setTimeout(
+          () => this.onQueryChange(resetPage, needRetry, false),
+          queryDebounceMs
+        );
+        return;
+      }
+      clearTimeout(this.queryDebounceTimer);
       if (resetPage) this.queryParams["page"] = 1;
       this.axios
         .post(
@@ -390,7 +402,7 @@ export default {
                 page_size: 5,
                 page: 1,
               };
-              this.onQueryChange(false, false);
+              this.onQueryChange(false, false, false);
             } else {
               alert("提问箱好像坏掉了，直接ping管理员吧！");
               this.$router.push("/");
@@ -418,7 +430,7 @@ export default {
           }
         )
         .then(() => {
-          this.onQueryChange(true);
+          this.onQueryChange(true, false, false);
         })
         .catch((err) => {
           console.log(err.response);
@@ -443,7 +455,7 @@ export default {
         .then(() => {
           localStorage.removeItem(storagePrefixAnswerView + this.uuid);
           this.closeQuestion();
-          this.onQueryChange();
+          this.onQueryChange(false, false, false);
         })
         .catch((err) => {
           console.log(err.response);
@@ -521,9 +533,10 @@ export default {
         }
       }
     }
-    this.onQueryChange(true, true);
+    this.onQueryChange(true, true, false);
   },
   beforeUnmount() {
+    clearTimeout(this.queryDebounceTimer);
     // change back the body background
     document.body.classList.remove(
       "body-background-texture-" + this.owner + "-light"
@@ -547,6 +560,7 @@ export default {
       projected_text: "",
       uuid: "",
       markedOnly: false,
+      queryDebounceTimer: null,
     };
   },
 };

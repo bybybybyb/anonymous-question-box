@@ -95,15 +95,31 @@ class Database:
             """
             CREATE TABLE IF NOT EXISTS ip_geo (
               ip TEXT PRIMARY KEY,
+              country TEXT,
               province TEXT NOT NULL DEFAULT '',
               city TEXT NOT NULL DEFAULT '',
               region TEXT NOT NULL DEFAULT '',
               addr TEXT NOT NULL DEFAULT '',
+              isp TEXT,
+              country_code TEXT,
+              provider TEXT,
+              raw_region TEXT,
               looked_up_at INTEGER NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_question_ip ON question(ip);
             """
         )
+        geo_cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(ip_geo)").fetchall()}
+        for name, ddl in {
+            "country": "ALTER TABLE ip_geo ADD COLUMN country TEXT",
+            "isp": "ALTER TABLE ip_geo ADD COLUMN isp TEXT",
+            "country_code": "ALTER TABLE ip_geo ADD COLUMN country_code TEXT",
+            "provider": "ALTER TABLE ip_geo ADD COLUMN provider TEXT",
+            "raw_region": "ALTER TABLE ip_geo ADD COLUMN raw_region TEXT",
+        }.items():
+            if name not in geo_cols:
+                self.conn.execute(ddl)
+        self.conn.execute("DELETE FROM ip_geo WHERE provider IS NULL OR provider != 'ip2region'")
 
     def migrate_moderation(self) -> None:
         cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(question)").fetchall()}
@@ -147,7 +163,7 @@ class Database:
         include_geo: bool = False,
         include_deleted: bool = True,
     ) -> dict[str, Any] | None:
-        geo_select = ", q.ip, ig.addr AS ip_addr" if include_geo and self.geo_enabled else ""
+        geo_select = ", q.ip, ig.addr AS ip_addr, ig.isp AS ip_isp" if include_geo and self.geo_enabled else ""
         geo_join = " LEFT JOIN ip_geo ig ON ig.ip = q.ip" if include_geo and self.geo_enabled else ""
         visit_select = ", v.last_visited_at, v.visit_count" if with_visit else ""
         visit_join = " LEFT JOIN visit v ON v.uuid = q.uuid" if with_visit else ""
@@ -191,7 +207,7 @@ class Database:
 
         where = " AND ".join(filters)
         direction = "DESC" if reversed_order else "ASC"
-        geo_select = ", q.ip, ig.addr AS ip_addr" if include_geo and self.geo_enabled else ""
+        geo_select = ", q.ip, ig.addr AS ip_addr, ig.isp AS ip_isp" if include_geo and self.geo_enabled else ""
         geo_join = " LEFT JOIN ip_geo ig ON ig.ip = q.ip" if include_geo and self.geo_enabled else ""
         offset = max(page - 1, 0) * page_size
         with self.lock:
@@ -249,13 +265,23 @@ class Database:
     def insert_ip_geo(self, data: dict[str, Any]) -> None:
         with self.lock:
             self.conn.execute(
-                "INSERT OR IGNORE INTO ip_geo (ip, province, city, region, addr, looked_up_at) VALUES (?, ?, ?, ?, ?, ?)",
+                """
+                INSERT OR IGNORE INTO ip_geo (
+                  ip, country, province, city, region, addr, isp, country_code, provider, raw_region, looked_up_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
                 (
                     data["ip"],
+                    data.get("country", ""),
                     data.get("province", ""),
                     data.get("city", ""),
                     data.get("region", ""),
                     data.get("addr", ""),
+                    data.get("isp", ""),
+                    data.get("country_code", ""),
+                    data.get("provider", ""),
+                    data.get("raw_region", ""),
                     data["looked_up_at"],
                 ),
             )
@@ -290,4 +316,5 @@ class Database:
         if include_geo and "ip" in columns:
             question["ip"] = row["ip"] or ""
             question["ip_addr"] = row["ip_addr"] or ""
+            question["ip_isp"] = row["ip_isp"] or ""
         return question

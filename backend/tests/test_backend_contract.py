@@ -10,7 +10,8 @@ from fastapi.testclient import TestClient
 from aqbox.app import create_app
 from aqbox.config import Settings
 from aqbox.db import Database
-from aqbox.geo import lookup_and_store
+from aqbox.geo import lookup_and_store, parse_region
+from aqbox.services import GeoService
 
 
 def settings(tmp_path: Path, *, geo_enabled: bool = False, trusted_proxy_cidrs: list[str] | None = None) -> Settings:
@@ -280,6 +281,8 @@ def test_phase2_forwarded_for_fallback_and_owner_detail_geo(tmp_path: Path) -> N
                 "city": "广州市",
                 "region": "",
                 "addr": "广东省广州市",
+                "isp": "电信",
+                "provider": "ip2region",
                 "looked_up_at": 1,
             }
         )
@@ -288,8 +291,10 @@ def test_phase2_forwarded_for_fallback_and_owner_detail_geo(tmp_path: Path) -> N
     assert owner_detail.status_code == 200
     assert owner_detail.json()["ip"] == "10.20.30.40"
     assert owner_detail.json()["ip_addr"] == "广东省广州市"
+    assert owner_detail.json()["ip_isp"] == "电信"
     assert "ip" not in asker_read.json()
     assert "ip_addr" not in asker_read.json()
+    assert "ip_isp" not in asker_read.json()
 
 
 def test_phase2_x_real_ip_precedes_forwarded_for(tmp_path: Path) -> None:
@@ -309,28 +314,134 @@ def test_phase2_x_real_ip_precedes_forwarded_for(tmp_path: Path) -> None:
     assert listed["ip"] == "10.0.0.1"
 
 
-class FakeResponse:
-    content = '{"pro":"广东省","city":"广州市","region":"","addr":"广东省广州市 电信"}'.encode("gbk")
+class FakeRegionLookup:
+    def __init__(self, raw_region: str | None):
+        self.raw_region = raw_region
+        self.calls = 0
+
+    def __call__(self, ip: str, _: Settings) -> str | None:
+        assert ip == "8.8.8.8"
+        self.calls += 1
+        return self.raw_region
 
 
-class FakeHTTPClient:
-    async def get(self, url: str) -> FakeResponse:
-        assert "whois.pconline.com.cn" in url
-        return FakeResponse()
-
-
-def test_pconline_gbk_lookup_cache(tmp_path: Path) -> None:
+def test_ip2region_lookup_cache(tmp_path: Path) -> None:
     import asyncio
 
     s = settings(tmp_path, geo_enabled=True)
     db = Database(s.db_path, geo_enabled=True)
     db.bootstrap()
-    asyncio.run(lookup_and_store(db, s, "8.8.8.8", client=FakeHTTPClient()))  # type: ignore[arg-type]
+    lookup = FakeRegionLookup("中国|广东省|深圳市|电信|CN")
+    asyncio.run(lookup_and_store(db, s, "8.8.8.8", region_lookup=lookup))
+    asyncio.run(lookup_and_store(db, s, "8.8.8.8", region_lookup=lookup))
     row = db.get_ip_geo("8.8.8.8")
     assert row is not None
+    assert lookup.calls == 1
+    assert row["provider"] == "ip2region"
+    assert row["country"] == "中国"
     assert row["province"] == "广东省"
-    assert row["city"] == "广州市"
-    assert row["addr"] == "广东省广州市 电信"
+    assert row["city"] == "深圳市"
+    assert row["isp"] == "电信"
+    assert row["country_code"] == "CN"
+    assert row["raw_region"] == "中国|广东省|深圳市|电信|CN"
+    assert row["addr"] == "广东省深圳市"
+
+
+def test_ip2region_default_cache_policy_is_vector_index(tmp_path: Path) -> None:
+    s = settings(tmp_path)
+    assert s.ip2region_cache_policy == "vectorIndex"
+    config_path = tmp_path / "config.yaml"
+    write_config(config_path, config_payload(tmp_path))
+    from aqbox.config import load_settings
+
+    assert load_settings(str(config_path)).ip2region_cache_policy == "vectorIndex"
+
+
+def test_ip2region_invalid_lookup_fails_open(tmp_path: Path) -> None:
+    import asyncio
+
+    s = settings(tmp_path, geo_enabled=True)
+    db = Database(s.db_path, geo_enabled=True)
+    db.bootstrap()
+    asyncio.run(lookup_and_store(db, s, "8.8.8.8", region_lookup=FakeRegionLookup("中国|广东省")))
+    assert db.get_ip_geo("8.8.8.8") is None
+
+
+def test_ip2region_missing_xdb_fails_open(tmp_path: Path) -> None:
+    import asyncio
+
+    s = settings(tmp_path, geo_enabled=True)
+    s.ip2region_ipv4_xdb_path = str(tmp_path / "missing.xdb")
+    db = Database(s.db_path, geo_enabled=True)
+    db.bootstrap()
+    asyncio.run(lookup_and_store(db, s, "8.8.8.8"))
+    assert db.get_ip_geo("8.8.8.8") is None
+
+
+def test_ip2region_parser_omits_zero_parts_and_isp_from_addr() -> None:
+    cn = parse_region("中国|广东省|深圳市|电信|CN")
+    overseas = parse_region("United States|California|San Jose|xTom|US")
+    partial = parse_region("United States|0|0|Google|US")
+    assert cn is not None
+    assert overseas is not None
+    assert partial is not None
+    assert cn.addr == "广东省深圳市"
+    assert overseas.addr == "United States California San Jose"
+    assert partial.addr == "United States"
+
+
+def test_ip2region_migration_drops_stale_wip_cache_rows(tmp_path: Path) -> None:
+    s = settings(tmp_path)
+    db = Database(s.db_path)
+    db.bootstrap()
+    db.conn.execute(
+        """
+        CREATE TABLE ip_geo (
+          ip TEXT PRIMARY KEY,
+          province TEXT NOT NULL DEFAULT '',
+          city TEXT NOT NULL DEFAULT '',
+          region TEXT NOT NULL DEFAULT '',
+          addr TEXT NOT NULL DEFAULT '',
+          looked_up_at INTEGER NOT NULL
+        )
+        """
+    )
+    db.conn.execute(
+        "INSERT INTO ip_geo (ip, province, city, region, addr, looked_up_at) VALUES (?, ?, ?, ?, ?, ?)",
+        ("8.8.8.8", "广东省", "广州市", "", "广东省广州市 电信", 1),
+    )
+    db.conn.commit()
+    db.migrate_geo()
+    db.conn.commit()
+    assert db.get_ip_geo("8.8.8.8") is None
+
+
+def test_ip2region_migration_keeps_current_provider_rows(tmp_path: Path) -> None:
+    s = settings(tmp_path, geo_enabled=True)
+    db = Database(s.db_path, geo_enabled=True)
+    db.bootstrap()
+    db.insert_ip_geo(
+        {
+            "ip": "8.8.8.8",
+            "country": "中国",
+            "province": "广东省",
+            "city": "深圳市",
+            "region": "",
+            "addr": "广东省深圳市",
+            "isp": "电信",
+            "country_code": "CN",
+            "provider": "ip2region",
+            "raw_region": "中国|广东省|深圳市|电信|CN",
+            "looked_up_at": 1,
+        }
+    )
+    db.migrate_geo()
+    db.migrate_geo()
+    db.conn.commit()
+    row = db.get_ip_geo("8.8.8.8")
+    assert row is not None
+    assert row["provider"] == "ip2region"
+    assert row["addr"] == "广东省深圳市"
 
 
 def test_profiles_and_keywords_hot_reload_without_restart(tmp_path: Path) -> None:
@@ -400,6 +511,9 @@ def test_restart_required_config_fields_do_not_hot_swap(tmp_path: Path) -> None:
         payload["db_path"] = str(tmp_path / "other.sqlite3")
         payload["host"] = "0.0.0.0"
         payload["port"] = 1234
+        payload["ip2region_ipv4_xdb_path"] = str(tmp_path / "ip2region_v4.xdb")
+        payload["ip2region_ipv6_xdb_path"] = str(tmp_path / "ip2region_v6.xdb")
+        payload["ip2region_cache_policy"] = "file"
         write_config(config_path, payload)
 
         cfg = client.get("/ops/config", headers=auth(old_admin))
@@ -409,7 +523,16 @@ def test_restart_required_config_fields_do_not_hot_swap(tmp_path: Path) -> None:
         new_admin = admin_token(new_claim_settings)
         new_auth = client.get("/owner", headers=auth(new_admin))
     assert cfg.status_code == 200
-    assert set(cfg.json()["restart_required"]) >= {"jwt_secret_key", "magic_spell", "db_path", "host", "port"}
+    assert set(cfg.json()["restart_required"]) >= {
+        "jwt_secret_key",
+        "magic_spell",
+        "db_path",
+        "host",
+        "port",
+        "ip2region_ipv4_xdb_path",
+        "ip2region_ipv6_xdb_path",
+        "ip2region_cache_policy",
+    }
     assert '"secret"' not in cfg.text
     assert "new-secret" not in cfg.text
     assert new_auth.status_code == 401
@@ -447,6 +570,40 @@ def test_trusted_proxy_cidrs_hot_reload(tmp_path: Path) -> None:
         ).json()["questions"][0]
     assert first["ip"] == "127.0.0.1"
     assert second["ip"] == "8.8.8.8"
+
+
+def test_owner_questions_rate_limit_uses_legacy_error(tmp_path: Path) -> None:
+    client, _ = config_client(tmp_path)
+    with client:
+        token = admin_token(settings(tmp_path))
+        statuses = [
+            client.post(
+                "/owner/questions",
+                json={"owner": "owner", "type": "type", "day_limit": 1},
+                headers=auth(token),
+            )
+            for _ in range(31)
+        ]
+    assert statuses[-1].status_code == 429
+    assert statuses[-1].json() == {"error": "请求过于频繁"}
+
+
+def test_geo_service_suppresses_duplicate_in_flight_ip(tmp_path: Path) -> None:
+    import asyncio
+
+    async def run() -> None:
+        s = settings(tmp_path, geo_enabled=True)
+        db = Database(s.db_path, geo_enabled=True)
+        db.bootstrap()
+        service = GeoService()
+        repo = type("Repo", (), {"db": db})()
+        service.schedule_lookup(repo, s, "8.8.8.8")  # type: ignore[arg-type]
+        service.schedule_lookup(repo, s, "8.8.8.8")  # type: ignore[arg-type]
+        assert len(service.background_tasks) == 1
+        for task in list(service.background_tasks):
+            task.cancel()
+
+    asyncio.run(run())
 
 
 def test_ops_config_requires_admin_and_health_is_minimal(tmp_path: Path) -> None:

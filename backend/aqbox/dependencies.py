@@ -7,6 +7,7 @@ from fastapi import Request
 from .auth import Principal
 from .config import Settings
 from .db import Database
+from .rate_limit import TokenBucketRateLimiter
 from .repositories import OpsRepository, SubmissionRepository, VisitRepository
 from .services import (
     AuthService,
@@ -73,6 +74,10 @@ def ops_service(request: Request) -> OpsService:
     return cast(OpsService, request.app.state.ops_service)
 
 
+def owner_query_rate_limiter(request: Request) -> TokenBucketRateLimiter:
+    return cast(TokenBucketRateLimiter, request.app.state.owner_query_rate_limiter)
+
+
 def build_services(db: Database, provider: SettingsProvider) -> dict[str, object]:
     submission_repo = SubmissionRepository(db)
     visit_repo = VisitRepository(db)
@@ -86,4 +91,5 @@ def build_services(db: Database, provider: SettingsProvider) -> dict[str, object
         "submission_service": SubmissionService(submission_repo, moderation, geo),
         "owner_console_service": OwnerConsoleService(submission_repo),
         "ops_service": OpsService(ops_repo, provider),
+        "owner_query_rate_limiter": TokenBucketRateLimiter(rate_per_second=10.0, burst=30),
     }

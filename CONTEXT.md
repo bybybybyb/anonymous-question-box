@@ -43,8 +43,8 @@ The visitor IP stored on submit, intended to reflect the real client behind ngin
 _Avoid_: server IP, proxy IP
 
 **IP location label**:
-The human-readable location string returned to admins as `ip_addr`, sourced from `ip_geo.addr` in storage.
-_Avoid_: geolocation object, geo JSON
+The human-readable location string returned to admins as `ip_addr`, derived from the stored **Client IP** by the configured geolocation provider.
+_Avoid_: geolocation object, geo JSON, provider response
 
 ## Relationships
 
@@ -63,7 +63,7 @@ Keyword and/or LLM checks that may **soft-delete** a submission before owners se
 _Avoid_: censorship, ban (unless owner manually deletes)
 
 **Rewrite phase**:
-A delivery stage for the Python backend migration — Phase 1 (backend parity, no frontend), Phase 2 (pconline geo + frontend IP display), Phase 3 (LLM moderation, deferred).
+A delivery stage for the Python backend migration — Phase 1 (backend parity, no frontend), Phase 2 (IP capture + geolocation + frontend IP display), Phase 3 (LLM moderation, deferred).
 _Avoid_: sprint, milestone (unless tracking externally)
 
 **Legacy image submission**:

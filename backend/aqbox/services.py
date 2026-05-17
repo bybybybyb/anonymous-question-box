@@ -9,7 +9,7 @@ from fastapi import Request
 
 from .auth import Principal, bearer_token, generate_token, validate_token
 from .config import Settings
-from .geo import lookup_and_store, resolve_client_ip
+from .geo import geo_status, lookup_and_store, resolve_client_ip
 from .legacy import LegacyAPIError
 from .moderation import keyword_filter
 from .repositories import OpsRepository, SubmissionRepository, VisitRepository
@@ -58,15 +58,28 @@ class ModerationService:
 class GeoService:
     def __init__(self):
         self.background_tasks: set[asyncio.Task[None]] = set()
+        self.in_flight_ips: set[str] = set()
+        self.lookup_semaphore = asyncio.Semaphore(2)
 
     def client_ip(self, request: Request, settings: Settings) -> str | None:
         return resolve_client_ip(request, settings) if settings.geo_enabled else None
 
     def schedule_lookup(self, repo: SubmissionRepository, settings: Settings, ip: str | None) -> None:
         if settings.geo_enabled and ip:
-            task = asyncio.create_task(lookup_and_store(repo.db, settings, ip))
+            if ip in self.in_flight_ips:
+                return
+            self.in_flight_ips.add(ip)
+            task = asyncio.create_task(self._lookup_once(repo, settings, ip))
             self.background_tasks.add(task)
-            task.add_done_callback(self.background_tasks.discard)
+            task.add_done_callback(lambda finished: self._forget_lookup(finished, ip))
+
+    async def _lookup_once(self, repo: SubmissionRepository, settings: Settings, ip: str) -> None:
+        async with self.lookup_semaphore:
+            await lookup_and_store(repo.db, settings, ip)
+
+    def _forget_lookup(self, task: asyncio.Task[None], ip: str) -> None:
+        self.background_tasks.discard(task)
+        self.in_flight_ips.discard(ip)
 
 
 class VisitService:
@@ -224,7 +237,9 @@ class OpsService:
         )
 
     def config_status(self) -> dict[str, Any]:
-        return self.settings_provider.status_dict()
+        status = self.settings_provider.status_dict()
+        status["geo"] = geo_status()
+        return status
 
 
 def parse_time(value: str | None) -> int | None:

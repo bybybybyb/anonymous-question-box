@@ -31,6 +31,7 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "py-ip2region" },
     { name = "pydantic" },
     { name = "pyjwt" },
     { name = "pyyaml" },
@@ -55,6 +56,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
+    { name = "py-ip2region", specifier = ">=3.0.4" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pyjwt", specifier = ">=2.8" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
@@ -418,6 +420,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412, upload-time = "2025-05-15T12:30:07.975Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
+]
+
+[[package]]
+name = "py-ip2region"
+version = "3.0.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/60/b8/c8b934effe827e5d159b51912dc8366f5a490d7383943e982a801f5c3591/py_ip2region-3.0.4.tar.gz", hash = "sha256:a8b818ed502a17feb998bdcf7c7748466aff368bcc75592c443aedf4eb6987f7", size = 16794, upload-time = "2026-03-03T05:27:03.73Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/86/04/ef28263025ef08ec581875468f7ba08df6803fc729a0d464c3ad2161c1c7/py_ip2region-3.0.4-py3-none-any.whl", hash = "sha256:7668e3756bc941045cf317a2116fe8359b0a70d88cee326decb836caa14bd77d", size = 13287, upload-time = "2026-03-03T05:27:01.994Z" },
 ]
 
 [[package]]

@@ -9,6 +9,17 @@ export default [
   js.configs.recommended,
   ...vue.configs["flat/essential"],
   {
+    files: ["e2e/**/*.cjs"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "commonjs",
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+      },
+    },
+  },
+  {
     files: ["**/*.{js,vue}"],
     languageOptions: {
       ecmaVersion: "latest",

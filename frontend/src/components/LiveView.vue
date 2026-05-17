@@ -245,7 +245,9 @@
                         </li>
                         <li class="list-group-item" v-if="q.ip">
                           IP：{{ q.ip }}
-                          <span v-if="q.ip_addr">（{{ q.ip_addr }}）</span>
+                          <span v-if="q.ip_addr || q.ip_isp"
+                            >（{{ [q.ip_addr, q.ip_isp].filter(Boolean).join(" / ") }}）</span
+                          >
                         </li>
                         <li class="list-group-item">
                           <button
@@ -371,6 +373,7 @@ const orderDirection = [
 
 const fontSizes = ["fs-6", "fs-5", "fs-4", "fs-3", "fs-2", "fs-1"];
 const defaultFontSizeIdx = 1;
+const queryDebounceMs = 200;
 var currentFontSizeIdx = defaultFontSizeIdx;
 
 export default {
@@ -427,7 +430,16 @@ export default {
           });
       }
     },
-    onQueryChange(resetPage, needRetry = false, init = false) {
+    onQueryChange(resetPage, needRetry = false, init = false, debounce = true) {
+      if (debounce) {
+        clearTimeout(this.queryDebounceTimer);
+        this.queryDebounceTimer = setTimeout(
+          () => this.onQueryChange(resetPage, needRetry, init, false),
+          queryDebounceMs
+        );
+        return;
+      }
+      clearTimeout(this.queryDebounceTimer);
       if (resetPage) this.queryParams["page"] = 1;
       this.axios
         .post(
@@ -491,7 +503,7 @@ export default {
                 page_size: 5,
                 page: 1,
               };
-              this.onQueryChange(false, false);
+              this.onQueryChange(false, false, false, false);
             } else {
               alert("提问箱好像坏掉了，直接ping管理员吧！");
               this.$router.push("/");
@@ -519,7 +531,7 @@ export default {
           }
         )
         .then(() => {
-          this.onQueryChange(true);
+          this.onQueryChange(true, false, false, false);
         })
         .catch((err) => {
           console.log(err.response);
@@ -543,7 +555,7 @@ export default {
         })
         .then(() => {
           this.cancelDelete();
-          this.onQueryChange(false, false);
+          this.onQueryChange(false, false, false, false);
         })
         .catch((err) => {
           console.log(err);
@@ -628,7 +640,7 @@ export default {
         }
       }
     }
-    this.onQueryChange(true, true, true);
+    this.onQueryChange(true, true, true, false);
   },
   async mounted() {
     const ob = new ResizeObserver((entries) => {
@@ -652,6 +664,9 @@ export default {
     ob.observe(this.$refs.textProjectArea);
     ob.observe(this.$refs.imageProjectArea);
   },
+  beforeUnmount() {
+    clearTimeout(this.queryDebounceTimer);
+  },
   data() {
     return {
       queryParams: {
@@ -666,6 +681,7 @@ export default {
       toDelete: "",
       rows: [],
       total_count: 0,
+      queryDebounceTimer: null,
       navbarStyling: {},
       images: [],
       projected_text: "",

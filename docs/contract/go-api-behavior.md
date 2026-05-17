@@ -22,7 +22,7 @@ The Go implementation that originally defined this behavior now lives in
 - Keyword matches are stealth soft-deleted: insert with `deleted_at`, return `200 {uuid, asked_at}`, asker can read it, owner normal lists exclude it.
 - Python Phase 1 rejects any non-empty `images` with `400 {"error":"本提问箱不支持图片上传"}` and never writes `image` rows.
 - Python Phase 1 read/list/detail responses always include `images: []`; this is an intentional non-parity change from Go nil-slice JSON.
-- Python Phase 1 never emits `ip` or `ip_addr`.
+- Python Phase 1 never emits `ip`, `ip_addr`, or `ip_isp`.
 - `GET /questions/question` returns DB `NULL answered_at` as Unix epoch RFC3339, not `null`.
 - Non-admin `GET /questions/question` for an answered submission enqueues visit tracking.
 - Owner list supports sort keys `asked_at` and `word_count`; invalid sort keys are rejected with a legacy-shaped 400 as a security hardening exception.
@@ -33,8 +33,8 @@ The Go implementation that originally defined this behavior now lives in
 
 - Add `question.ip` and `ip_geo` idempotently.
 - Store client IP only after trusted-proxy validation.
-- Lookup uses pconline only: `https://whois.pconline.com.cn/ipJson.jsp?ip={ip}&json=true`.
-- Decode pconline responses as GBK, cache `addr` in `ip_geo`, and expose `ip` / `ip_addr` only to owner/admin responses.
+- Lookup uses configured offline ip2region xdb files; no runtime IP API is called.
+- Cache the human-readable location label in `ip_geo.addr`, store ISP separately, and expose `ip` / `ip_addr` / `ip_isp` only to owner/admin responses.
 - Geo failures are fail-open: `ip` remains stored and `ip_addr` is `""`.
 
 ## Phase 3 Behaviors

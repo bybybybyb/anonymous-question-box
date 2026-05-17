@@ -7,6 +7,8 @@ from typing import Any, cast
 
 import yaml
 
+IP2REGION_CACHE_POLICIES = {"file", "vectorIndex", "content"}
+
 
 def _as_map_by_name(value: Any) -> dict[str, dict[str, Any]]:
     if value is None:
@@ -64,8 +66,9 @@ class Settings:
     visit_flush_interval_seconds: float = 10.0
     geo_enabled: bool = False
     trusted_proxy_cidrs: list[str] = field(default_factory=lambda: ["127.0.0.1/32", "::1/128"])
-    pconline_geo_url: str = "https://whois.pconline.com.cn/ipJson.jsp"
-    geo_timeout_seconds: float = 3.0
+    ip2region_ipv4_xdb_path: str = ""
+    ip2region_ipv6_xdb_path: str = ""
+    ip2region_cache_policy: str = "vectorIndex"
     llm_filter: dict[str, Any] = field(default_factory=dict)
 
     def public_profiles(self) -> dict[str, Any]:
@@ -101,6 +104,9 @@ def load_settings(config_path: str | None = None) -> Settings:
         "console_prints": list(metadata.get("console_prints") or []),
         "admin": dict(metadata.get("admin") or {}),
     }
+    ip2region_cache_policy = str(raw.get("ip2region_cache_policy", "vectorIndex"))
+    if ip2region_cache_policy not in IP2REGION_CACHE_POLICIES:
+        raise ValueError(f"unsupported ip2region_cache_policy {ip2region_cache_policy}")
     return Settings(
         config_path=str(path),
         host=str(raw.get("host", "")),
@@ -116,7 +122,8 @@ def load_settings(config_path: str | None = None) -> Settings:
         visit_flush_interval_seconds=float(raw.get("visit_flush_interval_seconds", 10.0)),
         geo_enabled=bool(raw.get("geo_enabled", False)),
         trusted_proxy_cidrs=list(raw.get("trusted_proxy_cidrs") or ["127.0.0.1/32", "::1/128"]),
-        pconline_geo_url=str(raw.get("pconline_geo_url", "https://whois.pconline.com.cn/ipJson.jsp")),
-        geo_timeout_seconds=float(raw.get("geo_timeout_seconds", 3.0)),
+        ip2region_ipv4_xdb_path=str(raw.get("ip2region_ipv4_xdb_path", "")),
+        ip2region_ipv6_xdb_path=str(raw.get("ip2region_ipv6_xdb_path", "")),
+        ip2region_cache_policy=ip2region_cache_policy,
         llm_filter=dict(raw.get("llm_filter") or {}),
     )

@@ -9,6 +9,7 @@ from .dependencies import (
     current_settings,
     ops_service,
     owner_console_service,
+    owner_query_rate_limiter,
     profile_service,
     require_asker,
     require_owner,
@@ -74,7 +75,9 @@ async def owner_info(request: Request) -> dict[str, str]:
 @router.post("/owner/questions")
 async def list_submissions(request: Request) -> dict[str, Any]:
     settings = current_settings(request)
-    require_owner(request)
+    principal = require_owner(request)
+    if not owner_query_rate_limiter(request).allow(principal.uuid):
+        return JSONResponse({"error": "请求过于频繁"}, status_code=429)  # type: ignore[return-value]
     payload = await read_body(request, "投稿")
     req: ListQuestionsRequest = parse_model(ListQuestionsRequest, payload, "投稿")
     return owner_console_service(request).list_submissions(req, settings)

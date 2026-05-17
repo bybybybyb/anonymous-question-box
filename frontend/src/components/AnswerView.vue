@@ -7,7 +7,9 @@
             <h6 class="card-title m-3">投稿时间：{{ asked_at }}</h6>
             <h6 class="card-title m-3 text-muted" v-if="ip">
               IP：{{ ip }}
-              <span v-if="ip_addr">（{{ ip_addr }}）</span>
+              <span v-if="ip_addr || ip_isp"
+                >（{{ [ip_addr, ip_isp].filter(Boolean).join(" / ") }}）</span
+              >
             </h6>
             <div class="card-body overflow-auto">
               <div class="container">
@@ -140,6 +142,7 @@ export default {
           this.images = resp.data.images;
           this.ip = resp.data.ip || "";
           this.ip_addr = resp.data.ip_addr || "";
+          this.ip_isp = resp.data.ip_isp || "";
           if (this.answer_text.length === 0) {
             let localVal = localStorage.getItem(storagePrefix + this.uuid);
             if (localVal && localVal !== "") {
@@ -197,6 +200,7 @@ export default {
       images: [],
       ip: "",
       ip_addr: "",
+      ip_isp: "",
     };
   },
 };

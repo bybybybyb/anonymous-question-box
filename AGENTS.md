@@ -17,7 +17,7 @@
 - `backend/aqbox/schemas.py` contains Pydantic request models.
 - `backend/aqbox/legacy.py` preserves legacy error envelopes and manual request parsing.
 - `backend/aqbox/settings_provider.py` handles hot reload, last-good config, and restart-required fields.
-- `backend/aqbox/geo.py` handles trusted proxy IP resolution and pconline lookup.
+- `backend/aqbox/geo.py` handles trusted proxy IP resolution and offline ip2region lookup.
 
 ## Hard Invariants
 
@@ -25,9 +25,9 @@
 - Do not let FastAPI's default 422 response leak from legacy routes.
 - Keep JWTs wire-compatible with the Go-era frontend: HS256, `uuid`, `exp`, `iat`, `jwt_secret_key`, and admin `magic_spell`.
 - Images remain unsupported until explicitly changed: profiles report `support_image: false`, reads return `images: []`, and non-empty submit `images` returns `400`.
-- Asker routes must never expose `ip` or `ip_addr`.
-- Owner/admin routes may expose `ip` and `ip_addr`.
-- IP lookup uses pconline only; do not add ip-api.
+- Asker routes must never expose `ip`, `ip_addr`, or `ip_isp`.
+- Owner/admin routes may expose `ip`, `ip_addr`, and `ip_isp`.
+- IP lookup uses configured offline ip2region xdb files; do not add runtime IP API calls or commit xdb files.
 - Trust forwarded IP headers only when the direct peer is in `trusted_proxy_cidrs`.
 - Keyword moderation is stealth soft-delete: submitter gets success; owner normal lists hide the submission.
 - Do not add new features to `legacy/go_backend/`.
@@ -46,6 +46,7 @@ uv run pytest -q
 cd frontend
 npm run lint -- --max-warnings=0
 npm run build
+npm run e2e:smoke
 ```
 
 ## Local Preview
@@ -57,4 +58,11 @@ AQBOX_CONFIG=backend/config/config.local.yaml uv run uvicorn aqbox.main:app --ap
 ```bash
 cd frontend
 ./node_modules/.bin/vite --host 127.0.0.1 --port 5173
+```
+
+With the backend and frontend running, use the owner smoke flow:
+
+```bash
+cd frontend
+AQBOX_E2E_CONFIG=../backend/config/config.local.yaml npm run e2e:smoke
 ```

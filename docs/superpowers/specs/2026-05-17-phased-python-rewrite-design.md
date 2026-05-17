@@ -13,10 +13,10 @@
 | Phase | Goal | Frontend |
 |-------|------|----------|
 | **1** | Running Python backend with Go API contract parity (images removed) | **No changes** |
-| **2** | pconline geo + nginx real-IP + IP/geo in owner UI | Display only |
+| **2** | IP capture + offline ip2region geo + nginx real-IP + IP/geo in owner UI | Display only |
 | **3** | LLM moderation (DeepSeek) | After separate brainstorm |
 
-**Resolved (do not re-litigate):** pconline (not ip-api), no `ip_geo` re-lookup, async visit upsert, httpx, contract tests before Python TDD.
+**Resolved (do not re-litigate):** offline ip2region (not pconline or ip-api), no `ip_geo` backfill, async visit upsert, contract tests before Python TDD.
 
 ### Contract baseline (Phase 1)
 
@@ -25,7 +25,7 @@
 | Artifact | On `origin/main` | Contract tests / Phase 1 |
 |----------|------------------|---------------------------|
 | `schema/question.sql` | No `question.ip` column; no `ip_geo` table | Python uses this schema as-is |
-| Go handlers / models | No IP capture, no geo lookup, no `ip`/`ip_addr` in JSON | Golden `MUST` tests assert keys **omitted** |
+| Go handlers / models | No IP capture, no geo lookup, no `ip`/`ip_addr`/`ip_isp` in JSON | Golden `MUST` tests assert keys **omitted** |
 | Unmerged WIP (e.g. `usecase/geoip.go`, `ip_geo` model, frontend IP fields) | **Not** part of baseline | Phase 2 only — do not port into Phase 1 parity or `MUST` catalog rows |
 
 If a local worktree has IP/geo files, treat them as forward-looking WIP, not “current Go.”
@@ -48,7 +48,7 @@ If a local worktree has IP/geo files, treat them as forward-looking WIP, not “
 **Out of scope**
 
 - `/image/process`, image table writes, presigned URLs, FilePond.
-- `question.ip` column, IP capture on submit, pconline lookup, `ip_geo` inserts, `ip` / `ip_addr` in any API response (main Go today has no `ip` column — see **IP handling**).
+- `question.ip` column, IP capture on submit, geo lookup, `ip_geo` inserts, `ip` / `ip_addr` / `ip_isp` in any API response (main Go today has no `ip` column — see **IP handling**).
 - Nginx `X-Real-IP` dependency (optional in dev; required for correct IP in prod Phase 2).
 - Frontend changes of any kind.
 - LLM / DeepSeek / `moderation_*` columns.
@@ -61,10 +61,10 @@ Main-branch Go and `schema/question.sql` have **no** `question.ip` column and no
 |---------|---------|---------|
 | Schema | Unchanged (no `ip` column) | Migration adds `question.ip`; `ip_geo` table if not present |
 | Submit | Do not persist client IP | Persist **Client IP** on submit (ADR-0001 header order) |
-| Responses | Never include `ip` or `ip_addr` on any route | Admin/owner list + detail include `ip` + **IP location label** via JOIN |
-| pconline | Not called | Background lookup after submit |
+| Responses | Never include `ip`, `ip_addr`, or `ip_isp` on any route | Admin/owner list + detail include `ip` + **IP location label** + ISP via JOIN |
+| Geolocation | Not called | Background offline ip2region lookup after submit |
 
-Contract golden tests tagged `MUST` assert responses **omit** `ip` and `ip_addr` keys entirely (same as today).
+Contract golden tests tagged `MUST` assert responses **omit** `ip`, `ip_addr`, and `ip_isp` keys entirely (same as today).
 
 **Image cutover (Phase 1 — resolved)**
 
@@ -86,16 +86,16 @@ At Python/nginx cutover, **all active question types** in deployed YAML must hav
 
 **In scope**
 
-- New Python `geo_service` (pconline, GBK decode, `httpx` per ADR-0002). Unmerged Go WIP `usecase/geoip.go` is a **reference only**, not a parity target.
+- New Python `geo_service` (offline ip2region per ADR-0002). Unmerged Go WIP `usecase/geoip.go` is a **reference only**, not a parity target.
 - Schema migration: add `question.ip`; add `ip_geo` table if absent.
-- Background lookup after submit; cache in `ip_geo`; JOIN → `ip_addr` on owner/admin reads.
+- Background lookup after submit; cache in `ip_geo`; JOIN → `ip_addr` and `ip_isp` on owner/admin reads.
 - Client IP from ADR-0001 (`X-Real-IP` → `X-Forwarded-For` → peer) on submit.
-- Frontend: show `ip` + `ip_addr` in owner/admin views (Phase 2 frontend deploy).
+- Frontend: show `ip` + `ip_addr` + `ip_isp` in owner/admin views (Phase 2 frontend deploy).
 
 **Out of scope**
 
 - LLM moderation, schema changes for moderation.
-- ip-api.com or bulk re-lookup of existing rows.
+- Runtime IP APIs or bulk re-lookup/backfill of existing rows.
 - Ask-facing IP display (still stripped for non-admin).
 
 ### Phase 3 — LLM moderation
@@ -117,11 +117,11 @@ Routes from the deprecated Go reference at `legacy/go_backend/internal/server/ro
 | GET | `/new` | none | P1 | 200 `{token}` | New random UUID if none; 500 中文 on UUID/token failure |
 | POST | `/image/process` | — | N/A | No route / 404 | Frontend still calls until cleanup |
 | DELETE | `/image/process` | — | N/A | No route / 404 | — |
-| GET | `/questions/question` | user JWT, not admin | P1 | 200 full question | 404 投稿不存在; 500 查询…; **MUST:** no `ip`/`ip_addr` keys (main Go omits them); visit only if `answered_at` ≠ epoch zero; **P2:** visit async not blocking |
+| GET | `/questions/question` | user JWT, not admin | P1 | 200 full question | 404 投稿不存在; 500 查询…; **MUST:** no `ip`/`ip_addr`/`ip_isp` keys (main Go omits them); visit only if `answered_at` ≠ epoch zero; **P2:** visit async not blocking |
 | POST | `/questions/submit` | user JWT, block admin | P1 | 200 `{uuid, asked_at}` on successful insert (incl. keyword soft-delete) | 403 admin 提问箱主人…; 400 未知主人/类型, 空投稿, length, 时间窗, 图片不支持; **keyword match → insert with `deleted_at`, still 200** (stealth; `MUST` golden); **P2:** background geo |
 | GET | `/owner` | admin JWT | P1 | 200 `{owner: <admin JWT uuid>}` — slug is **not** this field | 401 未授权; value = `c.GetString("uuid")` from admin token |
-| POST | `/owner/questions` | admin | P1 | 200 list + pagination | `order_params.by/reversed`, `day_limit`, `marked`, `reply_status`, `page_size`, `page`; excludes `deleted_at`; 404 没有更多…; **P2:** `ip`, `ip_addr` on rows |
-| GET | `/owner/questions/:uuid` | admin | P1 | 200 question | Admin path param uuid; **MUST:** no `ip`/`ip_addr` keys; **P2:** `ip`, `ip_addr` from JOIN |
+| POST | `/owner/questions` | admin | P1 | 200 list + pagination | `order_params.by/reversed`, `day_limit`, `marked`, `reply_status`, `page_size`, `page`; excludes `deleted_at`; 404 没有更多…; **P2:** `ip`, `ip_addr`, `ip_isp` on rows |
+| GET | `/owner/questions/:uuid` | admin | P1 | 200 question | Admin path param uuid; **MUST:** no `ip`/`ip_addr`/`ip_isp` keys; **P2:** `ip`, `ip_addr`, `ip_isp` from JOIN |
 | PUT | `/owner/questions/:uuid/answer` | admin | P1 | 200 empty body | Body: uuid, answer, answered_by; 404 投稿不存在或已过期销毁 |
 | PUT | `/owner/questions/:uuid/mark` | admin | P1 | 200 empty | Body: mark, owner, type; 404 投稿不存在或已标记 |
 | DELETE | `/owner/questions/:uuid/delete` | admin | P1 | 200 empty | Soft-delete `deleted_at` |
@@ -205,7 +205,7 @@ Go today uses SELECT-then-INSERT/UPDATE batch; Python may use upsert per row for
 1. Walk `internal/server/handler/*.go` → **full catalog** in `go-api-behavior.md` (every route + edge, including `PHASE-2`/`PHASE-3` rows for inventory).
 2. Tag each behavior `MUST` (P1), `PHASE-2`, or `PHASE-3`.
 3. Implement golden test for **every `MUST` row** before cutover (minimum gate set = all `MUST` tags, not “happy path only”).
-4. Python: pytest with `httpx.AsyncClient` against ASGI app; assert same status/body keys/errors as golden files (incl. `answered_at` epoch sentinel, keyword 200, omitted `ip`/`ip_addr`).
+4. Python: pytest with `httpx.AsyncClient` against ASGI app; assert same status/body keys/errors as golden files (incl. `answered_at` epoch sentinel, keyword 200, omitted `ip`/`ip_addr`/`ip_isp`).
 5. On mismatch: **Go test first** if Go is authoritative; else fix Python.
 
 **SQLite during parallel testing (resolved):** Per ADR-0003 — never run Go and Python as concurrent writers on the production DB file. Use fixture copies / ephemeral DBs for contract and pytest; production cutover stops the Go process before Python opens the live file.
@@ -250,10 +250,10 @@ sequenceDiagram
 
 ## 6. Phase 1 architecture (summary)
 
-- **Stack:** FastAPI, Pydantic v2, SQLAlchemy 2.0 + aiosqlite, PyJWT, PyYAML, watchfiles, httpx (Phase 2 geo), pytest-asyncio.
+- **Stack:** FastAPI, Pydantic v2, SQLAlchemy 2.0 + aiosqlite, PyJWT, PyYAML, watchfiles, py-ip2region (Phase 2 geo), pytest-asyncio.
 - **Filters:** `KeywordFilter` only in `FilterChain`.
 - **Images:** YAML cutover `support_image: false` on all active types; reads always `images: []`; submit with images → 400 `本提问箱不支持图片上传`; no `/image/*` routes; no new `image` writes (see **Image cutover** under Phase 1).
-- **Geo / IP:** no `question.ip` writes; no `ip`/`ip_addr` in JSON; do not call pconline; do not populate `ip_geo` (see **IP handling**).
+- **Geo / IP:** no `question.ip` writes; no `ip`/`ip_addr`/`ip_isp` in JSON; do not run geolocation; do not populate `ip_geo` (see **IP handling**).
 - **Details:** see Appendix A §2–7, §9, §11–13.
 
 ---
@@ -266,9 +266,11 @@ sequenceDiagram
 | Submit | Persist `question.ip`; `BackgroundTasks` → `geo_service.lookup(ip)` (best-effort) |
 | Repository | `ip_geo` insert-if-miss; JOIN on owner reads |
 | Geo failure | **Fail-open:** lookup skip/timeout/API error → no retry queue; admin rows still have `ip`; `ip_addr` is `""` when no cache row (not omitted) |
-| Config | `pconline_geo_url`, `geo_timeout_seconds` |
-| Frontend | Already displays `ip` / `ip_addr`; verify with real data |
-| ADR | [0001](../../adr/0001-client-ip-from-nginx.md) nginx headers; [0002](../../adr/0002-pconline-geolocation.md) pconline |
+| Config | `ip2region_ipv4_xdb_path`, `ip2region_ipv6_xdb_path`, `ip2region_cache_policy` |
+| Frontend | Displays `ip` plus `ip_addr / ip_isp`; verify with real data |
+| ADR | [0001](../../adr/0001-client-ip-from-nginx.md) nginx headers; [0002](../../adr/0002-ip2region-geolocation.md) ip2region |
+
+**Deferred ops backfill:** historical production submissions may predate `question.ip`. Backfill is not a blocker for the provider swap or owner location filter. If needed, run it as a separate SRE session: inspect nginx log format, parse successful submit POSTs, match log timestamps to `question.asked_at` with a tight confidence window, dry-run/report exact vs ambiguous matches, then write `question.ip` and populate `ip_geo` using offline ip2region. Owner/live list queries must only filter cached DB columns and must never perform per-row live geolocation.
 
 ---
 
@@ -288,7 +290,7 @@ LLM filtering is **isolated**. Before any Phase 3 code:
 |-------|--------|
 | **0 (pre-1)** | Go contract package + `go-api-behavior.md` complete for `MUST` |
 | **1** | Go contract CI green; Python unit/integration tests per endpoint; manual: full frontend smoke against Python port |
-| **2** | Contract tests tagged `PHASE-2`; mock pconline in tests; frontend visual check IP/geo |
+| **2** | Contract tests tagged `PHASE-2`; mock ip2region lookup in tests; frontend visual check IP/geo |
 | **3** | DeepSeek spec test matrix; not planned here |
 
 ---
@@ -297,15 +299,15 @@ LLM filtering is **isolated**. Before any Phase 3 code:
 
 | Phase | Do not build |
 |-------|----------------|
-| **1** | Images/COS/FilePond; pconline; `ip_addr` population; LLM; frontend edits; OpenAPI-as-contract-source |
-| **2** | LLM; ip-api; ip_geo backfill; asker-facing IP |
+| **1** | Images/COS/FilePond; geolocation; `ip_addr` population; LLM; frontend edits; OpenAPI-as-contract-source |
+| **2** | LLM; runtime IP APIs; ip_geo backfill; asker-facing IP |
 | **3** | (Deferred) — anything in Phases 1–2 scope |
 
 ---
 
 ## 11. ADR / CONTEXT alignment
 
-- **ADR-0002:** Revised to pconline; ip-api rejected (Task A). No further ADR change required for this spec.
+- **ADR-0002:** Revised to offline ip2region; pconline and ip-api rejected for runtime lookup.
 - **CONTEXT.md:** Glossary term **Rewrite phase** already added.
 - **DeepSeek spec:** Phase 3 banner already present; no edit required here.
 
@@ -359,7 +361,7 @@ backend/
 ├── services/
 │   ├── question_service.py  # Submit validation, list/answer/mark/delete orchestration
 │   ├── visit_service.py     # Async visit upsert queue + flush (Phase 1)
-│   └── geo_service.py       # pconline lookup + ip_geo cache (Phase 2)
+│   └── geo_service.py       # ip2region lookup + ip_geo cache (Phase 2)
 ├── repositories/
 │   ├── question_repo.py     # Question + visit table queries
 │   └── geo_repo.py          # ip_geo table queries (Phase 2)
@@ -396,9 +398,10 @@ class AppConfig(BaseModel):
     filtered_keywords: list[str] = []
     owner_profiles: dict[str, OwnerProfile]
     website_metadata: WebsiteMetadata
-    # Phase 2 — pconline geo (match Go defaults)
-    pconline_geo_url: str = "https://whois.pconline.com.cn/ipJson.jsp"
-    geo_timeout_seconds: float = 3.0
+    # Phase 2 — offline ip2region geo
+    ip2region_ipv4_xdb_path: str = ""
+    ip2region_ipv6_xdb_path: str = ""
+    ip2region_cache_policy: str = "vectorIndex"
     visit_flush_interval_seconds: float = 10.0
 ```
 
@@ -408,7 +411,7 @@ class AppConfig(BaseModel):
 
 ### 2.2 Config file
 
-Same structure as production `config.yaml`. Drops `oss_*`, `temp_file_root_dir`. Phase 2 adds optional pconline URL override.
+Same structure as production `config.yaml`. Drops `oss_*`, `temp_file_root_dir`. Phase 2 adds ip2region xdb path config; xdb files are deployment artifacts and are not committed.
 
 ---
 
@@ -455,7 +458,7 @@ Same paths and shapes as documented in `docs/contract/go-api-behavior.md`.
 2. If answered → enqueue visit (async, §9)
 3. Return response per contract (no geo fields in Phase 1 unless already in Go parity scope)
 
-**Phase 2 additions:** background pconline lookup after submit; admin responses include `ip` + `ip_addr` from JOIN.
+**Phase 2 additions:** background ip2region lookup after submit; admin responses include `ip` + `ip_addr` + `ip_isp` from JOIN.
 
 ---
 
@@ -489,18 +492,17 @@ ON CONFLICT(uuid) DO UPDATE SET
 
 This preserves idempotent `count + 1` semantics while avoiding per-request writes. If the process crashes between enqueue and flush, at most one interval of visits may be lost — acceptable, same class of loss as Go's in-memory map before ticker.
 
-### 6.3 Geo Service (Phase 2) — pconline
+### 6.3 Geo Service (Phase 2) — ip2region
 
-Port Go `usecase/geoip.go` behavior:
+Use the configured offline ip2region xdb files:
 
-- HTTP GET to pconline JSON endpoint (GBK response → decode as GBK)
-- Parse province/city/region → build `addr` display string → store in `ip_geo`
+- Parse `country|province|city|isp|country_code` → build `addr` display string → store in `ip_geo`
 - `INSERT OR IGNORE` on cache hit by IP
 - Skip private/reserved IPs
-- On failure: silent (no retry queue)
-- **No** re-lookup of existing rows when switching providers (ip-api never adopted)
+- On failure: fail open (no retry queue)
+- Drop stale WIP cache rows from previous providers during migration; no production backfill
 
-Called via `BackgroundTasks` after submit. Uses `httpx`.
+Called via background task after submit. Uses `py-ip2region`.
 
 ---
 
@@ -523,12 +525,14 @@ class FilterChain:
 
 ## 8. IP Geolocation (Phase 2)
 
-See ADR-0002 (pconline). Flow:
+See ADR-0002 (ip2region). Flow:
 
 1. Submit → `BackgroundTasks` → `geo_service.lookup(client_ip)`
 2. Cache check on `ip_geo.ip`
-3. Miss → pconline API → insert row
-4. Owner/admin list/detail JOIN → `ip_addr` = `ig.addr`
+3. Miss → offline ip2region xdb lookup → insert row
+4. Owner/admin list/detail JOIN → `ip_addr` = `ig.addr`, `ip_isp` = `ig.isp`
+
+Historical rows without `question.ip` require a separate nginx-log backfill if we decide the data is worth recovering. The backfill should be conservative: dry-run first, match only successful submit logs to a single DB row in a tight timestamp window, skip ambiguous clusters, and populate `question.ip` plus `ip_geo` offline. This is parallel SRE work, not request-path behavior.
 
 ---
 
@@ -552,7 +556,7 @@ Python targets **contract parity** with Go per `docs/contract/go-api-behavior.md
 |----------|---------|-------|
 | All except `/image/*` | MUST match | Golden tests |
 | `/image/process` | Absent | 404 or no route |
-| `ip` / `ip_addr` in responses | Phase 2 | Admin/owner only |
+| `ip` / `ip_addr` / `ip_isp` in responses | Phase 2 | Admin/owner only |
 
 ---
 
@@ -574,13 +578,13 @@ aiosqlite
 pyjwt
 pyyaml
 watchfiles
-httpx
+py-ip2region
 pydantic>=2.0
 pytest
 pytest-asyncio
 ```
 
-Phase 2 may add `charset-normalizer` or explicit GBK decode for pconline responses.
+Phase 2 requires an operator-provided ip2region xdb file path; the xdb file is not committed.
 
 ---
 
@@ -600,12 +604,12 @@ Deferred. See `2026-05-17-deepseek-moderation-design.md` — **pending re-brains
 
 | Question | Decision |
 |----------|----------|
-| Geo provider | **pconline** (Phase 2). ip-api rejected. |
-| Re-lookup `ip_geo` after provider change | **No** |
+| Geo provider | **offline ip2region** (Phase 2). pconline and ip-api runtime lookups rejected. |
+| Re-lookup `ip_geo` after provider change | **No backfill**; stale WIP cache rows from previous providers are deleted. |
 | Visit tracking | **Async upsert** with SQLite `ON CONFLICT DO UPDATE count = count + 1` |
 | Phasing | Phase 1 backend only (no frontend); Phase 2 geo + frontend display; Phase 3 LLM |
 | Contract tests | `go-api-behavior.md` + Go golden HTTP tests before Python TDD |
-| HTTP client | **httpx** |
+| Geo data file | Operator-provided xdb path; do not commit xdb files. |
 | LLM / DeepSeek | Phase 3 only — do not expand deepseek spec now |
 
 ### Remaining open questions
