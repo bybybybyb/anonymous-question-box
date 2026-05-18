@@ -13,6 +13,7 @@ from aqbox.app import create_app
 from aqbox.config import Settings, load_settings
 from aqbox.db import LOCATION_NO_DATA_LABEL, LOCATION_NO_DATA_VALUE, Database
 from aqbox.geo import lookup_and_store, parse_region
+from aqbox.moderation import llm_policy_for
 from aqbox.rate_limit import TokenBucketRateLimiter
 from aqbox.services import GeoService, VisitService
 from aqbox.settings_provider import SettingsProvider
@@ -1057,6 +1058,34 @@ def test_llm_moderation_config_requires_global_and_type_enablement(tmp_path: Pat
     write_config(config_path, payload)
     globally_disabled = load_settings(str(config_path))
     assert globally_disabled.llm_moderation.policy_for("owner", "type") is None
+
+
+def test_llm_policy_helper_uses_typed_enablement_semantics(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    payload = config_payload(
+        tmp_path,
+        llm_filter={
+            "enabled": True,
+            "owners": {
+                "owner": {
+                    "question_types": {
+                        "type": {"enabled": True, "prompt": ""},
+                        "legacy_prompt_only": {"prompt": "do not infer enablement"},
+                    }
+                }
+            },
+        },
+    )
+    write_config(config_path, payload)
+
+    enabled_empty_policy = llm_policy_for(load_settings(str(config_path)), "owner", "type")
+    assert enabled_empty_policy is not None
+    assert enabled_empty_policy.policy_prompt == ""
+    assert llm_policy_for(load_settings(str(config_path)), "owner", "legacy_prompt_only") is None
+
+    payload["llm_filter"]["enabled"] = False
+    write_config(config_path, payload)
+    assert llm_policy_for(load_settings(str(config_path)), "owner", "type") is None
 
 
 def test_llm_filter_hot_reloads_without_restart_required(tmp_path: Path) -> None:

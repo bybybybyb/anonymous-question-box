@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
+
+from .config import LLMModerationPolicy
 
 
 @dataclass(slots=True)
@@ -20,14 +22,12 @@ def keyword_filter(text: str, keywords: list[str]) -> FilterResult:
     return FilterResult(blocked=False)
 
 
-def llm_policy_for(settings: Any, owner: str, qtype: str) -> dict[str, Any] | None:
-    """Phase 3 helper: missing owner/type policy disables LLM moderation for that box."""
-    cfg = getattr(settings, "llm_filter", {}) or {}
-    per_owner = cfg.get("owners", {}).get(owner, {})
-    per_type = per_owner.get("question_types", {}).get(qtype)
-    if per_type and per_type.get("prompt"):
-        return dict(per_type)
-    return None
+def llm_policy_for(settings: Any, owner: str, qtype: str) -> LLMModerationPolicy | None:
+    """Return typed LLM policy only when global and owner/type enablement both opt in."""
+    llm_moderation = getattr(settings, "llm_moderation", None)
+    if llm_moderation is None:
+        return None
+    return cast("LLMModerationPolicy | None", llm_moderation.policy_for(owner, qtype))
 
 
 def purge_due_raw_audit_fields(db: Any, now_epoch: int) -> int:
