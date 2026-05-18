@@ -717,10 +717,14 @@ class Database:
         lock_seconds: int,
         limit: int,
         max_attempts: int | None = None,
+        include_future: bool = False,
     ) -> list[dict[str, Any]]:
-        if max_attempts is None:
+        if include_future:
+            schedule_filter = "1 = 1"
+            params: list[Any] = [now]
+        elif max_attempts is None:
             schedule_filter = "(ms.next_attempt_at IS NULL OR ms.next_attempt_at <= ?)"
-            params: list[Any] = [now, now]
+            params = [now, now]
         else:
             schedule_filter = "((ms.next_attempt_at IS NULL OR ms.next_attempt_at <= ?) OR ms.attempt_count >= ?)"
             params = [now, max_attempts, now]
@@ -807,6 +811,11 @@ class Database:
                         latency_ms = ?,
                         updated_at = ?
                     WHERE uuid = ? AND status = 'pending' AND lock_owner = ?
+                      AND EXISTS (
+                        SELECT 1 FROM question q
+                        WHERE q.uuid = question_moderation_state.uuid
+                          AND q.deleted_at IS NULL
+                      )
                     """,
                     (
                         next_attempt_at,
@@ -856,7 +865,15 @@ class Database:
         with self.lock:
             try:
                 cur = self.conn.execute(
-                    "DELETE FROM question_moderation_state WHERE uuid = ? AND status = 'pending' AND lock_owner = ?",
+                    """
+                    DELETE FROM question_moderation_state
+                    WHERE uuid = ? AND status = 'pending' AND lock_owner = ?
+                      AND EXISTS (
+                        SELECT 1 FROM question q
+                        WHERE q.uuid = question_moderation_state.uuid
+                          AND q.deleted_at IS NULL
+                      )
+                    """,
                     (uuid, lock_owner),
                 )
                 if cur.rowcount == 1:
@@ -924,6 +941,11 @@ class Database:
                         latency_ms = ?,
                         updated_at = ?
                     WHERE uuid = ? AND status = 'pending' AND lock_owner = ?
+                      AND EXISTS (
+                        SELECT 1 FROM question q
+                        WHERE q.uuid = question_moderation_state.uuid
+                          AND q.deleted_at IS NULL
+                      )
                     """,
                     (
                         source,
@@ -969,6 +991,24 @@ class Database:
             except Exception:
                 self.conn.rollback()
                 raise
+
+    def purge_due_raw_moderation_event_fields(self, *, now: int) -> int:
+        with self.lock:
+            cur = self.conn.execute(
+                """
+                UPDATE question_moderation_event
+                SET raw_prompt = NULL,
+                    raw_request = NULL,
+                    raw_response = NULL,
+                    purged_at = ?
+                WHERE purge_after IS NOT NULL
+                  AND purge_after <= ?
+                  AND purged_at IS NULL
+                """,
+                (now, now),
+            )
+            self.conn.commit()
+            return int(cur.rowcount)
 
     def llm_moderation_counts(self, *, now: int) -> dict[str, int]:
         with self.lock:

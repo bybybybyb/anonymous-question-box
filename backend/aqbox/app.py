@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         app.state.moderation_worker.stop()
-        await app.state.moderation_worker_task
+        await asyncio.gather(app.state.moderation_worker_task, return_exceptions=True)
         if hasattr(app.state.llm_provider, "aclose"):
             await app.state.llm_provider.aclose()
         app.state.visit_worker_task.cancel()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -91,6 +92,21 @@ class FakeLLMProvider:
         return self.responses.pop(0)
 
 
+class SequenceLLMProvider:
+    def __init__(self, *items: LLMProviderResponse | BaseException):
+        self.items = list(items)
+        self.requests: list[LLMProviderRequest] = []
+
+    async def complete(self, request: LLMProviderRequest) -> LLMProviderResponse:
+        self.requests.append(request)
+        if not self.items:
+            raise AssertionError("sequence provider received unexpected request")
+        item = self.items.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+
 class BlockingLLMProvider:
     def __init__(self, response: LLMProviderResponse):
         self.response = response
@@ -105,14 +121,16 @@ class BlockingLLMProvider:
         return self.response
 
 
-async def run_worker_once(db: Database, s: Settings, provider: FakeLLMProvider) -> None:
+async def run_worker_once(db: Database, s: Settings, provider: Any) -> None:
     worker = LLMModerationWorker(db, SettingsProvider(settings=s), provider=provider, poll_interval_seconds=0.01)
     await worker.run_once()
 
 
-def submitted_pending_uuid(db: Database, s: Settings, text: str, *, provider: FakeLLMProvider | None = None) -> str:
+def submitted_pending_uuid(db: Database, s: Settings, text: str, *, provider: Any | None = None) -> str:
+    db.bootstrap()
     app = create_app(settings=s, db=db, llm_provider=provider or FakeLLMProvider())
-    with TestClient(app) as client:
+    client = TestClient(app)
+    try:
         token = new_user_token(client)
         submit = client.post(
             "/questions/submit",
@@ -124,6 +142,22 @@ def submitted_pending_uuid(db: Database, s: Settings, text: str, *, provider: Fa
         assert asker_read.status_code == 200
         assert asker_read.json()["text"] == text
         return submit.json()["uuid"]
+    finally:
+        client.close()
+
+
+def set_pending_order(db: Database, *uuids: str) -> None:
+    for index, uuid in enumerate(uuids):
+        created_at = 1_000 + index
+        db.conn.execute(
+            """
+            UPDATE question_moderation_state
+            SET created_at = ?, next_attempt_at = ?
+            WHERE uuid = ?
+            """,
+            (created_at, created_at, uuid),
+        )
+    db.conn.commit()
 
 
 def test_llm_worker_migration_0005_is_idempotent_and_adds_queue_fields(tmp_path: Path) -> None:
@@ -521,6 +555,201 @@ def test_worker_raw_retention_stores_raw_payloads_without_api_key_when_enabled(t
     assert json.loads(event["raw_response"]) == {"id": "raw-response"}
     assert event["purge_after"] is not None
     assert "test-key" not in event["raw_request"]
+
+
+def test_worker_purges_due_event_raw_payloads_while_keeping_metadata(tmp_path: Path) -> None:
+    s = llm_settings(tmp_path)
+    s.llm_filter["raw_retention_enabled"] = True
+    s.llm_filter["raw_retention_seconds"] = 60
+    s.__post_init__()
+    db = Database(s.db_path, moderation_schema=True)
+    provider = FakeLLMProvider(provider_response(raw_response={"id": "raw-response"}))
+    uuid = submitted_pending_uuid(db, s, "gentle safe", provider=provider)
+    asyncio.run(run_worker_once(db, s, provider))
+    db.conn.execute(
+        "UPDATE question_moderation_event SET purge_after = ? WHERE uuid = ? AND event_type = 'accepted'",
+        (1, uuid),
+    )
+    db.conn.commit()
+
+    asyncio.run(run_worker_once(db, s, FakeLLMProvider()))
+
+    event = db.conn.execute(
+        """
+        SELECT raw_prompt, raw_request, raw_response, purged_at, provider, model, prompt_version, decision_json
+        FROM question_moderation_event
+        WHERE uuid = ? AND event_type = 'accepted'
+        """,
+        (uuid,),
+    ).fetchone()
+    assert event["raw_prompt"] is None
+    assert event["raw_request"] is None
+    assert event["raw_response"] is None
+    assert event["purged_at"] is not None
+    assert event["provider"] == "deepseek"
+    assert event["model"] == "test-model"
+    assert event["prompt_version"]
+    assert json.loads(event["decision_json"])["decision"] == "accept"
+
+
+def test_worker_converts_provider_exception_to_retry_and_keeps_processing_rows(tmp_path: Path) -> None:
+    s = llm_settings(tmp_path, max_attempts=2)
+    db = Database(s.db_path, moderation_schema=True)
+    first_uuid = submitted_pending_uuid(db, s, "first row")
+    second_uuid = submitted_pending_uuid(db, s, "second row")
+    set_pending_order(db, first_uuid, second_uuid)
+    provider = SequenceLLMProvider(RuntimeError("provider exploded"), provider_response())
+
+    asyncio.run(run_worker_once(db, s, provider))
+
+    first_state = db.conn.execute(
+        "SELECT status, attempt_count, last_error_class FROM question_moderation_state WHERE uuid = ?",
+        (first_uuid,),
+    ).fetchone()
+    second_state = db.conn.execute("SELECT * FROM question_moderation_state WHERE uuid = ?", (second_uuid,)).fetchone()
+    first_events = db.conn.execute(
+        "SELECT event_type, status, source, reason, error_class FROM question_moderation_event WHERE uuid = ? ORDER BY id",
+        (first_uuid,),
+    ).fetchall()
+    second_events = db.conn.execute(
+        "SELECT event_type, status, source, reason FROM question_moderation_event WHERE uuid = ? ORDER BY id",
+        (second_uuid,),
+    ).fetchall()
+    assert dict(first_state) == {"status": "pending", "attempt_count": 1, "last_error_class": "worker_exception"}
+    assert second_state is None
+    assert [tuple(row) for row in first_events] == [
+        ("queued", "pending", "llm", "queued", ""),
+        ("attempt_failed", "pending", "llm_error", "retry", "worker_exception"),
+    ]
+    assert [tuple(row) for row in second_events] == [
+        ("queued", "pending", "llm", "queued"),
+        ("accepted", "approved", "llm", "model_accept"),
+    ]
+
+
+def test_worker_converts_metadata_exception_to_retry_and_keeps_processing_rows(tmp_path: Path) -> None:
+    s = llm_settings(tmp_path, max_attempts=2)
+    s.llm_filter["raw_retention_enabled"] = True
+    s.__post_init__()
+    db = Database(s.db_path, moderation_schema=True)
+    first_uuid = submitted_pending_uuid(db, s, "first raw row")
+    second_uuid = submitted_pending_uuid(db, s, "second raw row")
+    set_pending_order(db, first_uuid, second_uuid)
+    provider = SequenceLLMProvider(
+        provider_response(raw_response={"bad": object()}),
+        provider_response(raw_response={"id": "ok"}),
+    )
+
+    asyncio.run(run_worker_once(db, s, provider))
+
+    first_state = db.conn.execute(
+        "SELECT status, attempt_count, last_error_class FROM question_moderation_state WHERE uuid = ?",
+        (first_uuid,),
+    ).fetchone()
+    second_state = db.conn.execute("SELECT * FROM question_moderation_state WHERE uuid = ?", (second_uuid,)).fetchone()
+    assert dict(first_state) == {"status": "pending", "attempt_count": 1, "last_error_class": "worker_exception"}
+    assert second_state is None
+
+
+def test_worker_sweeps_future_retry_when_llm_hot_reload_disables_policy(tmp_path: Path) -> None:
+    s = llm_settings(tmp_path, max_attempts=3, initial_backoff_seconds=3600)
+    db = Database(s.db_path, moderation_schema=True)
+    provider = FakeLLMProvider(provider_response(error_class="timeout", finish_reason=None))
+    uuid = submitted_pending_uuid(db, s, "future retry")
+    asyncio.run(run_worker_once(db, s, provider))
+    before_disable = db.conn.execute(
+        "SELECT status, attempt_count, next_attempt_at FROM question_moderation_state WHERE uuid = ?",
+        (uuid,),
+    ).fetchone()
+    s.llm_filter["enabled"] = False
+    s.__post_init__()
+
+    asyncio.run(run_worker_once(db, s, FakeLLMProvider()))
+
+    state = db.conn.execute(
+        "SELECT status, source, reason, attempt_count, last_error_class, next_attempt_at FROM question_moderation_state WHERE uuid = ?",
+        (uuid,),
+    ).fetchone()
+    assert before_disable["status"] == "pending"
+    assert before_disable["next_attempt_at"] is not None
+    assert dict(state) == {
+        "status": "blocked",
+        "source": "llm_error",
+        "reason": "never_evaluated",
+        "attempt_count": 1,
+        "last_error_class": "config_disabled",
+        "next_attempt_at": None,
+    }
+
+
+@pytest.mark.parametrize(
+    "response_factory",
+    [
+        lambda: provider_response(),
+        lambda: provider_response(
+            decision="reject",
+            category="harassment",
+            confidence=0.99,
+            short_reason="Harassing submission",
+            rationale="The submission is abusive.",
+        ),
+        lambda: provider_response(error_class="timeout", finish_reason=None),
+    ],
+)
+def test_worker_finalize_noops_when_submission_deleted_in_flight(
+    tmp_path: Path, response_factory: Callable[[], LLMProviderResponse]
+) -> None:
+    async def run() -> None:
+        s = llm_settings(tmp_path)
+        db = Database(s.db_path, moderation_schema=True)
+        provider = BlockingLLMProvider(response_factory())
+        uuid = submitted_pending_uuid(db, s, "delete in flight")
+        worker = LLMModerationWorker(db, SettingsProvider(settings=s), provider=provider, poll_interval_seconds=0.01)
+        task = asyncio.create_task(worker.run_once())
+        await provider.started.wait()
+
+        assert db.mark_deleted(uuid, 2_000) is True
+        provider.release.set()
+        await task
+
+        state = db.conn.execute(
+            "SELECT status, source, reason, lock_owner FROM question_moderation_state WHERE uuid = ?",
+            (uuid,),
+        ).fetchone()
+        events = db.conn.execute(
+            "SELECT event_type, status, source, reason FROM question_moderation_event WHERE uuid = ? ORDER BY id",
+            (uuid,),
+        ).fetchall()
+        assert dict(state) == {"status": "pending", "source": "llm", "reason": "queued", "lock_owner": worker.lock_owner}
+        assert [tuple(row) for row in events] == [
+            ("queued", "pending", "llm", "queued"),
+            ("deleted", "pending", "llm", "queued"),
+        ]
+
+    asyncio.run(run())
+
+
+def test_lifespan_shutdown_suppresses_crashed_moderation_worker_and_closes_provider(tmp_path: Path) -> None:
+    class ClosingProvider(FakeLLMProvider):
+        def __init__(self) -> None:
+            super().__init__()
+            self.closed = False
+
+        async def aclose(self) -> None:
+            self.closed = True
+
+    async def crashed_run() -> None:
+        raise RuntimeError("worker crashed")
+
+    s = llm_settings(tmp_path)
+    provider = ClosingProvider()
+    app = create_app(settings=s, db=Database(s.db_path, moderation_schema=True), llm_provider=provider)
+    app.state.moderation_worker.run = crashed_run
+
+    with TestClient(app) as client:
+        assert client.get("/ops/health").status_code == 503
+
+    assert provider.closed is True
 
 
 def test_claim_finalize_requires_matching_lock_owner(tmp_path: Path) -> None:

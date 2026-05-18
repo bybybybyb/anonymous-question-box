@@ -292,4 +292,8 @@ def purge_due_raw_audit_fields(db: Any, now_epoch: int) -> int:
             (now_epoch, now_epoch),
         )
         db.conn.commit()
-        return int(cur.rowcount)
+        audit_count = int(cur.rowcount)
+    event_count = 0
+    if hasattr(db, "purge_due_raw_moderation_event_fields"):
+        event_count = int(db.purge_due_raw_moderation_event_fields(now=now_epoch))
+    return audit_count + event_count

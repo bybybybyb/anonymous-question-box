@@ -185,16 +185,35 @@ class LLMModerationWorker:
         now = now_epoch()
         settings = self.settings_provider.current()
         max_attempts = settings.llm_moderation.max_attempts if settings.llm_moderation.enabled else None
+        sweep_future = not settings.llm_moderation.enabled
         rows = self.db.claim_due_llm_moderation(
             now=now,
             lock_owner=self.lock_owner,
             lock_seconds=self.lock_seconds,
             limit=self.batch_size,
             max_attempts=max_attempts,
+            include_future=sweep_future,
         )
+        self.db.purge_due_raw_moderation_event_fields(now=now)
         self.last_successful_check_at = now
         for row in rows:
-            await self._process_claimed(row)
+            try:
+                await self._process_claimed(row)
+            except Exception:
+                self._handle_worker_exception(row, now_epoch())
+
+    def _handle_worker_exception(self, row: dict[str, Any], attempted_at: int) -> None:
+        settings = self.settings_provider.current(force=True)
+        if not settings.llm_moderation.enabled or llm_policy_for(settings, row["owner"], row["type"]) is None:
+            self._finalize_config_disabled(row, settings, attempted_at)
+            return
+        self._handle_failed_attempt(
+            row,
+            settings,
+            attempted_at,
+            "worker_exception",
+            _llm_metadata_from_row(row, settings),
+        )
 
     async def _process_claimed(self, row: dict[str, Any]) -> None:
         settings = self.settings_provider.current()
