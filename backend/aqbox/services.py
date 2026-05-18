@@ -225,7 +225,7 @@ class LLMModerationWorker:
         response = await self.provider.complete(request)
         metadata = _llm_metadata_from_response(prompt, request, policy, settings, response)
         attempted_at = now_epoch()
-        current_settings = self.settings_provider.current()
+        current_settings = self.settings_provider.current(force=True)
         if llm_policy_for(current_settings, row["owner"], row["type"]) is None:
             self._finalize_config_disabled(row, current_settings, attempted_at)
             return

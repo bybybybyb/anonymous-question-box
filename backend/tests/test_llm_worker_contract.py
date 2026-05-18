@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from test_backend_contract import admin_token, auth, new_user_token, settings
+from test_backend_contract import admin_token, auth, config_payload, new_user_token, settings, write_config
 
 from aqbox.app import create_app
 from aqbox.config import Settings
@@ -369,6 +369,50 @@ def test_worker_moves_in_flight_pending_to_review_when_llm_hot_reload_disables_p
             ("queued", "pending", "llm", "queued", ""),
             ("blocked", "blocked", "llm_error", "never_evaluated", "config_disabled"),
         ]
+
+    asyncio.run(run())
+
+
+def test_worker_forces_file_reload_before_finalizing_in_flight_provider_result(tmp_path: Path) -> None:
+    async def run() -> None:
+        config_path = tmp_path / "config.yaml"
+        payload = config_payload(
+            tmp_path,
+            llm_filter={
+                "enabled": True,
+                "api_key": "test-key",
+                "model": "test-model",
+                "max_attempts": 2,
+                "timeout_seconds": 0.2,
+                "initial_backoff_seconds": 0,
+                "boxes": {"owner": {"question_types": {"type": {"enabled": True, "policy_prompt": "test policy"}}}},
+            },
+        )
+        write_config(config_path, payload)
+        settings_provider = SettingsProvider(config_path=str(config_path), check_interval_seconds=3600)
+        s = settings_provider.current(force=True)
+        db = Database(s.db_path, moderation_schema=True)
+        provider = BlockingLLMProvider(provider_response())
+        uuid = submitted_pending_uuid(db, s, "gentle safe", provider=provider)  # type: ignore[arg-type]
+        worker = LLMModerationWorker(db, settings_provider, provider=provider, poll_interval_seconds=0.01)
+        task = asyncio.create_task(worker.run_once())
+        await provider.started.wait()
+
+        payload["llm_filter"]["enabled"] = False
+        write_config(config_path, payload)
+        assert settings_provider.current().llm_moderation.enabled is True
+        provider.release.set()
+        await task
+
+        state = db.conn.execute(
+            "SELECT status, source, reason, last_error_class FROM question_moderation_state WHERE uuid = ?", (uuid,)
+        ).fetchone()
+        assert dict(state) == {
+            "status": "blocked",
+            "source": "llm_error",
+            "reason": "never_evaluated",
+            "last_error_class": "config_disabled",
+        }
 
     asyncio.run(run())
 
