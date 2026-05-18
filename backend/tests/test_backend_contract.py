@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+from contextlib import suppress
 from pathlib import Path
 from time import time
 
@@ -11,7 +13,8 @@ from aqbox.app import create_app
 from aqbox.config import Settings
 from aqbox.db import LOCATION_NO_DATA_LABEL, LOCATION_NO_DATA_VALUE, Database
 from aqbox.geo import lookup_and_store, parse_region
-from aqbox.services import GeoService
+from aqbox.services import GeoService, VisitService
+from aqbox.settings_provider import SettingsProvider
 
 
 def settings(tmp_path: Path, *, geo_enabled: bool = False, trusted_proxy_cidrs: list[str] | None = None) -> Settings:
@@ -121,6 +124,15 @@ def test_profiles_force_support_image_false(tmp_path: Path) -> None:
     assert qtype["support_image"] is False
 
 
+def test_sqlite_connection_uses_wal_and_busy_timeout(tmp_path: Path) -> None:
+    db = Database(str(tmp_path / "aqbox.sqlite3"))
+    try:
+        assert db.conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+        assert db.conn.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
+    finally:
+        db.conn.close()
+
+
 def test_image_routes_removed_and_submit_images_rejected(tmp_path: Path) -> None:
     s = settings(tmp_path)
     with make_client(s) as client:
@@ -202,6 +214,35 @@ def test_visit_queue_flushes_on_shutdown(tmp_path: Path) -> None:
     row = db.conn.execute("SELECT visit_count FROM visit WHERE uuid = ?", (uuid,)).fetchone()
     assert row is not None
     assert row["visit_count"] == 1
+
+
+def test_visit_queue_flushes_under_sustained_load(tmp_path: Path) -> None:
+    class RecordingVisitRepo:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, int, int]] = []
+
+        def upsert(self, uuid: str, visited_at: int, count: int = 1) -> None:
+            self.calls.append((uuid, visited_at, count))
+
+    async def run() -> None:
+        s = settings(tmp_path)
+        s.visit_flush_interval_seconds = 0.05
+        repo = RecordingVisitRepo()
+        service = VisitService(repo, SettingsProvider(settings=s))  # type: ignore[arg-type]
+        task = asyncio.create_task(service.run())
+        loop = asyncio.get_running_loop()
+        started_at = loop.time()
+        try:
+            while loop.time() - started_at < 0.14:
+                service.queue.put_nowait(("uuid", int(time())))
+                await asyncio.sleep(0.01)
+            assert repo.calls
+        finally:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+
+    asyncio.run(run())
 
 
 def test_legacy_auth_and_sort_errors(tmp_path: Path) -> None:
@@ -583,6 +624,21 @@ def test_invalid_config_keeps_last_good_and_marks_unhealthy(tmp_path: Path) -> N
     assert cfg.json()["last_reload_error"]
 
 
+def test_malformed_question_type_window_returns_legacy_error(tmp_path: Path) -> None:
+    payload = config_payload(tmp_path)
+    payload["owner_profiles"]["owner"]["question_types"]["type"]["start_time"] = "not a timestamp"
+    client, _ = config_client(tmp_path, payload)
+    with client:
+        token = new_user_token(client)
+        submit = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "hello"},
+            headers=auth(token),
+        )
+    assert submit.status_code == 500
+    assert submit.json()["error"].startswith("投稿类型时间窗配置无效")
+
+
 def test_restart_required_config_fields_do_not_hot_swap(tmp_path: Path) -> None:
     payload = config_payload(tmp_path)
     client, config_path = config_client(tmp_path, payload)
@@ -652,9 +708,55 @@ def test_trusted_proxy_cidrs_hot_reload(tmp_path: Path) -> None:
             "/owner/questions",
             json={"owner": "owner", "type": "type", "day_limit": 1},
             headers=auth(admin_token(s)),
-        ).json()["questions"][0]
+        ).json()["questions"]
     assert first["ip"] == "127.0.0.1"
-    assert second["ip"] == "8.8.8.8"
+    second_row = next(question for question in second if question["text"] == "second")
+    assert second_row["ip"] == "8.8.8.8"
+
+
+def test_geo_enabled_hot_reload_updates_database_state(tmp_path: Path) -> None:
+    payload = config_payload(tmp_path, geo_enabled=False, trusted_proxy_cidrs=["127.0.0.1/32"])
+    client, config_path = config_client(tmp_path, payload, client_addr=("127.0.0.1", 50000))
+    s = settings(tmp_path, geo_enabled=True)
+    with client:
+        token = new_user_token(client)
+        first_submit = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "first"},
+            headers={**auth(token), "X-Real-IP": "8.8.8.8"},
+        )
+        payload["geo_enabled"] = True
+        write_config(config_path, payload)
+        token = new_user_token(client)
+        second_submit = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "second"},
+            headers={**auth(token), "X-Real-IP": "8.8.8.8"},
+        )
+        second_list = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "day_limit": 1},
+            headers=auth(admin_token(s)),
+        ).json()["questions"]
+        payload["geo_enabled"] = False
+        write_config(config_path, payload)
+        token = new_user_token(client)
+        third_submit = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "third"},
+            headers={**auth(token), "X-Real-IP": "8.8.8.8"},
+        )
+        third_list = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "day_limit": 1},
+            headers=auth(admin_token(settings(tmp_path))),
+        )
+    assert first_submit.status_code == 200
+    assert second_submit.status_code == 200
+    second_row = next(question for question in second_list if question["text"] == "second")
+    assert second_row["ip"] == "8.8.8.8"
+    assert third_submit.status_code == 200
+    assert "ip" not in third_list.json()["questions"][0]
 
 
 def test_owner_questions_rate_limit_uses_legacy_error(tmp_path: Path) -> None:
@@ -712,7 +814,7 @@ def test_request_logging_redacts_query_tokens(tmp_path: Path, caplog) -> None:
     client, _ = config_client(tmp_path)
     with client:
         caplog.set_level("INFO", logger="aqbox.request")
-        client.get("/profiles?token=super-secret-token")
+        client.get("/profiles?token=super-secret-token&page=2")
     messages = "\n".join(record.getMessage() for record in caplog.records)
     assert "super-secret-token" not in messages
-    assert "/profiles?<redacted>" in messages
+    assert "/profiles?token=<redacted>&page=2" in messages

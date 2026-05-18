@@ -25,6 +25,11 @@ async def lifespan(app: FastAPI):
         app.state.visit_worker_task.cancel()
         with suppress(asyncio.CancelledError):
             await app.state.visit_worker_task
+        pending_geo_tasks = list(app.state.geo_service.background_tasks)
+        for task in pending_geo_tasks:
+            task.cancel()
+        if pending_geo_tasks:
+            await asyncio.gather(*pending_geo_tasks, return_exceptions=True)
 
 
 def create_app(*, config_path: str | None = None, settings: Settings | None = None, db: Database | None = None) -> FastAPI:

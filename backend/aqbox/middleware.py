@@ -2,11 +2,26 @@ from __future__ import annotations
 
 import logging
 from time import perf_counter
+from urllib.parse import parse_qsl, quote_plus
 from uuid import uuid4
 
 from fastapi import Request
 
 LOGGER = logging.getLogger("aqbox.request")
+SECRET_QUERY_KEYS = {"token"}
+
+
+def _safe_path(request: Request) -> str:
+    if not request.url.query:
+        return request.url.path
+    parts = []
+    for key, value in parse_qsl(request.url.query, keep_blank_values=True):
+        safe_value = "<redacted>" if key.lower() in SECRET_QUERY_KEYS else quote_plus(value)
+        if key.lower() in SECRET_QUERY_KEYS:
+            parts.append(f"{quote_plus(key)}={safe_value}")
+            continue
+        parts.append(f"{quote_plus(key)}={safe_value}")
+    return f"{request.url.path}?{'&'.join(parts)}"
 
 
 async def request_logging_middleware(request: Request, call_next):
@@ -20,13 +35,10 @@ async def request_logging_middleware(request: Request, call_next):
         return response
     finally:
         duration_ms = int((perf_counter() - started) * 1000)
-        safe_path = request.url.path
-        if request.url.query:
-            safe_path = f"{safe_path}?<redacted>"
         LOGGER.info(
             "request method=%s path=%s status=%s duration_ms=%s request_id=%s",
             request.method,
-            safe_path,
+            _safe_path(request),
             status_code,
             duration_ms,
             request_id,

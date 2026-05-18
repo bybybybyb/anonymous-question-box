@@ -31,10 +31,7 @@ def current_settings(request: Request) -> Settings:
     settings = provider.current()
     request.app.state.settings = settings
     db = database(request)
-    if settings.geo_enabled and not db.geo_enabled:
-        db.migrate_geo()
-        db.conn.commit()
-        db.geo_enabled = True
+    db.set_geo_enabled(settings.geo_enabled)
     return settings
 
 
@@ -89,6 +86,7 @@ def build_services(db: Database, provider: SettingsProvider) -> dict[str, object
         "profile_service": ProfileService(),
         "visit_service": VisitService(visit_repo, provider),
         "submission_service": SubmissionService(submission_repo, moderation, geo),
+        "geo_service": geo,
         "owner_console_service": OwnerConsoleService(submission_repo),
         "ops_service": OpsService(ops_repo, provider),
         "owner_query_rate_limiter": TokenBucketRateLimiter(rate_per_second=10.0, burst=30),

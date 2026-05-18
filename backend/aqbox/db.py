@@ -80,6 +80,10 @@ class Database:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA busy_timeout=5000")
+        if path not in {":memory:", ""}:
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute("PRAGMA synchronous=NORMAL")
 
     def bootstrap(self) -> None:
         with self.lock:
@@ -91,38 +95,46 @@ class Database:
             self.conn.commit()
 
     def migrate_geo(self) -> None:
-        cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(question)").fetchall()}
-        if "ip" not in cols:
-            self.conn.execute("ALTER TABLE question ADD COLUMN ip TEXT")
-        self.conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS ip_geo (
-              ip TEXT PRIMARY KEY,
-              country TEXT,
-              province TEXT NOT NULL DEFAULT '',
-              city TEXT NOT NULL DEFAULT '',
-              region TEXT NOT NULL DEFAULT '',
-              addr TEXT NOT NULL DEFAULT '',
-              isp TEXT,
-              country_code TEXT,
-              provider TEXT,
-              raw_region TEXT,
-              looked_up_at INTEGER NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_question_ip ON question(ip);
-            """
-        )
-        geo_cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(ip_geo)").fetchall()}
-        for name, ddl in {
-            "country": "ALTER TABLE ip_geo ADD COLUMN country TEXT",
-            "isp": "ALTER TABLE ip_geo ADD COLUMN isp TEXT",
-            "country_code": "ALTER TABLE ip_geo ADD COLUMN country_code TEXT",
-            "provider": "ALTER TABLE ip_geo ADD COLUMN provider TEXT",
-            "raw_region": "ALTER TABLE ip_geo ADD COLUMN raw_region TEXT",
-        }.items():
-            if name not in geo_cols:
-                self.conn.execute(ddl)
-        self.conn.execute("DELETE FROM ip_geo WHERE provider IS NULL OR provider != 'ip2region'")
+        with self.lock:
+            cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(question)").fetchall()}
+            if "ip" not in cols:
+                self.conn.execute("ALTER TABLE question ADD COLUMN ip TEXT")
+            self.conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS ip_geo (
+                  ip TEXT PRIMARY KEY,
+                  country TEXT,
+                  province TEXT NOT NULL DEFAULT '',
+                  city TEXT NOT NULL DEFAULT '',
+                  region TEXT NOT NULL DEFAULT '',
+                  addr TEXT NOT NULL DEFAULT '',
+                  isp TEXT,
+                  country_code TEXT,
+                  provider TEXT,
+                  raw_region TEXT,
+                  looked_up_at INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_question_ip ON question(ip);
+                """
+            )
+            geo_cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(ip_geo)").fetchall()}
+            for name, ddl in {
+                "country": "ALTER TABLE ip_geo ADD COLUMN country TEXT",
+                "isp": "ALTER TABLE ip_geo ADD COLUMN isp TEXT",
+                "country_code": "ALTER TABLE ip_geo ADD COLUMN country_code TEXT",
+                "provider": "ALTER TABLE ip_geo ADD COLUMN provider TEXT",
+                "raw_region": "ALTER TABLE ip_geo ADD COLUMN raw_region TEXT",
+            }.items():
+                if name not in geo_cols:
+                    self.conn.execute(ddl)
+            self.conn.execute("DELETE FROM ip_geo WHERE provider IS NULL OR provider != 'ip2region'")
+
+    def set_geo_enabled(self, enabled: bool) -> None:
+        with self.lock:
+            if enabled and not self.geo_enabled:
+                self.migrate_geo()
+                self.conn.commit()
+            self.geo_enabled = enabled
 
     def migrate_moderation(self) -> None:
         cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(question)").fetchall()}
@@ -228,7 +240,7 @@ class Database:
                 "q.asked_at, q.answered_at, q.answered_by, q.marked_at, "
                 "v.last_visited_at, v.visit_count"
                 f"{geo_select} FROM question q LEFT JOIN visit v ON v.uuid = q.uuid{geo_join} "
-                f"WHERE {where} ORDER BY q.{order_by} {direction} LIMIT ? OFFSET ?",
+                f"WHERE {where} ORDER BY q.{order_by} {direction}, q.id ASC LIMIT ? OFFSET ?",
                 [*params, page_size, offset],
             ).fetchall()
         return [self._question_from_row(row, include_geo=include_geo) for row in rows], int(total)

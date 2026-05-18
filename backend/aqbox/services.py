@@ -94,6 +94,9 @@ class VisitService:
 
     async def run(self) -> None:
         pending: dict[str, tuple[int, int]] = {}
+        loop = asyncio.get_running_loop()
+        interval = max(self.settings_provider.current().visit_flush_interval_seconds, 0.001)
+        next_flush = loop.time() + interval
 
         def collect(uuid: str, visited_at: int) -> None:
             count, latest = pending.get(uuid, (0, 0))
@@ -108,12 +111,16 @@ class VisitService:
 
         try:
             while True:
-                interval = self.settings_provider.current().visit_flush_interval_seconds
+                timeout = max(0.0, next_flush - loop.time())
                 try:
-                    uuid, visited_at = await asyncio.wait_for(self.queue.get(), timeout=interval)
+                    uuid, visited_at = await asyncio.wait_for(self.queue.get(), timeout=timeout)
                     collect(uuid, visited_at)
                 except TimeoutError:
+                    pass
+                if loop.time() >= next_flush:
                     flush()
+                    interval = max(self.settings_provider.current().visit_flush_interval_seconds, 0.001)
+                    next_flush = loop.time() + interval
         except asyncio.CancelledError:
             while not self.queue.empty():
                 uuid, visited_at = self.queue.get_nowait()
@@ -263,8 +270,11 @@ class OpsService:
 def parse_time(value: str | None) -> int | None:
     if not value:
         return None
-    normalized = value.replace("Z", "+00:00")
-    return int(datetime.fromisoformat(normalized).astimezone(UTC).timestamp())
+    try:
+        normalized = value.replace("Z", "+00:00")
+        return int(datetime.fromisoformat(normalized).astimezone(UTC).timestamp())
+    except ValueError as exc:
+        raise LegacyAPIError(500, f"投稿类型时间窗配置无效: {value}") from exc
 
 
 def validate_question_type(settings: Settings, owner: str, qtype: str) -> dict[str, Any]:

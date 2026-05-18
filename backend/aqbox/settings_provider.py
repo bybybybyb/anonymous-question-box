@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import threading
 from dataclasses import dataclass, replace
 from pathlib import Path
 from time import monotonic, time
@@ -49,21 +50,24 @@ class SettingsProvider:
         self._loaded_at = time()
         self._last_reload_error: str | None = None
         self._restart_required: set[str] = set()
+        self._lock = threading.RLock()
 
     def current(self, *, force: bool = False) -> Settings:
-        if not self._static:
-            self._maybe_reload(force=force)
-        return self._settings
+        with self._lock:
+            if not self._static:
+                self._maybe_reload(force=force)
+            return self._settings
 
     def status(self) -> ConfigStatus:
-        self.current()
-        return ConfigStatus(
-            version=self._version,
-            loaded_at=self._loaded_at,
-            hash=self._hash,
-            last_reload_error=self._last_reload_error,
-            restart_required=sorted(self._restart_required),
-        )
+        with self._lock:
+            self.current()
+            return ConfigStatus(
+                version=self._version,
+                loaded_at=self._loaded_at,
+                hash=self._hash,
+                last_reload_error=self._last_reload_error,
+                restart_required=sorted(self._restart_required),
+            )
 
     def status_dict(self) -> dict[str, Any]:
         status = self.status()
