@@ -333,6 +333,15 @@ const orderDirection = [
   { by: "word_count", reversed: false },
 ];
 const queryDebounceMs = 200;
+const listModes = {
+  normal: {
+    moderationStatus: "normal",
+  },
+  review: {
+    moderationStatus: "blocked",
+  },
+};
+const defaultListMode = "normal";
 
 export default {
   name: "OwnerView",
@@ -365,48 +374,12 @@ export default {
       this.axios
         .post(
           "/api/owner/questions",
-          {
-            owner: this.owner,
-            type: this.queryParams["type"],
-            order_params: {
-              by: orderDirection[this.queryParams["order_params_index"]].by,
-              reversed:
-                orderDirection[this.queryParams["order_params_index"]].reversed,
-            },
-            marked: this.markedOnly,
-            reply_status: +this.queryParams["reply_status"],
-            day_limit: +this.queryParams["day_limit"],
-            ip_addr: this.queryParams["ip_addr"],
-            page_size: +this.queryParams["page_size"],
-            page: +this.queryParams["page"],
-          },
+          this.buildListRequest(),
           {
             headers: { Authorization: `Bearer ${this.$route.query.token}` },
           }
         )
-        .then((resp) => {
-          const rows = resp.data.questions;
-          this.total_count = resp.data.total;
-          this.locationOptions = resp.data.location_options || [];
-          for (let row of rows) {
-            if (row.answered_by === "manual") {
-              if (row.visit_count > 0) {
-                row.visit_status_color = {
-                  color: "green",
-                };
-              } else {
-                row.visit_status_color = {
-                  color: "lightskyblue",
-                };
-              }
-            } else {
-              row.visit_status_color = {
-                color: "black",
-              };
-            }
-          }
-          this.rows = rows;
-        })
+        .then((resp) => this.applyListResponse(resp))
         .catch((err) => {
           console.log(err.response);
           if (err.response.status === 401 || err.response.status === 403) {
@@ -416,15 +389,7 @@ export default {
             this.$router.push("/");
           } else {
             if (needRetry) {
-              this.queryParams = {
-                type: "normal",
-                order_params_index: 0,
-                reply_status: 0,
-                day_limit: 7,
-                ip_addr: "",
-                page_size: 5,
-                page: 1,
-              };
+              this.queryParams = this.defaultQueryParams();
               this.onQueryChange(false, false, false);
             } else {
               alert("提问箱好像坏掉了，直接ping管理员吧！");
@@ -433,6 +398,49 @@ export default {
           }
         });
 
+      this.persistQueryParams();
+    },
+    buildListRequest() {
+      const orderParams = orderDirection[this.queryParams["order_params_index"]];
+      return {
+        owner: this.owner,
+        type: this.queryParams["type"],
+        moderation_status: this.currentListMode.moderationStatus,
+        order_params: {
+          by: orderParams.by,
+          reversed: orderParams.reversed,
+        },
+        marked: this.markedOnly,
+        reply_status: +this.queryParams["reply_status"],
+        day_limit: +this.queryParams["day_limit"],
+        ip_addr: this.queryParams["ip_addr"],
+        page_size: +this.queryParams["page_size"],
+        page: +this.queryParams["page"],
+      };
+    },
+    applyListResponse(resp) {
+      const rows = resp.data.questions || [];
+      this.total_count = resp.data.total;
+      this.locationOptions = resp.data.location_options || [];
+      this.rows = rows.map((row) => this.withVisitStatusColor(row));
+    },
+    withVisitStatusColor(row) {
+      if (row.answered_by === "manual") {
+        return {
+          ...row,
+          visit_status_color: {
+            color: row.visit_count > 0 ? "green" : "lightskyblue",
+          },
+        };
+      }
+      return {
+        ...row,
+        visit_status_color: {
+          color: "black",
+        },
+      };
+    },
+    persistQueryParams() {
       for (var key in this.queryParams) {
         if (this.queryParams.hasOwnProperty(key)) {
           if (transientQueryParamKeys.has(key)) {
@@ -442,6 +450,17 @@ export default {
           localStorage.setItem(storagePrefix + key, this.queryParams[key]);
         }
       }
+    },
+    defaultQueryParams() {
+      return {
+        type: "normal",
+        order_params_index: 0,
+        reply_status: 0,
+        day_limit: 7,
+        ip_addr: "",
+        page_size: 5,
+        page: 1,
+      };
     },
     markQuestion(q) {
       this.axios
@@ -509,6 +528,9 @@ export default {
     },
   },
   computed: {
+    currentListMode() {
+      return listModes[this.activeListMode] || listModes[defaultListMode];
+    },
     formatTime() {
       return (timeStr) => {
         let time = Date.parse(timeStr);
@@ -586,6 +608,7 @@ export default {
       projected_text: "",
       uuid: "",
       markedOnly: false,
+      activeListMode: defaultListMode,
       queryDebounceTimer: null,
     };
   },

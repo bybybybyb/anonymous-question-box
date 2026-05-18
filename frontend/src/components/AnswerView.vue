@@ -11,6 +11,15 @@
                 >（{{ [ip_addr, ip_isp].filter(Boolean).join(" / ") }}）</span
               >
             </h6>
+            <h6 class="card-title m-3 text-muted" v-if="hasModerationMetadata">
+              审核：{{ moderationStatusLabel }}
+              <span v-if="moderation_source"> / {{ moderation_source }}</span>
+              <span v-if="moderation_category"> / {{ moderation_category }}</span>
+              <span v-if="moderation_reason"> / {{ moderation_reason }}</span>
+              <span v-if="moderated_at">
+                / {{ formatTime(moderated_at) }}
+              </span>
+            </h6>
             <div class="card-body overflow-auto">
               <div class="container">
                 <div class="row">
@@ -143,6 +152,11 @@ export default {
           this.ip = resp.data.ip || "";
           this.ip_addr = resp.data.ip_addr || "";
           this.ip_isp = resp.data.ip_isp || "";
+          this.moderation_status = resp.data.moderation_status || "";
+          this.moderation_source = resp.data.moderation_source || "";
+          this.moderation_category = resp.data.moderation_category || "";
+          this.moderation_reason = resp.data.moderation_reason || "";
+          this.moderated_at = resp.data.moderated_at || "";
           if (this.answer_text.length === 0) {
             let localVal = localStorage.getItem(storagePrefix + this.uuid);
             if (localVal && localVal !== "") {
@@ -178,6 +192,24 @@ export default {
     },
   },
   computed: {
+    hasModerationMetadata() {
+      return Boolean(
+        this.moderation_status ||
+          this.moderation_source ||
+          this.moderation_category ||
+          this.moderation_reason ||
+          this.moderated_at
+      );
+    },
+    moderationStatusLabel() {
+      const labels = {
+        normal: "正常",
+        pending: "待审核",
+        blocked: "审核队列",
+        approved: "已审核通过",
+      };
+      return labels[this.moderation_status] || this.moderation_status || "未知";
+    },
     formatText() {
       return (text) => {
         if (text !== null) {
@@ -201,6 +233,11 @@ export default {
       ip: "",
       ip_addr: "",
       ip_isp: "",
+      moderation_status: "",
+      moderation_source: "",
+      moderation_category: "",
+      moderation_reason: "",
+      moderated_at: "",
     };
   },
 };

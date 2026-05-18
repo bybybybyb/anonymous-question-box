@@ -467,6 +467,7 @@ export default {
           {
             owner: this.owner,
             type: this.queryParams["type"],
+            moderation_status: "normal",
             order_params: {
               by: orderDirection[this.queryParams["order_params_index"]].by,
               reversed:
