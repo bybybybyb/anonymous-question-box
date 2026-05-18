@@ -148,6 +148,8 @@ def parse_llm_moderation_response(
         raise InvalidLLMModerationResponseError("missing_field", f"LLM response was missing fields: {sorted(missing_fields)}")
 
     decision = parsed["decision"]
+    if not isinstance(decision, str):
+        raise InvalidLLMModerationResponseError("schema_mismatch", "LLM response decision must be a string")
     if decision not in {"accept", "reject"}:
         raise InvalidLLMModerationResponseError("invalid_decision", "LLM response decision must be accept or reject")
     moderation_category = parsed["moderation_category"]

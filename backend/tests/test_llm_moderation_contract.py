@@ -202,6 +202,18 @@ def test_parse_llm_moderation_response_rejects_non_stop_finish_reasons(finish_re
         (
             json.dumps(
                 {
+                    "decision": [],
+                    "moderation_category": "safe",
+                    "confidence": 0.7,
+                    "short_reason": "Safe submission",
+                    "rationale": "No issue.",
+                }
+            ),
+            "schema_mismatch",
+        ),
+        (
+            json.dumps(
+                {
                     "decision": "reject",
                     "moderation_category": "not_site_tuned",
                     "confidence": 0.7,
