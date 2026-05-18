@@ -323,6 +323,65 @@ def test_approve_blocked_submission_is_idempotent_and_returns_to_normal_list(tmp
     assert [tuple(row) for row in events] == [("blocked", "blocked"), ("approved", "approved")]
 
 
+def test_approve_race_does_not_emit_duplicate_approval_event(tmp_path: Path) -> None:
+    s = settings(tmp_path)
+    app, db = make_app_and_db(s)
+    with TestClient(app) as client:
+        token = new_user_token(client)
+        uuid = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "blocked text"},
+            headers=auth(token),
+        ).json()["uuid"]
+
+    original_conn = db.conn
+
+    class ConcurrentApprovalConnection:
+        def __init__(self) -> None:
+            self.raced = False
+
+        def execute(self, sql: str, params: tuple = ()):
+            if not self.raced and "UPDATE question_moderation_state" in sql and "WHERE uuid = ? AND status = 'blocked'" in sql:
+                self.raced = True
+                original_conn.execute(
+                    "UPDATE question_moderation_state SET status = 'approved', updated_at = ? WHERE uuid = ?",
+                    (111, uuid),
+                )
+                original_conn.execute(
+                    """
+                    INSERT INTO question_moderation_event (
+                      uuid, event_type, status, source, reason, category, actor, created_at
+                    )
+                    VALUES (?, 'approved', 'approved', 'keyword', 'keyword', NULL, 'other-owner', ?)
+                    """,
+                    (uuid, 111),
+                )
+            return original_conn.execute(sql, params)
+
+        def commit(self) -> None:
+            original_conn.commit()
+
+        def rollback(self) -> None:
+            original_conn.rollback()
+
+    db.conn = ConcurrentApprovalConnection()  # type: ignore[assignment]
+    try:
+        result = db.approve_moderation(uuid, 222)
+    finally:
+        db.conn = original_conn
+    events = db.conn.execute(
+        "SELECT event_type, status, actor, created_at FROM question_moderation_event WHERE uuid = ? ORDER BY id",
+        (uuid,),
+    ).fetchall()
+
+    assert result == "already_approved"
+    assert [tuple(row)[:3] for row in events] == [
+        ("blocked", "blocked", ""),
+        ("approved", "approved", "other-owner"),
+    ]
+    assert events[1]["created_at"] == 111
+
+
 def test_invalid_approval_states_return_legacy_errors(tmp_path: Path) -> None:
     s = settings(tmp_path)
     app, db = make_app_and_db(s)

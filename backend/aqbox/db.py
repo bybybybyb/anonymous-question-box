@@ -600,6 +600,23 @@ class Database:
                 self.conn.rollback()
                 raise
 
+    @staticmethod
+    def _approval_result_from_row(row: sqlite3.Row | None) -> str:
+        if row is None:
+            return "missing"
+        if row["deleted_at"] is not None:
+            return "deleted"
+        status = row["status"]
+        if status is None:
+            return "unmoderated"
+        if status == "approved":
+            return "already_approved"
+        if status == "pending":
+            return "pending"
+        if status != "blocked":
+            return "invalid"
+        return "blocked"
+
     def approve_moderation(self, uuid: str, approved_at: int) -> str:
         with self.lock:
             try:
@@ -612,20 +629,10 @@ class Database:
                     """,
                     (uuid,),
                 ).fetchone()
-                if row is None:
-                    return "missing"
-                if row["deleted_at"] is not None:
-                    return "deleted"
-                status = row["status"]
-                if status is None:
-                    return "unmoderated"
-                if status == "approved":
-                    return "already_approved"
-                if status == "pending":
-                    return "pending"
-                if status != "blocked":
-                    return "invalid"
-                self.conn.execute(
+                result = self._approval_result_from_row(row)
+                if result != "blocked":
+                    return result
+                cur = self.conn.execute(
                     """
                     UPDATE question_moderation_state
                     SET status = 'approved', updated_at = ?
@@ -633,6 +640,18 @@ class Database:
                     """,
                     (approved_at, uuid),
                 )
+                if cur.rowcount != 1:
+                    current = self.conn.execute(
+                        """
+                        SELECT q.deleted_at, ms.status, ms.source, ms.reason, ms.category
+                        FROM question q
+                        LEFT JOIN question_moderation_state ms ON ms.uuid = q.uuid
+                        WHERE q.uuid = ?
+                        """,
+                        (uuid,),
+                    ).fetchone()
+                    self.conn.commit()
+                    return self._approval_result_from_row(current)
                 self._insert_moderation_event_locked(
                     uuid,
                     event_type="approved",
