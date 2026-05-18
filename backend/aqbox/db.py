@@ -79,6 +79,46 @@ CREATE INDEX IF NOT EXISTS idx_question_moderation_audit_purge_after ON question
 """
 
 
+MODERATION_STATE_EVENTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS question_moderation_state (
+  uuid TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'blocked', 'approved')),
+  source TEXT NOT NULL DEFAULT '',
+  reason TEXT NOT NULL DEFAULT '',
+  category TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  FOREIGN KEY (uuid) REFERENCES question(uuid)
+);
+CREATE INDEX IF NOT EXISTS idx_question_moderation_state_status ON question_moderation_state(status);
+CREATE TABLE IF NOT EXISTS question_moderation_event (
+  id INTEGER PRIMARY KEY,
+  uuid TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  status TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT '',
+  reason TEXT NOT NULL DEFAULT '',
+  category TEXT,
+  actor TEXT NOT NULL DEFAULT '',
+  provider TEXT NOT NULL DEFAULT '',
+  model TEXT NOT NULL DEFAULT '',
+  prompt_version TEXT NOT NULL DEFAULT '',
+  decision_json TEXT NOT NULL DEFAULT '',
+  raw_prompt TEXT,
+  raw_request TEXT,
+  raw_response TEXT,
+  latency_ms INTEGER,
+  error_class TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  purge_after INTEGER,
+  purged_at INTEGER,
+  FOREIGN KEY (uuid) REFERENCES question(uuid)
+);
+CREATE INDEX IF NOT EXISTS idx_question_moderation_event_uuid ON question_moderation_event(uuid);
+CREATE INDEX IF NOT EXISTS idx_question_moderation_event_purge_after ON question_moderation_event(purge_after);
+"""
+
+
 class Database:
     """SQLite boundary for schema migration plus the repository-facing SQL contract."""
 
@@ -121,6 +161,7 @@ class Database:
             ("0001_phase1_core", "Phase 1 core question, visit, and image tables", self._apply_phase1_schema),
             ("0002_ip2region_geo", "Offline ip2region geolocation schema", self.migrate_geo),
             ("0003_moderation_scaffold", "Moderation metadata and audit scaffold", self.migrate_moderation),
+            ("0004_moderation_state_events", "Moderation state projection and event history", self.migrate_moderation_state_events),
         )
 
     def applied_migrations(self) -> list[str]:
@@ -189,7 +230,12 @@ class Database:
                     self.conn.execute(ddl)
             self.conn.executescript(PHASE3_SCHEMA)
 
-    def insert_question(self, question: dict[str, Any], *, deleted_at: int | None = None, ip: str | None = None) -> bool:
+    def migrate_moderation_state_events(self) -> None:
+        """Create dedicated moderation state and append-only event tables."""
+        with self.lock:
+            self.conn.executescript(MODERATION_STATE_EVENTS_SCHEMA)
+
+    def _insert_question_locked(self, question: dict[str, Any], *, deleted_at: int | None = None, ip: str | None = None) -> bool:
         cols = ["uuid", "owner", "question_type", "question", "word_count", "asked_at"]
         vals: list[Any] = [
             question["uuid"],
@@ -207,10 +253,76 @@ class Database:
             vals.append(ip or "")
         placeholders = ",".join("?" for _ in cols)
         sql = f"INSERT INTO question ({','.join(cols)}) VALUES ({placeholders}) ON CONFLICT DO NOTHING"
+        cur = self.conn.execute(sql, vals)
+        return cur.rowcount == 1
+
+    def insert_question(self, question: dict[str, Any], *, deleted_at: int | None = None, ip: str | None = None) -> bool:
         with self.lock:
-            cur = self.conn.execute(sql, vals)
+            cur = self._insert_question_locked(question, deleted_at=deleted_at, ip=ip)
             self.conn.commit()
-            return cur.rowcount == 1
+            return cur
+
+    def insert_blocked_question(
+        self,
+        question: dict[str, Any],
+        *,
+        source: str,
+        reason: str,
+        category: str | None = None,
+        ip: str | None = None,
+    ) -> bool:
+        created_at = int(question["asked_at"])
+        with self.lock:
+            try:
+                inserted = self._insert_question_locked(question, ip=ip)
+                if not inserted:
+                    self.conn.commit()
+                    return False
+                self.conn.execute(
+                    """
+                    INSERT INTO question_moderation_state (
+                      uuid, status, source, reason, category, created_at, updated_at
+                    )
+                    VALUES (?, 'blocked', ?, ?, ?, ?, ?)
+                    """,
+                    (question["uuid"], source, reason, category, created_at, created_at),
+                )
+                self._insert_moderation_event_locked(
+                    question["uuid"],
+                    event_type="blocked",
+                    status="blocked",
+                    source=source,
+                    reason=reason,
+                    category=category,
+                    created_at=created_at,
+                )
+                self.conn.commit()
+                return True
+            except Exception:
+                self.conn.rollback()
+                raise
+
+    def _insert_moderation_event_locked(
+        self,
+        uuid: str,
+        *,
+        event_type: str,
+        status: str,
+        source: str,
+        reason: str,
+        category: str | None,
+        created_at: int,
+        actor: str = "",
+    ) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO question_moderation_event (
+              uuid, event_type, status, source, reason, category, actor, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (uuid, event_type, status, source, reason, category, actor, created_at),
+        )
 
     def get_question(
         self,
@@ -219,22 +331,71 @@ class Database:
         with_visit: bool = False,
         include_geo: bool = False,
         include_deleted: bool = True,
+        include_moderation: bool = False,
     ) -> dict[str, Any] | None:
         geo_select = ", q.ip, ig.addr AS ip_addr, ig.isp AS ip_isp" if include_geo and self.geo_enabled else ""
         geo_join = " LEFT JOIN ip_geo ig ON ig.ip = q.ip" if include_geo and self.geo_enabled else ""
         visit_select = ", v.last_visited_at, v.visit_count" if with_visit else ""
         visit_join = " LEFT JOIN visit v ON v.uuid = q.uuid" if with_visit else ""
+        moderation_select = (
+            ", ms.status AS moderation_status, ms.source AS moderation_source, "
+            "ms.reason AS moderation_reason, ms.category AS moderation_category, "
+            "ms.created_at AS moderation_created_at, ms.updated_at AS moderation_updated_at"
+            if include_moderation
+            else ""
+        )
+        moderation_join = " LEFT JOIN question_moderation_state ms ON ms.uuid = q.uuid" if include_moderation else ""
         sql = (
             "SELECT q.id, q.uuid, q.owner, q.question_type, q.question, q.word_count, q.answer, "
             "q.asked_at, q.answered_at, q.answered_by, q.marked_at"
-            f"{visit_select}{geo_select} FROM question q{visit_join}{geo_join} WHERE q.uuid = ?"
+            f"{visit_select}{geo_select}{moderation_select} FROM question q{visit_join}{geo_join}{moderation_join} "
+            "WHERE q.uuid = ?"
         )
         params: list[Any] = [uuid]
         if not include_deleted:
             sql += " AND q.deleted_at IS NULL"
         with self.lock:
             row = self.conn.execute(sql, params).fetchone()
-        return self._question_from_row(row, include_geo=include_geo) if row else None
+        return self._question_from_row(row, include_geo=include_geo, include_moderation=include_moderation) if row else None
+
+    def _owner_filters(
+        self,
+        *,
+        owner: str,
+        qtype: str,
+        marked: bool,
+        due_after: int,
+        reply_status: int,
+        include_geo: bool,
+        location_addr: str,
+        moderation_status: str,
+    ) -> tuple[list[str], list[Any], str, str]:
+        filters = ["q.owner = ?", "q.question_type = ?", "q.asked_at > ?", "q.deleted_at IS NULL"]
+        params: list[Any] = [owner, qtype, due_after]
+        if reply_status < 0:
+            filters.append("q.answered_at IS NULL")
+        elif reply_status == 1:
+            filters.append("q.answered_at IS NOT NULL")
+        elif reply_status == 2:
+            filters.append("q.answered_at IS NOT NULL")
+            filters.append("q.answered_by = 'manual'")
+        if marked:
+            filters.append("q.marked_at IS NOT NULL")
+        moderation_join = " LEFT JOIN question_moderation_state ms ON ms.uuid = q.uuid"
+        if moderation_status == "blocked":
+            filters.append("ms.status = 'blocked'")
+        else:
+            filters.append("(ms.uuid IS NULL OR ms.status = 'approved')")
+
+        geo_join = " LEFT JOIN ip_geo ig ON ig.ip = q.ip" if include_geo and self.geo_enabled else ""
+        filter_by_location = include_geo and self.geo_enabled and bool(location_addr)
+        if filter_by_location:
+            if location_addr == LOCATION_NO_DATA_VALUE:
+                filters.append("(ig.addr IS NULL OR ig.addr = '')")
+            else:
+                filters.append("ig.addr = ?")
+                params.append(location_addr)
+        return filters, params, geo_join, moderation_join
 
     def list_questions(
         self,
@@ -250,43 +411,73 @@ class Database:
         reply_status: int,
         include_geo: bool = False,
         location_addr: str = "",
+        moderation_status: str = "normal",
     ) -> tuple[list[dict[str, Any]], int]:
-        filters = ["q.owner = ?", "q.question_type = ?", "q.asked_at > ?", "q.deleted_at IS NULL"]
-        params: list[Any] = [owner, qtype, due_after]
-        if reply_status < 0:
-            filters.append("q.answered_at IS NULL")
-        elif reply_status == 1:
-            filters.append("q.answered_at IS NOT NULL")
-        elif reply_status == 2:
-            filters.append("q.answered_at IS NOT NULL")
-            filters.append("q.answered_by = 'manual'")
-        if marked:
-            filters.append("q.marked_at IS NOT NULL")
-        # Location filtering is owner-only; asker reads never include or filter on geo fields.
-        filter_by_location = include_geo and self.geo_enabled and bool(location_addr)
-        if filter_by_location:
-            if location_addr == LOCATION_NO_DATA_VALUE:
-                filters.append("(ig.addr IS NULL OR ig.addr = '')")
-            else:
-                filters.append("ig.addr = ?")
-                params.append(location_addr)
-
+        filters, params, geo_join, moderation_join = self._owner_filters(
+            owner=owner,
+            qtype=qtype,
+            marked=marked,
+            due_after=due_after,
+            reply_status=reply_status,
+            include_geo=include_geo,
+            location_addr=location_addr,
+            moderation_status=moderation_status,
+        )
         where = " AND ".join(filters)
         direction = "DESC" if reversed_order else "ASC"
         geo_select = ", q.ip, ig.addr AS ip_addr, ig.isp AS ip_isp" if include_geo and self.geo_enabled else ""
-        geo_join = " LEFT JOIN ip_geo ig ON ig.ip = q.ip" if include_geo and self.geo_enabled else ""
+        moderation_select = (
+            ", ms.status AS moderation_status, ms.source AS moderation_source, "
+            "ms.reason AS moderation_reason, ms.category AS moderation_category, "
+            "ms.created_at AS moderation_created_at, ms.updated_at AS moderation_updated_at"
+        )
         offset = max(page - 1, 0) * page_size
         with self.lock:
-            total = self.conn.execute(f"SELECT COUNT(*) FROM question q{geo_join} WHERE {where}", params).fetchone()[0]
+            total = self.conn.execute(
+                f"SELECT COUNT(*) FROM question q{geo_join}{moderation_join} WHERE {where}",
+                params,
+            ).fetchone()[0]
             rows = self.conn.execute(
                 "SELECT q.id, q.uuid, q.owner, q.question_type, q.question, q.word_count, q.answer, "
                 "q.asked_at, q.answered_at, q.answered_by, q.marked_at, "
                 "v.last_visited_at, v.visit_count"
-                f"{geo_select} FROM question q LEFT JOIN visit v ON v.uuid = q.uuid{geo_join} "
+                f"{geo_select}{moderation_select} FROM question q LEFT JOIN visit v ON v.uuid = q.uuid"
+                f"{geo_join}{moderation_join} "
                 f"WHERE {where} ORDER BY q.{order_by} {direction}, q.id ASC LIMIT ? OFFSET ?",
                 [*params, page_size, offset],
             ).fetchall()
-        return [self._question_from_row(row, include_geo=include_geo) for row in rows], int(total)
+        return [self._question_from_row(row, include_geo=include_geo, include_moderation=True) for row in rows], int(total)
+
+    def count_questions(
+        self,
+        *,
+        owner: str,
+        qtype: str,
+        marked: bool,
+        due_after: int,
+        reply_status: int,
+        include_geo: bool = False,
+        location_addr: str = "",
+        moderation_status: str = "normal",
+    ) -> int:
+        filters, params, geo_join, moderation_join = self._owner_filters(
+            owner=owner,
+            qtype=qtype,
+            marked=marked,
+            due_after=due_after,
+            reply_status=reply_status,
+            include_geo=include_geo,
+            location_addr=location_addr,
+            moderation_status=moderation_status,
+        )
+        where = " AND ".join(filters)
+        with self.lock:
+            return int(
+                self.conn.execute(
+                    f"SELECT COUNT(*) FROM question q{geo_join}{moderation_join} WHERE {where}",
+                    params,
+                ).fetchone()[0]
+            )
 
     def list_location_options(
         self,
@@ -296,26 +487,20 @@ class Database:
         marked: bool,
         due_after: int,
         reply_status: int,
+        moderation_status: str = "normal",
     ) -> list[dict[str, Any]]:
         if not self.geo_enabled:
             return []
-        filters = [
-            "q.owner = ?",
-            "q.question_type = ?",
-            "q.asked_at > ?",
-            "q.deleted_at IS NULL",
-        ]
-        params: list[Any] = [owner, qtype, due_after]
-        if reply_status < 0:
-            filters.append("q.answered_at IS NULL")
-        elif reply_status == 1:
-            filters.append("q.answered_at IS NOT NULL")
-        elif reply_status == 2:
-            filters.append("q.answered_at IS NOT NULL")
-            filters.append("q.answered_by = 'manual'")
-        if marked:
-            filters.append("q.marked_at IS NOT NULL")
-
+        filters, params, _, moderation_join = self._owner_filters(
+            owner=owner,
+            qtype=qtype,
+            marked=marked,
+            due_after=due_after,
+            reply_status=reply_status,
+            include_geo=False,
+            location_addr="",
+            moderation_status=moderation_status,
+        )
         where = " AND ".join(filters)
         located_where = where + " AND ig.addr IS NOT NULL AND ig.addr != ''"
         missing_where = where + " AND (ig.addr IS NULL OR ig.addr = '')"
@@ -325,6 +510,9 @@ class Database:
                 SELECT ig.addr, ig.isp, COUNT(*) AS count
                 FROM question q
                 JOIN ip_geo ig ON ig.ip = q.ip
+                """
+                + moderation_join
+                + """
                 WHERE """
                 + located_where
                 + """
@@ -334,7 +522,7 @@ class Database:
                 params,
             ).fetchall()
             missing_count = self.conn.execute(
-                "SELECT COUNT(*) FROM question q LEFT JOIN ip_geo ig ON ig.ip = q.ip WHERE " + missing_where,
+                "SELECT COUNT(*) FROM question q LEFT JOIN ip_geo ig ON ig.ip = q.ip" + moderation_join + " WHERE " + missing_where,
                 params,
             ).fetchone()[0]
 
@@ -383,12 +571,82 @@ class Database:
 
     def mark_deleted(self, uuid: str, deleted_at: int) -> bool:
         with self.lock:
-            cur = self.conn.execute(
-                "UPDATE question SET deleted_at = ? WHERE uuid = ? AND deleted_at IS NULL",
-                (deleted_at, uuid),
-            )
-            self.conn.commit()
-            return cur.rowcount == 1
+            try:
+                state = self.conn.execute(
+                    """
+                    SELECT status, source, reason, category
+                    FROM question_moderation_state
+                    WHERE uuid = ?
+                    """,
+                    (uuid,),
+                ).fetchone()
+                cur = self.conn.execute(
+                    "UPDATE question SET deleted_at = ? WHERE uuid = ? AND deleted_at IS NULL",
+                    (deleted_at, uuid),
+                )
+                if cur.rowcount == 1 and state is not None:
+                    self._insert_moderation_event_locked(
+                        uuid,
+                        event_type="deleted",
+                        status=str(state["status"]),
+                        source=str(state["source"] or ""),
+                        reason=str(state["reason"] or ""),
+                        category=state["category"],
+                        created_at=deleted_at,
+                    )
+                self.conn.commit()
+                return cur.rowcount == 1
+            except Exception:
+                self.conn.rollback()
+                raise
+
+    def approve_moderation(self, uuid: str, approved_at: int) -> str:
+        with self.lock:
+            try:
+                row = self.conn.execute(
+                    """
+                    SELECT q.deleted_at, ms.status, ms.source, ms.reason, ms.category
+                    FROM question q
+                    LEFT JOIN question_moderation_state ms ON ms.uuid = q.uuid
+                    WHERE q.uuid = ?
+                    """,
+                    (uuid,),
+                ).fetchone()
+                if row is None:
+                    return "missing"
+                if row["deleted_at"] is not None:
+                    return "deleted"
+                status = row["status"]
+                if status is None:
+                    return "unmoderated"
+                if status == "approved":
+                    return "already_approved"
+                if status == "pending":
+                    return "pending"
+                if status != "blocked":
+                    return "invalid"
+                self.conn.execute(
+                    """
+                    UPDATE question_moderation_state
+                    SET status = 'approved', updated_at = ?
+                    WHERE uuid = ? AND status = 'blocked'
+                    """,
+                    (approved_at, uuid),
+                )
+                self._insert_moderation_event_locked(
+                    uuid,
+                    event_type="approved",
+                    status="approved",
+                    source=str(row["source"] or ""),
+                    reason=str(row["reason"] or ""),
+                    category=row["category"],
+                    created_at=approved_at,
+                )
+                self.conn.commit()
+                return "approved"
+            except Exception:
+                self.conn.rollback()
+                raise
 
     def update_mark(self, uuid: str, marked_at: int | None) -> bool:
         with self.lock:
@@ -452,7 +710,7 @@ class Database:
             return False
 
     @staticmethod
-    def _question_from_row(row: sqlite3.Row, *, include_geo: bool) -> dict[str, Any]:
+    def _question_from_row(row: sqlite3.Row, *, include_geo: bool, include_moderation: bool = False) -> dict[str, Any]:
         columns = set(row.keys())
         # The DB stores absent timestamps as NULL; legacy JSON uses epoch strings instead.
         question = {
@@ -474,4 +732,13 @@ class Database:
             question["ip"] = row["ip"] or ""
             question["ip_addr"] = row["ip_addr"] or ""
             question["ip_isp"] = row["ip_isp"] or ""
+        if include_moderation and "moderation_status" in columns and row["moderation_status"]:
+            question["moderation"] = {
+                "status": row["moderation_status"],
+                "source": row["moderation_source"] or "",
+                "reason": row["moderation_reason"] or "",
+                "category": row["moderation_category"],
+                "created_at": rfc3339_from_epoch(row["moderation_created_at"]),
+                "updated_at": rfc3339_from_epoch(row["moderation_updated_at"]),
+            }
         return question

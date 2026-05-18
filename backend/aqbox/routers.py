@@ -109,6 +109,13 @@ async def mark_submission(request: Request, uuid: str) -> Response:
     return Response(status_code=200)
 
 
+@router.put("/owner/questions/{uuid}/moderation/approve")
+async def approve_moderation(request: Request, uuid: str) -> Response:
+    require_owner(request)
+    owner_console_service(request).approve_moderation(uuid)
+    return Response(status_code=200)
+
+
 @router.delete("/owner/questions/{uuid}/delete")
 async def delete_submission(request: Request, uuid: str) -> Response:
     require_owner(request)

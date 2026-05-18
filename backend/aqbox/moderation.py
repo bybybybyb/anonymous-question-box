@@ -6,18 +6,18 @@ from typing import Any
 
 @dataclass(slots=True)
 class FilterResult:
-    soft_delete: bool
+    blocked: bool
     source: str | None = None
     reason: str | None = None
 
 
 def keyword_filter(text: str, keywords: list[str]) -> FilterResult:
-    """Current moderation behavior: keyword hit means stealth soft-delete on insert."""
+    """Keyword hits are stealth moderation blocks with no matched keyword stored."""
     for keyword in keywords:
         keyword = str(keyword)
         if keyword and keyword in text:
-            return FilterResult(soft_delete=True, source="keyword", reason="keyword")
-    return FilterResult(soft_delete=False)
+            return FilterResult(blocked=True, source="keyword", reason="keyword")
+    return FilterResult(blocked=False)
 
 
 def llm_policy_for(settings: Any, owner: str, qtype: str) -> dict[str, Any] | None:

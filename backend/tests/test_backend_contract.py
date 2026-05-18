@@ -144,8 +144,11 @@ def test_schema_migrations_are_recorded_once(tmp_path: Path) -> None:
         "0001_phase1_core",
         "0002_ip2region_geo",
         "0003_moderation_scaffold",
+        "0004_moderation_state_events",
     ]
     assert second == first
+    assert db.conn.execute("SELECT COUNT(*) FROM question_moderation_state").fetchone()[0] == 0
+    assert db.conn.execute("SELECT COUNT(*) FROM question_moderation_event").fetchone()[0] == 0
 
 
 def test_image_routes_removed_and_submit_images_rejected(tmp_path: Path) -> None:
@@ -175,9 +178,10 @@ def test_images_null_is_accepted_like_legacy_empty_images(tmp_path: Path) -> Non
     assert resp.status_code == 200
 
 
-def test_keyword_soft_delete_stays_stealth_and_asker_can_read(tmp_path: Path) -> None:
+def test_keyword_block_creates_state_without_deleting_and_respects_visibility(tmp_path: Path) -> None:
     s = settings(tmp_path)
-    with make_client(s) as client:
+    app, db = make_app_and_db(s)
+    with TestClient(app) as client:
         token = new_user_token(client)
         submit = client.post(
             "/questions/submit",
@@ -197,18 +201,54 @@ def test_keyword_soft_delete_stays_stealth_and_asker_can_read(tmp_path: Path) ->
             },
             headers=auth(admin_token(s)),
         )
+        owner_review = client.post(
+            "/owner/questions",
+            json={
+                "owner": "owner",
+                "type": "type",
+                "moderation_status": "blocked",
+                "day_limit": 1,
+                "page_size": 10,
+                "page": 1,
+            },
+            headers=auth(admin_token(s)),
+        )
         owner_detail = client.get(f"/owner/questions/{submit.json()['uuid']}", headers=auth(admin_token(s)))
+    uuid = submit.json()["uuid"]
+    question_row = db.conn.execute("SELECT deleted_at FROM question WHERE uuid = ?", (uuid,)).fetchone()
+    state_row = db.conn.execute(
+        "SELECT status, source, reason, category FROM question_moderation_state WHERE uuid = ?",
+        (uuid,),
+    ).fetchone()
+    event_rows = db.conn.execute(
+        "SELECT event_type, status, source, reason FROM question_moderation_event WHERE uuid = ?",
+        (uuid,),
+    ).fetchall()
     assert submit.status_code == 200
+    assert question_row is not None
+    assert question_row["deleted_at"] is None
+    assert state_row is not None
+    assert dict(state_row) == {"status": "blocked", "source": "keyword", "reason": "keyword", "category": None}
+    assert [dict(row) for row in event_rows] == [{"event_type": "blocked", "status": "blocked", "source": "keyword", "reason": "keyword"}]
     assert asker_read.status_code == 200
     assert asker_read.json()["text"] == "blocked text"
     assert asker_read.json()["images"] == []
     assert "ip" not in asker_read.json()
+    assert "moderation" not in asker_read.json()
     assert owner_list.status_code == 200
     assert owner_list.json()["total"] == 0
-    assert owner_detail.status_code == 404
+    assert owner_list.json()["moderation_counts"]["blocked"] == 1
+    assert owner_review.status_code == 200
+    assert owner_review.json()["total"] == 1
+    assert owner_review.json()["questions"][0]["uuid"] == uuid
+    assert owner_review.json()["questions"][0]["moderation"]["status"] == "blocked"
+    assert owner_review.json()["questions"][0]["moderation"]["source"] == "keyword"
+    assert owner_detail.status_code == 200
+    assert owner_detail.json()["uuid"] == uuid
+    assert owner_detail.json()["moderation"]["status"] == "blocked"
 
 
-def test_owner_mutations_do_not_touch_keyword_soft_deleted_submission(tmp_path: Path) -> None:
+def test_answering_blocked_submission_does_not_approve_it(tmp_path: Path) -> None:
     s = settings(tmp_path)
     with make_client(s) as client:
         token = new_user_token(client)
@@ -224,18 +264,208 @@ def test_owner_mutations_do_not_touch_keyword_soft_deleted_submission(tmp_path: 
             json={"uuid": uuid, "answer": "should not write", "answered_by": "manual"},
             headers=owner_headers,
         )
-        mark = client.put(
-            f"/owner/questions/{uuid}/mark",
-            json={"owner": "owner", "type": "type", "mark": True},
+        normal = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "day_limit": 1},
             headers=owner_headers,
         )
-        delete = client.delete(f"/owner/questions/{uuid}/delete", headers=owner_headers)
+        review = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "moderation_status": "blocked", "day_limit": 1, "reply_status": 1},
+            headers=owner_headers,
+        )
         asker_read = client.get("/questions/question", headers=auth(token))
-    assert answer.status_code == 404
-    assert mark.status_code == 404
-    assert delete.status_code == 404
+    assert answer.status_code == 200
+    assert normal.json()["total"] == 0
+    assert review.json()["total"] == 1
+    assert review.json()["questions"][0]["answer"] == "should not write"
+    assert review.json()["questions"][0]["moderation"]["status"] == "blocked"
     assert asker_read.status_code == 200
-    assert asker_read.json()["answer"] == ""
+    assert asker_read.json()["answer"] == "should not write"
+
+
+def test_approve_blocked_submission_is_idempotent_and_returns_to_normal_list(tmp_path: Path) -> None:
+    s = settings(tmp_path)
+    app, db = make_app_and_db(s)
+    with TestClient(app) as client:
+        token = new_user_token(client)
+        submit = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "blocked text"},
+            headers=auth(token),
+        )
+        uuid = submit.json()["uuid"]
+        owner_headers = auth(admin_token(s))
+        approve = client.put(f"/owner/questions/{uuid}/moderation/approve", headers=owner_headers)
+        approve_again = client.put(f"/owner/questions/{uuid}/moderation/approve", headers=owner_headers)
+        normal = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "day_limit": 1},
+            headers=owner_headers,
+        )
+        review = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "moderation_status": "blocked", "day_limit": 1},
+            headers=owner_headers,
+        )
+        detail = client.get(f"/owner/questions/{uuid}", headers=owner_headers)
+    events = db.conn.execute(
+        "SELECT event_type, status FROM question_moderation_event WHERE uuid = ? ORDER BY id",
+        (uuid,),
+    ).fetchall()
+    assert approve.status_code == 200
+    assert approve_again.status_code == 200
+    assert normal.json()["total"] == 1
+    assert normal.json()["questions"][0]["uuid"] == uuid
+    assert normal.json()["questions"][0]["moderation"]["status"] == "approved"
+    assert review.json()["total"] == 0
+    assert detail.json()["moderation"]["status"] == "approved"
+    assert [tuple(row) for row in events] == [("blocked", "blocked"), ("approved", "approved")]
+
+
+def test_invalid_approval_states_return_legacy_errors(tmp_path: Path) -> None:
+    s = settings(tmp_path)
+    app, db = make_app_and_db(s)
+    with TestClient(app) as client:
+        owner_headers = auth(admin_token(s))
+        normal_token = new_user_token(client)
+        normal_uuid = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "normal"},
+            headers=auth(normal_token),
+        ).json()["uuid"]
+        pending_token = new_user_token(client)
+        pending_uuid = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "pending"},
+            headers=auth(pending_token),
+        ).json()["uuid"]
+        db.conn.execute(
+            """
+            INSERT INTO question_moderation_state (uuid, status, source, reason, created_at, updated_at)
+            VALUES (?, 'pending', 'llm', 'queued', 1, 1)
+            """,
+            (pending_uuid,),
+        )
+        db.conn.commit()
+        blocked_token = new_user_token(client)
+        deleted_uuid = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "blocked text"},
+            headers=auth(blocked_token),
+        ).json()["uuid"]
+        client.delete(f"/owner/questions/{deleted_uuid}/delete", headers=owner_headers)
+
+        normal_approve = client.put(f"/owner/questions/{normal_uuid}/moderation/approve", headers=owner_headers)
+        pending_approve = client.put(f"/owner/questions/{pending_uuid}/moderation/approve", headers=owner_headers)
+        deleted_approve = client.put(f"/owner/questions/{deleted_uuid}/moderation/approve", headers=owner_headers)
+        pending_detail = client.get(f"/owner/questions/{pending_uuid}", headers=owner_headers)
+
+    assert normal_approve.status_code == 400
+    assert normal_approve.json() == {"error": "投稿没有可审批的审核状态"}
+    assert pending_approve.status_code == 400
+    assert pending_approve.json() == {"error": "待审核投稿不能手动通过"}
+    assert deleted_approve.status_code == 404
+    assert deleted_approve.json() == {"error": "投稿不存在或已删除"}
+    assert pending_detail.status_code == 404
+    assert pending_detail.json() == {"error": "投稿不存在"}
+
+
+def test_delete_moderated_submission_hides_it_and_records_event(tmp_path: Path) -> None:
+    s = settings(tmp_path)
+    app, db = make_app_and_db(s)
+    with TestClient(app) as client:
+        token = new_user_token(client)
+        uuid = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "blocked text"},
+            headers=auth(token),
+        ).json()["uuid"]
+        owner_headers = auth(admin_token(s))
+        delete = client.delete(f"/owner/questions/{uuid}/delete", headers=owner_headers)
+        normal = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "day_limit": 1},
+            headers=owner_headers,
+        )
+        review = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "moderation_status": "blocked", "day_limit": 1},
+            headers=owner_headers,
+        )
+        detail = client.get(f"/owner/questions/{uuid}", headers=owner_headers)
+        asker_read = client.get("/questions/question", headers=auth(token))
+    events = db.conn.execute(
+        "SELECT event_type, status FROM question_moderation_event WHERE uuid = ? ORDER BY id",
+        (uuid,),
+    ).fetchall()
+    assert delete.status_code == 200
+    assert normal.json()["total"] == 0
+    assert review.json()["total"] == 0
+    assert detail.status_code == 404
+    assert asker_read.status_code == 200
+    assert asker_read.json()["text"] == "blocked text"
+    assert [tuple(row) for row in events] == [("blocked", "blocked"), ("deleted", "blocked")]
+
+
+def test_moderation_status_defaults_validation_counts_and_location_options(tmp_path: Path) -> None:
+    s = settings(tmp_path, geo_enabled=True, trusted_proxy_cidrs=["127.0.0.1/32"])
+    app, db = make_app_and_db(s)
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        normal_token = new_user_token(client)
+        client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "normal"},
+            headers={**auth(normal_token), "X-Real-IP": "8.8.8.8"},
+        )
+        blocked_token = new_user_token(client)
+        client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "blocked text"},
+            headers={**auth(blocked_token), "X-Real-IP": "9.9.9.9"},
+        )
+        db.insert_ip_geo({"ip": "8.8.8.8", "addr": "正常地区", "isp": "正常运营商", "provider": "ip2region", "looked_up_at": 1})
+        db.insert_ip_geo({"ip": "9.9.9.9", "addr": "审核地区", "isp": "审核运营商", "provider": "ip2region", "looked_up_at": 1})
+        owner_headers = auth(admin_token(s))
+        default_normal = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "day_limit": 1},
+            headers=owner_headers,
+        )
+        blocked = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "moderation_status": "blocked", "day_limit": 1},
+            headers=owner_headers,
+        )
+        invalid = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "moderation_status": "pending", "day_limit": 1},
+            headers=owner_headers,
+        )
+        filtered_blocked = client.post(
+            "/owner/questions",
+            json={
+                "owner": "owner",
+                "type": "type",
+                "moderation_status": "blocked",
+                "day_limit": 1,
+                "ip_addr": "审核地区",
+            },
+            headers=owner_headers,
+        )
+    assert default_normal.status_code == 200
+    assert default_normal.json()["total"] == 1
+    assert default_normal.json()["questions"][0]["text"] == "normal"
+    assert default_normal.json()["moderation_counts"] == {"blocked": 1}
+    assert {option["addr"] for option in default_normal.json()["location_options"]} == {"正常地区"}
+    assert blocked.status_code == 200
+    assert blocked.json()["total"] == 1
+    assert blocked.json()["questions"][0]["text"] == "blocked text"
+    assert {option["addr"] for option in blocked.json()["location_options"]} == {"审核地区"}
+    assert filtered_blocked.json()["total"] == 1
+    assert filtered_blocked.json()["moderation_counts"] == {"blocked": 1}
+    assert invalid.status_code == 400
+    assert "moderation_status" in invalid.json()["error"]
 
 
 def test_visit_queue_flushes_on_shutdown(tmp_path: Path) -> None:

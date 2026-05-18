@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -42,6 +42,7 @@ class ListQuestionsRequest(BaseModel):
     page: int = 1
     include_moderated: bool = False
     moderation_source: str | None = None
+    moderation_status: Literal["normal", "blocked"] = "normal"
     ip_addr: str = ""
 
 

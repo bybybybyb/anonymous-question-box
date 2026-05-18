@@ -11,7 +11,7 @@ from .auth import Principal, bearer_token, generate_token, validate_token
 from .config import Settings
 from .geo import geo_status, lookup_and_store, resolve_client_ip
 from .legacy import LegacyAPIError
-from .moderation import keyword_filter
+from .moderation import FilterResult, keyword_filter
 from .repositories import OpsRepository, SubmissionRepository, VisitRepository
 from .schemas import AnswerQuestionRequest, ListQuestionsRequest, SubmitQuestionRequest, UpdateQuestionMarkRequest
 from .settings_provider import SettingsProvider
@@ -50,9 +50,8 @@ class ProfileService:
 
 
 class ModerationService:
-    def keyword_soft_delete_at(self, text: str, settings: Settings, asked_at: int) -> int | None:
-        filter_result = keyword_filter(text, settings.filtered_keywords)
-        return asked_at if filter_result.soft_delete else None
+    def keyword_decision(self, text: str, settings: Settings) -> FilterResult:
+        return keyword_filter(text, settings.filtered_keywords)
 
 
 class GeoService:
@@ -135,7 +134,7 @@ class VisitService:
 
 
 class SubmissionService:
-    """Asker-side submission behavior, including stealth keyword moderation."""
+    """Asker-side submission behavior, including stealth keyword moderation blocks."""
 
     def __init__(self, repo: SubmissionRepository, moderation: ModerationService, geo: GeoService):
         self.repo = repo
@@ -168,14 +167,19 @@ class SubmissionService:
             raise LegacyAPIError(400, "本提问箱不支持图片上传")
 
         asked_at = now_epoch()
-        deleted_at = self.moderation.keyword_soft_delete_at(text, settings, asked_at)
+        moderation_decision = self.moderation.keyword_decision(text, settings)
         ip = self.geo.client_ip(request, settings)
-        # Keyword moderation is intentionally stealthy: insert deleted_at and still return success.
-        inserted = self.repo.insert(
-            {"uuid": principal.uuid, "owner": req.owner, "type": req.type, "text": text, "asked_at": asked_at},
-            deleted_at=deleted_at,
-            ip=ip,
-        )
+        question = {"uuid": principal.uuid, "owner": req.owner, "type": req.type, "text": text, "asked_at": asked_at}
+        if moderation_decision.blocked:
+            # Keyword moderation is stealthy to the submitter but no longer uses owner deletion storage.
+            inserted = self.repo.insert_blocked(
+                question,
+                source=moderation_decision.source or "keyword",
+                reason=moderation_decision.reason or "keyword",
+                ip=ip,
+            )
+        else:
+            inserted = self.repo.insert(question, ip=ip)
         if not inserted:
             raise LegacyAPIError(409, "提交失败，错误信息：no row inserted，请联系网站管理员")
         self.geo.schedule_lookup(self.repo, settings, ip)
@@ -183,7 +187,7 @@ class SubmissionService:
 
 
 class OwnerConsoleService:
-    """Owner console operations; normal reads hide deleted/soft-deleted submissions."""
+    """Owner console operations; normal reads hide deleted and moderation-hidden submissions."""
 
     def __init__(self, repo: SubmissionRepository):
         self.repo = repo
@@ -208,6 +212,17 @@ class OwnerConsoleService:
             reply_status=req.reply_status,
             include_geo=settings.geo_enabled,
             location_addr=req.ip_addr if settings.geo_enabled else "",
+            moderation_status=req.moderation_status,
+        )
+        blocked_count = self.repo.count_owner(
+            owner=req.owner,
+            qtype=req.type,
+            marked=req.marked,
+            due_after=due_after,
+            reply_status=req.reply_status,
+            include_geo=settings.geo_enabled,
+            location_addr=req.ip_addr if settings.geo_enabled else "",
+            moderation_status="blocked",
         )
         location_options = (
             self.repo.list_location_options(
@@ -216,6 +231,7 @@ class OwnerConsoleService:
                 marked=req.marked,
                 due_after=due_after,
                 reply_status=req.reply_status,
+                moderation_status=req.moderation_status,
             )
             if settings.geo_enabled
             else []
@@ -226,11 +242,18 @@ class OwnerConsoleService:
             "page_size": page_size,
             "page": page,
             "location_options": location_options,
+            "moderation_counts": {"blocked": blocked_count},
         }
 
     def detail(self, uuid: str, settings: Settings) -> dict[str, Any]:
-        question = self.repo.get(uuid, with_visit=True, include_geo=settings.geo_enabled, include_deleted=False)
-        if question is None:
+        question = self.repo.get(
+            uuid,
+            with_visit=True,
+            include_geo=settings.geo_enabled,
+            include_deleted=False,
+            include_moderation=True,
+        )
+        if question is None or question.get("moderation", {}).get("status") == "pending":
             raise LegacyAPIError(404, "投稿不存在")
         return question
 
@@ -253,6 +276,18 @@ class OwnerConsoleService:
         ok = self.repo.delete(uuid, now_epoch())
         if not ok:
             raise LegacyAPIError(404, "投稿不存在或已过期销毁")
+
+    def approve_moderation(self, uuid: str) -> None:
+        result = self.repo.approve_moderation(uuid, now_epoch())
+        if result in {"approved", "already_approved"}:
+            return
+        if result in {"missing", "deleted"}:
+            raise LegacyAPIError(404, "投稿不存在或已删除")
+        if result == "pending":
+            raise LegacyAPIError(400, "待审核投稿不能手动通过")
+        if result == "unmoderated":
+            raise LegacyAPIError(400, "投稿没有可审批的审核状态")
+        raise LegacyAPIError(400, "投稿审核状态无法通过")
 
 
 class OpsService:
