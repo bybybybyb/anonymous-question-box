@@ -716,20 +716,26 @@ class Database:
         lock_owner: str,
         lock_seconds: int,
         limit: int,
+        max_attempts: int | None = None,
     ) -> list[dict[str, Any]]:
-        params: list[Any] = [now, now]
+        if max_attempts is None:
+            schedule_filter = "(ms.next_attempt_at IS NULL OR ms.next_attempt_at <= ?)"
+            params: list[Any] = [now, now]
+        else:
+            schedule_filter = "((ms.next_attempt_at IS NULL OR ms.next_attempt_at <= ?) OR ms.attempt_count >= ?)"
+            params = [now, max_attempts, now]
         params.append(limit)
         with self.lock:
             try:
                 rows = self.conn.execute(
-                    """
+                    f"""
                     SELECT ms.uuid, q.owner, q.question_type, q.question, ms.attempt_count,
                            ms.provider, ms.model, ms.prompt_version, ms.policy_hash, ms.config_hash
                     FROM question_moderation_state ms
                     JOIN question q ON q.uuid = ms.uuid
                     WHERE ms.status = 'pending'
                       AND q.deleted_at IS NULL
-                      AND (ms.next_attempt_at IS NULL OR ms.next_attempt_at <= ?)
+                      AND {schedule_filter}
                       AND (ms.locked_until IS NULL OR ms.locked_until <= ?)
                     ORDER BY COALESCE(ms.next_attempt_at, ms.created_at), ms.created_at, ms.uuid
                     LIMIT ?

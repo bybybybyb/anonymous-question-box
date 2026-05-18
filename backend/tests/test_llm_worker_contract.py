@@ -22,6 +22,7 @@ def llm_settings(
     *,
     enabled: bool = True,
     max_attempts: int = 2,
+    initial_backoff_seconds: float = 0,
     high_confidence_reject_threshold: float = 0.85,
     review_all_model_rejects: bool = True,
 ) -> Settings:
@@ -32,7 +33,7 @@ def llm_settings(
         "model": "test-model",
         "max_attempts": max_attempts,
         "timeout_seconds": 0.2,
-        "initial_backoff_seconds": 0,
+        "initial_backoff_seconds": initial_backoff_seconds,
         "high_confidence_reject_threshold": high_confidence_reject_threshold,
         "review_all_model_rejects": review_all_model_rejects,
         "boxes": {"owner": {"question_types": {"type": {"enabled": True, "policy_prompt": "test policy"}}}},
@@ -438,6 +439,44 @@ def test_worker_exhausts_due_pending_row_when_hot_reload_lowers_max_attempts(tmp
         "reason": "never_evaluated",
         "attempt_count": 1,
         "last_error_class": "max_attempts_exhausted",
+    }
+
+
+def test_worker_exhausts_future_retry_when_hot_reload_lowers_max_attempts(tmp_path: Path) -> None:
+    s = llm_settings(tmp_path, max_attempts=3, initial_backoff_seconds=3600)
+    db = Database(s.db_path, moderation_schema=True)
+    provider = FakeLLMProvider(provider_response(error_class="timeout", finish_reason=None))
+    uuid = submitted_pending_uuid(db, s, "future retry", provider=provider)
+    asyncio.run(run_worker_once(db, s, provider))
+    before_lower = db.conn.execute(
+        "SELECT status, attempt_count, next_attempt_at FROM question_moderation_state WHERE uuid = ?",
+        (uuid,),
+    ).fetchone()
+    asyncio.run(run_worker_once(db, s, FakeLLMProvider()))
+    still_waiting = db.conn.execute(
+        "SELECT status, attempt_count, next_attempt_at FROM question_moderation_state WHERE uuid = ?",
+        (uuid,),
+    ).fetchone()
+
+    s.llm_filter["max_attempts"] = 1
+    s.__post_init__()
+    asyncio.run(run_worker_once(db, s, FakeLLMProvider()))
+
+    final_state = db.conn.execute(
+        "SELECT status, source, reason, attempt_count, last_error_class, next_attempt_at FROM question_moderation_state WHERE uuid = ?",
+        (uuid,),
+    ).fetchone()
+    assert before_lower["status"] == "pending"
+    assert before_lower["attempt_count"] == 1
+    assert before_lower["next_attempt_at"] is not None
+    assert dict(still_waiting) == dict(before_lower)
+    assert dict(final_state) == {
+        "status": "blocked",
+        "source": "llm_error",
+        "reason": "never_evaluated",
+        "attempt_count": 1,
+        "last_error_class": "max_attempts_exhausted",
+        "next_attempt_at": None,
     }
 
 

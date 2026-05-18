@@ -183,11 +183,14 @@ class LLMModerationWorker:
 
     async def run_once(self) -> None:
         now = now_epoch()
+        settings = self.settings_provider.current()
+        max_attempts = settings.llm_moderation.max_attempts if settings.llm_moderation.enabled else None
         rows = self.db.claim_due_llm_moderation(
             now=now,
             lock_owner=self.lock_owner,
             lock_seconds=self.lock_seconds,
             limit=self.batch_size,
+            max_attempts=max_attempts,
         )
         self.last_successful_check_at = now
         for row in rows:
