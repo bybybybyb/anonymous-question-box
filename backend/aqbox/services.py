@@ -238,6 +238,8 @@ class OwnerConsoleService:
             raise LegacyAPIError(404, "投稿不存在或已删除")
 
     def delete(self, uuid: str) -> None:
+        # Delete is UUID-only on the public contract, so keep it independent of current owner/type config.
+        # That lets owners clean up historical submissions even if a question type is later removed.
         ok = self.repo.delete(uuid, now_epoch())
         if not ok:
             raise LegacyAPIError(404, "投稿不存在或已过期销毁")

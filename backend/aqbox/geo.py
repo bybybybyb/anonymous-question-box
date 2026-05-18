@@ -89,17 +89,19 @@ class ParsedRegion:
 
 def _record_geo_error(exc: Exception) -> None:
     global _last_error_at, _last_error_class
-    _last_error_class = exc.__class__.__name__
-    _last_error_at = now_epoch()
+    with _searcher_lock:
+        _last_error_class = exc.__class__.__name__
+        _last_error_at = now_epoch()
     logger.warning("ip2region lookup failed", exc_info=True)
 
 
 def geo_status() -> dict[str, Any]:
-    return {
-        "provider": PROVIDER,
-        "last_error_class": _last_error_class,
-        "last_error_at": _last_error_at,
-    }
+    with _searcher_lock:
+        return {
+            "provider": PROVIDER,
+            "last_error_class": _last_error_class,
+            "last_error_at": _last_error_at,
+        }
 
 
 def _clean_region_part(value: str) -> str:
