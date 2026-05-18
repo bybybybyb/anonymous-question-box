@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import dataclasses
 import json
+import time
 
 import anyio
 import httpx
@@ -62,25 +64,102 @@ def run_call_with_transport(
     handler: httpx.MockTransport,
     *,
     policy: LLMModerationPolicy | None = None,
+    request_updates: dict[str, object] | None = None,
 ):
     async def _call():
         selected_policy = policy or make_policy()
-        provider = DeepSeekLLMProvider(http_client=httpx.AsyncClient(transport=handler))
-        prompt = build_llm_moderation_prompt(selected_policy, "A gentle safe submission.")
-        try:
-            return await provider.complete(build_llm_provider_request(prompt=prompt, policy=selected_policy))
-        finally:
-            await provider.aclose()
+        async with httpx.AsyncClient(transport=handler) as client:
+            provider = DeepSeekLLMProvider(http_client=client)
+            prompt = build_llm_moderation_prompt(selected_policy, "A gentle safe submission.")
+            request = build_llm_provider_request(prompt=prompt, policy=selected_policy)
+            if request_updates:
+                request = dataclasses.replace(request, **request_updates)
+            return await provider.complete(request)
 
     return anyio.run(_call)
 
 
+def test_deepseek_provider_request_disables_raw_capture_by_default() -> None:
+    policy = make_policy()
+    prompt = build_llm_moderation_prompt(policy, "A gentle safe submission.")
+    request = build_llm_provider_request(prompt=prompt, policy=policy)
+
+    assert request.capture_raw_response is False
+
+
+def test_deepseek_provider_can_opt_into_raw_capture() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=deepseek_success_response())
+
+    result = run_call_with_transport(httpx.MockTransport(handler), request_updates={"capture_raw_response": True})
+
+    assert result.error_class is None
+    assert result.raw_response is not None
+    assert result.raw_response["id"] == "chatcmpl-test"
+
+
+def test_deepseek_provider_sanitizes_success_response_by_default() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=deepseek_success_response())
+
+    result = run_call_with_transport(httpx.MockTransport(handler))
+
+    assert result.error_class is None
+    assert result.raw_response is None
+
+
+def test_deepseek_provider_sanitizes_invalid_success_envelope_by_default() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"model": "deepseek-v4-flash", "choices": []})
+
+    result = run_call_with_transport(httpx.MockTransport(handler))
+
+    assert result.error_class == "invalid_response"
+    assert result.raw_response is None
+
+
+def test_deepseek_provider_can_opt_into_raw_invalid_success_envelope_capture() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"model": "deepseek-v4-flash", "choices": []})
+
+    result = run_call_with_transport(httpx.MockTransport(handler), request_updates={"capture_raw_response": True})
+
+    assert result.error_class == "invalid_response"
+    assert result.raw_response == {"model": "deepseek-v4-flash", "choices": []}
+
+
+def test_deepseek_provider_applies_end_to_end_deadline_to_slow_provider_response() -> None:
+    calls = 0
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        await anyio.sleep(0.05)
+        return httpx.Response(200, json=deepseek_success_response())
+
+    started = time.perf_counter()
+    result = run_call_with_transport(
+        httpx.MockTransport(handler),
+        policy=make_policy(timeout_seconds=0.01),
+    )
+    elapsed = time.perf_counter() - started
+
+    assert result.error_class == "timeout"
+    assert result.http_status is None
+    assert calls == 1
+    assert elapsed < 0.04
+
+
 def test_deepseek_provider_posts_provider_generic_chat_request_without_retries() -> None:
     captured: dict[str, object] = {}
+    calls = 0
 
     def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
         captured["url"] = str(request.url)
         captured["authorization"] = request.headers.get("authorization")
+        captured["timeout"] = request.extensions.get("timeout")
         captured["body"] = json.loads(request.content)
         return httpx.Response(200, json=deepseek_success_response())
 
@@ -97,6 +176,8 @@ def test_deepseek_provider_posts_provider_generic_chat_request_without_retries()
     assert body["response_format"] == {"type": "json_object"}
     assert body["max_tokens"] == 192
     assert "max_retries" not in body
+    assert calls == 1
+    assert captured["timeout"] == {"connect": 3.0, "read": 3.0, "write": 3.0, "pool": 3.0}
     assert result.error_class is None
     assert result.content is not None
     assert result.finish_reason == "stop"
@@ -133,6 +214,7 @@ def test_deepseek_provider_preserves_finish_reason_for_parser_boundary(finish_re
         (401, "config_auth"),
         (403, "config_auth"),
         (404, "config_auth"),
+        (402, "quota_exceeded"),
         (429, "rate_limited"),
         (500, "server"),
         (503, "server"),

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -30,6 +31,7 @@ class LLMProviderRequest:
     max_tokens: int
     base_url: str
     api_key: str = field(repr=False)
+    capture_raw_response: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,13 +80,16 @@ class DeepSeekLLMProvider:
         if not request.api_key:
             return self._error_response(started, "config_auth")
         try:
-            response = await self._client.post(
-                _chat_completions_url(request.base_url),
-                headers={"Authorization": f"Bearer {request.api_key}"},
-                json=_deepseek_payload(request),
+            response = await asyncio.wait_for(
+                self._client.post(
+                    _chat_completions_url(request.base_url),
+                    headers={"Authorization": f"Bearer {request.api_key}"},
+                    json=_deepseek_payload(request),
+                    timeout=request.timeout_seconds,
+                ),
                 timeout=request.timeout_seconds,
             )
-        except httpx.TimeoutException:
+        except (TimeoutError, httpx.TimeoutException):
             return self._error_response(started, "timeout")
         except httpx.RequestError:
             return self._error_response(started, "network")
@@ -102,7 +107,12 @@ class DeepSeekLLMProvider:
             return self._error_response(started, "invalid_response", http_status=response.status_code)
         if not isinstance(envelope, dict):
             return self._error_response(started, "invalid_response", http_status=response.status_code)
-        return _parse_success_envelope(envelope, started, response.status_code)
+        return _parse_success_envelope(
+            envelope,
+            started,
+            response.status_code,
+            capture_raw_response=request.capture_raw_response,
+        )
 
     async def aclose(self) -> None:
         if self._owns_client:
@@ -145,6 +155,8 @@ def _chat_completions_url(base_url: str) -> str:
 
 
 def _classify_http_status(status_code: int) -> LLMProviderErrorClass:
+    if status_code == 402:
+        return "quota_exceeded"
     if status_code in {400, 401, 403, 404}:
         return "config_auth"
     if status_code == 429:
@@ -168,21 +180,27 @@ def _provider_error_message(response: httpx.Response) -> str | None:
     return message if isinstance(message, str) else None
 
 
-def _parse_success_envelope(envelope: dict[str, Any], started: float, http_status: int) -> LLMProviderResponse:
+def _parse_success_envelope(
+    envelope: dict[str, Any],
+    started: float,
+    http_status: int,
+    *,
+    capture_raw_response: bool,
+) -> LLMProviderResponse:
     model = envelope.get("model")
     choices = envelope.get("choices")
     if not isinstance(model, str) or not isinstance(choices, list) or not choices:
-        return _invalid_response(started, http_status, envelope)
+        return _invalid_response(started, http_status, envelope, capture_raw_response=capture_raw_response)
     first_choice = choices[0]
     if not isinstance(first_choice, Mapping):
-        return _invalid_response(started, http_status, envelope)
+        return _invalid_response(started, http_status, envelope, capture_raw_response=capture_raw_response)
     finish_reason = first_choice.get("finish_reason")
     message = first_choice.get("message")
     if not isinstance(finish_reason, str) or not isinstance(message, Mapping):
-        return _invalid_response(started, http_status, envelope)
+        return _invalid_response(started, http_status, envelope, capture_raw_response=capture_raw_response)
     content = message.get("content")
     if not isinstance(content, str):
-        return _invalid_response(started, http_status, envelope)
+        return _invalid_response(started, http_status, envelope, capture_raw_response=capture_raw_response)
     return LLMProviderResponse(
         content=content,
         finish_reason=finish_reason,
@@ -190,7 +208,7 @@ def _parse_success_envelope(envelope: dict[str, Any], started: float, http_statu
         latency_ms=_elapsed_ms(started),
         usage=_parse_usage(envelope.get("usage")),
         http_status=http_status,
-        raw_response=envelope,
+        raw_response=envelope if capture_raw_response else None,
     )
 
 
@@ -208,7 +226,13 @@ def _optional_int(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
-def _invalid_response(started: float, http_status: int, envelope: dict[str, Any]) -> LLMProviderResponse:
+def _invalid_response(
+    started: float,
+    http_status: int,
+    envelope: dict[str, Any],
+    *,
+    capture_raw_response: bool,
+) -> LLMProviderResponse:
     return LLMProviderResponse(
         content=None,
         finish_reason=None,
@@ -216,7 +240,7 @@ def _invalid_response(started: float, http_status: int, envelope: dict[str, Any]
         latency_ms=_elapsed_ms(started),
         error_class="invalid_response",
         http_status=http_status,
-        raw_response=envelope,
+        raw_response=envelope if capture_raw_response else None,
     )
 
 
