@@ -781,3 +781,19 @@ def test_ops_health_includes_moderation_worker_details_when_llm_enabled(tmp_path
     assert payload["moderation_worker"]["running"] is True
     assert set(payload["moderation_worker"]) >= {"pending", "due", "locked", "last_successful_check_at", "recent_error_class"}
     assert "test-key" not in health.text
+
+
+def test_ops_health_counts_ignore_owner_deleted_pending_rows(tmp_path: Path) -> None:
+    s = llm_settings(tmp_path)
+    db = Database(s.db_path, moderation_schema=True)
+    submitted_pending_uuid(db, s, "live pending")
+    submitted_pending_uuid(db, s, "deleted pending")
+    first_claim = db.claim_due_llm_moderation(now=9_999_999_999, lock_owner="worker-a", lock_seconds=60, limit=1)[0]
+    second_claim = db.claim_due_llm_moderation(now=9_999_999_999, lock_owner="worker-b", lock_seconds=60, limit=1)[0]
+    deleted_uuid = second_claim["uuid"]
+    assert first_claim["uuid"] != deleted_uuid
+    assert db.mark_deleted(deleted_uuid, 2_000) is True
+
+    counts = db.llm_moderation_counts(now=9_999_999_999)
+
+    assert counts == {"pending": 1, "due": 1, "locked": 1}

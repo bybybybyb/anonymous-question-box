@@ -1015,10 +1015,12 @@ class Database:
             row = self.conn.execute(
                 """
                 SELECT
-                  SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
-                  SUM(CASE WHEN status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= ?) THEN 1 ELSE 0 END) AS due,
-                  SUM(CASE WHEN status = 'pending' AND locked_until IS NOT NULL AND locked_until > ? THEN 1 ELSE 0 END) AS locked
-                FROM question_moderation_state
+                  SUM(CASE WHEN ms.status = 'pending' THEN 1 ELSE 0 END) AS pending,
+                  SUM(CASE WHEN ms.status = 'pending' AND (ms.next_attempt_at IS NULL OR ms.next_attempt_at <= ?) THEN 1 ELSE 0 END) AS due,
+                  SUM(CASE WHEN ms.status = 'pending' AND ms.locked_until IS NOT NULL AND ms.locked_until > ? THEN 1 ELSE 0 END) AS locked
+                FROM question_moderation_state ms
+                JOIN question q ON q.uuid = ms.uuid
+                WHERE q.deleted_at IS NULL
                 """,
                 (now, now),
             ).fetchone()
