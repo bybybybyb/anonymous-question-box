@@ -147,6 +147,7 @@ def test_schema_migrations_are_recorded_once(tmp_path: Path) -> None:
         "0002_ip2region_geo",
         "0003_moderation_scaffold",
         "0004_moderation_state_events",
+        "0005_llm_moderation_worker_fields",
     ]
     assert second == first
     assert db.conn.execute("SELECT COUNT(*) FROM question_moderation_state").fetchone()[0] == 0

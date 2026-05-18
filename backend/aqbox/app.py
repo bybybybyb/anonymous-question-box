@@ -10,6 +10,7 @@ from .config import Settings
 from .db import Database
 from .dependencies import build_services
 from .legacy import LegacyAPIError, legacy_error
+from .llm_provider import DeepSeekLLMProvider, LLMProvider
 from .middleware import request_logging_middleware
 from .routers import router
 from .settings_provider import SettingsProvider
@@ -20,9 +21,14 @@ async def lifespan(app: FastAPI):
     """Bootstrap SQLite once and drain background workers on application shutdown."""
     app.state.db.bootstrap()
     app.state.visit_worker_task = asyncio.create_task(app.state.visit_service.run())
+    app.state.moderation_worker_task = asyncio.create_task(app.state.moderation_worker.run())
     try:
         yield
     finally:
+        app.state.moderation_worker.stop()
+        await app.state.moderation_worker_task
+        if hasattr(app.state.llm_provider, "aclose"):
+            await app.state.llm_provider.aclose()
         app.state.visit_worker_task.cancel()
         with suppress(asyncio.CancelledError):
             await app.state.visit_worker_task
@@ -33,7 +39,13 @@ async def lifespan(app: FastAPI):
             await asyncio.gather(*pending_geo_tasks, return_exceptions=True)
 
 
-def create_app(*, config_path: str | None = None, settings: Settings | None = None, db: Database | None = None) -> FastAPI:
+def create_app(
+    *,
+    config_path: str | None = None,
+    settings: Settings | None = None,
+    db: Database | None = None,
+    llm_provider: LLMProvider | None = None,
+) -> FastAPI:
     provider = SettingsProvider(config_path=config_path, settings=settings)
     current_settings = provider.current()
     db = db or Database(
@@ -46,7 +58,9 @@ def create_app(*, config_path: str | None = None, settings: Settings | None = No
     app.state.settings = current_settings
     app.state.db = db
     app.state.visit_worker_task = None
-    for name, service in build_services(db, provider).items():
+    app.state.moderation_worker_task = None
+    app.state.llm_provider = llm_provider or DeepSeekLLMProvider()
+    for name, service in build_services(db, provider, llm_provider=app.state.llm_provider).items():
         setattr(app.state, name, service)
 
     @app.exception_handler(LegacyAPIError)

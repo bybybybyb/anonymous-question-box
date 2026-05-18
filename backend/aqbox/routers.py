@@ -29,7 +29,11 @@ async def checkalive() -> PlainTextResponse:
 
 @router.get("/ops/health")
 async def ops_health(request: Request) -> JSONResponse:
-    status_code, payload = ops_service(request).health(request.app.state.visit_worker_task)
+    status_code, payload = ops_service(request).health(
+        request.app.state.visit_worker_task,
+        request.app.state.moderation_worker_task,
+        request.app.state.moderation_worker,
+    )
     return JSONResponse(payload, status_code=status_code)
 
 

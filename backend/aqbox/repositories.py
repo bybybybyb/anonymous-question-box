@@ -23,6 +23,27 @@ class SubmissionRepository:
     ) -> bool:
         return self.db.insert_blocked_question(question, source=source, reason=reason, category=category, ip=ip)
 
+    def insert_pending(
+        self,
+        question: dict[str, Any],
+        *,
+        provider: str,
+        model: str,
+        prompt_version: str,
+        policy_hash: str,
+        config_hash: str,
+        ip: str | None = None,
+    ) -> bool:
+        return self.db.insert_pending_question(
+            question,
+            provider=provider,
+            model=model,
+            prompt_version=prompt_version,
+            policy_hash=policy_hash,
+            config_hash=config_hash,
+            ip=ip,
+        )
+
     def get(
         self,
         uuid: str,

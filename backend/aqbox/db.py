@@ -162,6 +162,7 @@ class Database:
             ("0002_ip2region_geo", "Offline ip2region geolocation schema", self.migrate_geo),
             ("0003_moderation_scaffold", "Moderation metadata and audit scaffold", self.migrate_moderation),
             ("0004_moderation_state_events", "Moderation state projection and event history", self.migrate_moderation_state_events),
+            ("0005_llm_moderation_worker_fields", "LLM moderation worker queue and decision metadata", self.migrate_llm_worker_fields),
         )
 
     def applied_migrations(self) -> list[str]:
@@ -235,6 +236,56 @@ class Database:
         with self.lock:
             self.conn.executescript(MODERATION_STATE_EVENTS_SCHEMA)
 
+    def migrate_llm_worker_fields(self) -> None:
+        """Add queue ownership, retry, and LLM decision display metadata."""
+        with self.lock:
+            state_cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(question_moderation_state)").fetchall()}
+            for name, ddl in {
+                "attempt_count": "ALTER TABLE question_moderation_state ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0",
+                "next_attempt_at": "ALTER TABLE question_moderation_state ADD COLUMN next_attempt_at INTEGER",
+                "locked_until": "ALTER TABLE question_moderation_state ADD COLUMN locked_until INTEGER",
+                "lock_owner": "ALTER TABLE question_moderation_state ADD COLUMN lock_owner TEXT NOT NULL DEFAULT ''",
+                "last_error_class": "ALTER TABLE question_moderation_state ADD COLUMN last_error_class TEXT NOT NULL DEFAULT ''",
+                "last_attempt_at": "ALTER TABLE question_moderation_state ADD COLUMN last_attempt_at INTEGER",
+                "short_reason": "ALTER TABLE question_moderation_state ADD COLUMN short_reason TEXT NOT NULL DEFAULT ''",
+                "rationale": "ALTER TABLE question_moderation_state ADD COLUMN rationale TEXT NOT NULL DEFAULT ''",
+                "confidence": "ALTER TABLE question_moderation_state ADD COLUMN confidence REAL",
+                "provider": "ALTER TABLE question_moderation_state ADD COLUMN provider TEXT NOT NULL DEFAULT ''",
+                "model": "ALTER TABLE question_moderation_state ADD COLUMN model TEXT NOT NULL DEFAULT ''",
+                "prompt_version": "ALTER TABLE question_moderation_state ADD COLUMN prompt_version TEXT NOT NULL DEFAULT ''",
+                "policy_hash": "ALTER TABLE question_moderation_state ADD COLUMN policy_hash TEXT NOT NULL DEFAULT ''",
+                "config_hash": "ALTER TABLE question_moderation_state ADD COLUMN config_hash TEXT NOT NULL DEFAULT ''",
+                "finish_reason": "ALTER TABLE question_moderation_state ADD COLUMN finish_reason TEXT NOT NULL DEFAULT ''",
+                "prompt_tokens": "ALTER TABLE question_moderation_state ADD COLUMN prompt_tokens INTEGER",
+                "completion_tokens": "ALTER TABLE question_moderation_state ADD COLUMN completion_tokens INTEGER",
+                "total_tokens": "ALTER TABLE question_moderation_state ADD COLUMN total_tokens INTEGER",
+                "latency_ms": "ALTER TABLE question_moderation_state ADD COLUMN latency_ms INTEGER",
+            }.items():
+                if name not in state_cols:
+                    self.conn.execute(ddl)
+            event_cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(question_moderation_event)").fetchall()}
+            for name, ddl in {
+                "short_reason": "ALTER TABLE question_moderation_event ADD COLUMN short_reason TEXT NOT NULL DEFAULT ''",
+                "rationale": "ALTER TABLE question_moderation_event ADD COLUMN rationale TEXT NOT NULL DEFAULT ''",
+                "confidence": "ALTER TABLE question_moderation_event ADD COLUMN confidence REAL",
+                "finish_reason": "ALTER TABLE question_moderation_event ADD COLUMN finish_reason TEXT NOT NULL DEFAULT ''",
+                "prompt_tokens": "ALTER TABLE question_moderation_event ADD COLUMN prompt_tokens INTEGER",
+                "completion_tokens": "ALTER TABLE question_moderation_event ADD COLUMN completion_tokens INTEGER",
+                "total_tokens": "ALTER TABLE question_moderation_event ADD COLUMN total_tokens INTEGER",
+                "policy_hash": "ALTER TABLE question_moderation_event ADD COLUMN policy_hash TEXT NOT NULL DEFAULT ''",
+                "config_hash": "ALTER TABLE question_moderation_event ADD COLUMN config_hash TEXT NOT NULL DEFAULT ''",
+            }.items():
+                if name not in event_cols:
+                    self.conn.execute(ddl)
+            self.conn.executescript(
+                """
+                CREATE INDEX IF NOT EXISTS idx_question_moderation_state_llm_due
+                ON question_moderation_state(status, next_attempt_at, locked_until, attempt_count);
+                CREATE INDEX IF NOT EXISTS idx_question_moderation_state_lock_owner
+                ON question_moderation_state(lock_owner);
+                """
+            )
+
     def _insert_question_locked(self, question: dict[str, Any], *, deleted_at: int | None = None, ip: str | None = None) -> bool:
         cols = ["uuid", "owner", "question_type", "question", "word_count", "asked_at"]
         vals: list[Any] = [
@@ -302,6 +353,54 @@ class Database:
                 self.conn.rollback()
                 raise
 
+    def insert_pending_question(
+        self,
+        question: dict[str, Any],
+        *,
+        provider: str,
+        model: str,
+        prompt_version: str,
+        policy_hash: str,
+        config_hash: str,
+        ip: str | None = None,
+    ) -> bool:
+        created_at = int(question["asked_at"])
+        with self.lock:
+            try:
+                inserted = self._insert_question_locked(question, ip=ip)
+                if not inserted:
+                    self.conn.commit()
+                    return False
+                self.conn.execute(
+                    """
+                    INSERT INTO question_moderation_state (
+                      uuid, status, source, reason, created_at, updated_at,
+                      attempt_count, next_attempt_at, provider, model, prompt_version, policy_hash, config_hash
+                    )
+                    VALUES (?, 'pending', 'llm', 'queued', ?, ?, 0, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (question["uuid"], created_at, created_at, created_at, provider, model, prompt_version, policy_hash, config_hash),
+                )
+                self._insert_moderation_event_locked(
+                    question["uuid"],
+                    event_type="queued",
+                    status="pending",
+                    source="llm",
+                    reason="queued",
+                    category=None,
+                    created_at=created_at,
+                    provider=provider,
+                    model=model,
+                    prompt_version=prompt_version,
+                    policy_hash=policy_hash,
+                    config_hash=config_hash,
+                )
+                self.conn.commit()
+                return True
+            except Exception:
+                self.conn.rollback()
+                raise
+
     def _insert_moderation_event_locked(
         self,
         uuid: str,
@@ -313,15 +412,65 @@ class Database:
         category: str | None,
         created_at: int,
         actor: str = "",
+        provider: str = "",
+        model: str = "",
+        prompt_version: str = "",
+        decision_json: str = "",
+        latency_ms: int | None = None,
+        error_class: str = "",
+        short_reason: str = "",
+        rationale: str = "",
+        confidence: float | None = None,
+        finish_reason: str = "",
+        prompt_tokens: int | None = None,
+        completion_tokens: int | None = None,
+        total_tokens: int | None = None,
+        policy_hash: str = "",
+        config_hash: str = "",
+        raw_prompt: str | None = None,
+        raw_request: str | None = None,
+        raw_response: str | None = None,
+        purge_after: int | None = None,
     ) -> None:
         self.conn.execute(
             """
             INSERT INTO question_moderation_event (
-              uuid, event_type, status, source, reason, category, actor, created_at
+              uuid, event_type, status, source, reason, category, actor,
+              provider, model, prompt_version, decision_json, latency_ms, error_class,
+              short_reason, rationale, confidence, finish_reason, prompt_tokens, completion_tokens, total_tokens,
+              policy_hash, config_hash, raw_prompt, raw_request, raw_response, created_at, purge_after
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (uuid, event_type, status, source, reason, category, actor, created_at),
+            (
+                uuid,
+                event_type,
+                status,
+                source,
+                reason,
+                category,
+                actor,
+                provider,
+                model,
+                prompt_version,
+                decision_json,
+                latency_ms,
+                error_class,
+                short_reason,
+                rationale,
+                confidence,
+                finish_reason,
+                prompt_tokens,
+                completion_tokens,
+                total_tokens,
+                policy_hash,
+                config_hash,
+                raw_prompt,
+                raw_request,
+                raw_response,
+                created_at,
+                purge_after,
+            ),
         )
 
     def get_question(
@@ -560,6 +709,282 @@ class Database:
             )
         return result
 
+    def claim_due_llm_moderation(
+        self,
+        *,
+        now: int,
+        lock_owner: str,
+        lock_seconds: int,
+        limit: int,
+        max_attempts: int | None = None,
+    ) -> list[dict[str, Any]]:
+        attempt_filter = "" if max_attempts is None else "AND ms.attempt_count < ?"
+        params: list[Any] = [now, now]
+        if max_attempts is not None:
+            params.append(max_attempts)
+        params.append(limit)
+        with self.lock:
+            try:
+                rows = self.conn.execute(
+                    f"""
+                    SELECT ms.uuid, q.owner, q.question_type, q.question, ms.attempt_count,
+                           ms.provider, ms.model, ms.prompt_version, ms.policy_hash, ms.config_hash
+                    FROM question_moderation_state ms
+                    JOIN question q ON q.uuid = ms.uuid
+                    WHERE ms.status = 'pending'
+                      AND q.deleted_at IS NULL
+                      AND (ms.next_attempt_at IS NULL OR ms.next_attempt_at <= ?)
+                      AND (ms.locked_until IS NULL OR ms.locked_until <= ?)
+                      {attempt_filter}
+                    ORDER BY COALESCE(ms.next_attempt_at, ms.created_at), ms.created_at, ms.uuid
+                    LIMIT ?
+                    """,
+                    params,
+                ).fetchall()
+                claimed: list[dict[str, Any]] = []
+                for row in rows:
+                    cur = self.conn.execute(
+                        """
+                        UPDATE question_moderation_state
+                        SET lock_owner = ?, locked_until = ?, last_attempt_at = ?, updated_at = ?
+                        WHERE uuid = ? AND status = 'pending'
+                          AND (locked_until IS NULL OR locked_until <= ?)
+                        """,
+                        (lock_owner, now + lock_seconds, now, now, row["uuid"], now),
+                    )
+                    if cur.rowcount == 1:
+                        claimed.append(
+                            {
+                                "uuid": row["uuid"],
+                                "owner": row["owner"],
+                                "type": row["question_type"],
+                                "text": row["question"],
+                                "attempt_count": int(row["attempt_count"] or 0),
+                                "provider": row["provider"] or "",
+                                "model": row["model"] or "",
+                                "prompt_version": row["prompt_version"] or "",
+                                "policy_hash": row["policy_hash"] or "",
+                                "config_hash": row["config_hash"] or "",
+                            }
+                        )
+                self.conn.commit()
+                return claimed
+            except Exception:
+                self.conn.rollback()
+                raise
+
+    def reschedule_llm_moderation_error(
+        self,
+        *,
+        uuid: str,
+        lock_owner: str,
+        attempted_at: int,
+        next_attempt_at: int,
+        error_class: str,
+        metadata: dict[str, Any],
+    ) -> bool:
+        with self.lock:
+            try:
+                cur = self.conn.execute(
+                    """
+                    UPDATE question_moderation_state
+                    SET attempt_count = attempt_count + 1,
+                        next_attempt_at = ?,
+                        locked_until = NULL,
+                        lock_owner = '',
+                        last_error_class = ?,
+                        last_attempt_at = ?,
+                        provider = ?,
+                        model = ?,
+                        prompt_version = ?,
+                        policy_hash = ?,
+                        config_hash = ?,
+                        finish_reason = ?,
+                        prompt_tokens = ?,
+                        completion_tokens = ?,
+                        total_tokens = ?,
+                        latency_ms = ?,
+                        updated_at = ?
+                    WHERE uuid = ? AND status = 'pending' AND lock_owner = ?
+                    """,
+                    (
+                        next_attempt_at,
+                        error_class,
+                        attempted_at,
+                        metadata.get("provider", ""),
+                        metadata.get("model", ""),
+                        metadata.get("prompt_version", ""),
+                        metadata.get("policy_hash", ""),
+                        metadata.get("config_hash", ""),
+                        metadata.get("finish_reason", ""),
+                        metadata.get("prompt_tokens"),
+                        metadata.get("completion_tokens"),
+                        metadata.get("total_tokens"),
+                        metadata.get("latency_ms"),
+                        attempted_at,
+                        uuid,
+                        lock_owner,
+                    ),
+                )
+                if cur.rowcount == 1:
+                    self._insert_moderation_event_locked(
+                        uuid,
+                        event_type="attempt_failed",
+                        status="pending",
+                        source="llm_error",
+                        reason="retry",
+                        category=None,
+                        created_at=attempted_at,
+                        error_class=error_class,
+                        **_event_metadata(metadata),
+                    )
+                self.conn.commit()
+                return cur.rowcount == 1
+            except Exception:
+                self.conn.rollback()
+                raise
+
+    def finalize_llm_moderation_accept(
+        self,
+        *,
+        uuid: str,
+        lock_owner: str,
+        finalized_at: int,
+        metadata: dict[str, Any],
+    ) -> bool:
+        with self.lock:
+            try:
+                cur = self.conn.execute(
+                    "DELETE FROM question_moderation_state WHERE uuid = ? AND status = 'pending' AND lock_owner = ?",
+                    (uuid, lock_owner),
+                )
+                if cur.rowcount == 1:
+                    self._insert_moderation_event_locked(
+                        uuid,
+                        event_type="accepted",
+                        status="approved",
+                        source="llm",
+                        reason="model_accept",
+                        category="safe",
+                        created_at=finalized_at,
+                        short_reason=str(metadata.get("short_reason") or ""),
+                        rationale=str(metadata.get("rationale") or ""),
+                        confidence=metadata.get("confidence"),
+                        **_event_metadata(metadata),
+                    )
+                self.conn.commit()
+                return cur.rowcount == 1
+            except Exception:
+                self.conn.rollback()
+                raise
+
+    def finalize_llm_moderation_block(
+        self,
+        *,
+        uuid: str,
+        lock_owner: str,
+        finalized_at: int,
+        source: str,
+        reason: str,
+        category: str | None,
+        short_reason: str,
+        rationale: str,
+        confidence: float | None,
+        error_class: str,
+        metadata: dict[str, Any],
+    ) -> bool:
+        with self.lock:
+            try:
+                cur = self.conn.execute(
+                    """
+                    UPDATE question_moderation_state
+                    SET status = 'blocked',
+                        source = ?,
+                        reason = ?,
+                        category = ?,
+                        attempt_count = attempt_count + 1,
+                        next_attempt_at = NULL,
+                        locked_until = NULL,
+                        lock_owner = '',
+                        last_error_class = ?,
+                        short_reason = ?,
+                        rationale = ?,
+                        confidence = ?,
+                        provider = ?,
+                        model = ?,
+                        prompt_version = ?,
+                        policy_hash = ?,
+                        config_hash = ?,
+                        finish_reason = ?,
+                        prompt_tokens = ?,
+                        completion_tokens = ?,
+                        total_tokens = ?,
+                        latency_ms = ?,
+                        updated_at = ?
+                    WHERE uuid = ? AND status = 'pending' AND lock_owner = ?
+                    """,
+                    (
+                        source,
+                        reason,
+                        category,
+                        error_class,
+                        short_reason,
+                        rationale,
+                        confidence,
+                        metadata.get("provider", ""),
+                        metadata.get("model", ""),
+                        metadata.get("prompt_version", ""),
+                        metadata.get("policy_hash", ""),
+                        metadata.get("config_hash", ""),
+                        metadata.get("finish_reason", ""),
+                        metadata.get("prompt_tokens"),
+                        metadata.get("completion_tokens"),
+                        metadata.get("total_tokens"),
+                        metadata.get("latency_ms"),
+                        finalized_at,
+                        uuid,
+                        lock_owner,
+                    ),
+                )
+                if cur.rowcount == 1:
+                    self._insert_moderation_event_locked(
+                        uuid,
+                        event_type="blocked",
+                        status="blocked",
+                        source=source,
+                        reason=reason,
+                        category=category,
+                        created_at=finalized_at,
+                        short_reason=short_reason,
+                        rationale=rationale,
+                        confidence=confidence,
+                        error_class=error_class,
+                        **_event_metadata(metadata),
+                    )
+                self.conn.commit()
+                return cur.rowcount == 1
+            except Exception:
+                self.conn.rollback()
+                raise
+
+    def llm_moderation_counts(self, *, now: int) -> dict[str, int]:
+        with self.lock:
+            row = self.conn.execute(
+                """
+                SELECT
+                  SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+                  SUM(CASE WHEN status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= ?) THEN 1 ELSE 0 END) AS due,
+                  SUM(CASE WHEN status = 'pending' AND locked_until IS NOT NULL AND locked_until > ? THEN 1 ELSE 0 END) AS locked
+                FROM question_moderation_state
+                """,
+                (now, now),
+            ).fetchone()
+        return {
+            "pending": int(row["pending"] or 0),
+            "due": int(row["due"] or 0),
+            "locked": int(row["locked"] or 0),
+        }
+
     def update_answer(self, uuid: str, answer: str, answered_by: str, answered_at: int) -> bool:
         with self.lock:
             cur = self.conn.execute(
@@ -767,3 +1192,23 @@ class Database:
                 "updated_at": rfc3339_from_epoch(row["moderation_updated_at"]),
             }
         return question
+
+
+def _event_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "provider": str(metadata.get("provider") or ""),
+        "model": str(metadata.get("model") or ""),
+        "prompt_version": str(metadata.get("prompt_version") or ""),
+        "decision_json": str(metadata.get("decision_json") or ""),
+        "latency_ms": metadata.get("latency_ms"),
+        "finish_reason": str(metadata.get("finish_reason") or ""),
+        "prompt_tokens": metadata.get("prompt_tokens"),
+        "completion_tokens": metadata.get("completion_tokens"),
+        "total_tokens": metadata.get("total_tokens"),
+        "policy_hash": str(metadata.get("policy_hash") or ""),
+        "config_hash": str(metadata.get("config_hash") or ""),
+        "raw_prompt": metadata.get("raw_prompt"),
+        "raw_request": metadata.get("raw_request"),
+        "raw_response": metadata.get("raw_response"),
+        "purge_after": metadata.get("purge_after"),
+    }

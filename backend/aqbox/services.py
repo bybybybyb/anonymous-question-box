@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
+from contextlib import suppress
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -11,7 +15,16 @@ from .auth import Principal, bearer_token, generate_token, validate_token
 from .config import Settings
 from .geo import geo_status, lookup_and_store, resolve_client_ip
 from .legacy import LegacyAPIError
-from .moderation import FilterResult, keyword_filter
+from .llm_provider import LLMProvider, LLMProviderResponse, build_llm_provider_request
+from .moderation import (
+    FilterResult,
+    InvalidLLMModerationResponseError,
+    ParsedLLMModerationResponse,
+    build_llm_moderation_prompt,
+    keyword_filter,
+    llm_policy_for,
+    parse_llm_moderation_response,
+)
 from .repositories import OpsRepository, SubmissionRepository, VisitRepository
 from .schemas import AnswerQuestionRequest, ListQuestionsRequest, SubmitQuestionRequest, UpdateQuestionMarkRequest
 from .settings_provider import SettingsProvider
@@ -133,6 +146,169 @@ class VisitService:
             raise
 
 
+class LLMModerationWorker:
+    """Processes pending LLM moderation rows without holding SQLite locks across provider I/O."""
+
+    def __init__(
+        self,
+        db: Any,
+        settings_provider: SettingsProvider,
+        *,
+        provider: LLMProvider,
+        poll_interval_seconds: float = 0.5,
+        lock_seconds: int = 30,
+        batch_size: int = 5,
+    ):
+        self.db = db
+        self.settings_provider = settings_provider
+        self.provider = provider
+        self.poll_interval_seconds = max(poll_interval_seconds, 0.01)
+        self.lock_seconds = max(lock_seconds, 1)
+        self.batch_size = max(batch_size, 1)
+        self.lock_owner = f"llm-worker-{uuid4()}"
+        self._stop = asyncio.Event()
+        self.last_successful_check_at: int | None = None
+        self.recent_error_class: str | None = None
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    async def run(self) -> None:
+        while not self._stop.is_set():
+            with suppress(TimeoutError):
+                await asyncio.wait_for(self._stop.wait(), timeout=self.poll_interval_seconds)
+            if self._stop.is_set():
+                break
+            await self.run_once()
+
+    async def run_once(self) -> None:
+        settings = self.settings_provider.current()
+        now = now_epoch()
+        llm_config = settings.llm_moderation
+        max_attempts = None if not llm_config.enabled else llm_config.max_attempts
+        rows = self.db.claim_due_llm_moderation(
+            now=now,
+            lock_owner=self.lock_owner,
+            lock_seconds=self.lock_seconds,
+            limit=self.batch_size,
+            max_attempts=max_attempts,
+        )
+        self.last_successful_check_at = now
+        for row in rows:
+            await self._process_claimed(row)
+
+    async def _process_claimed(self, row: dict[str, Any]) -> None:
+        settings = self.settings_provider.current()
+        policy = llm_policy_for(settings, row["owner"], row["type"])
+        finalized_at = now_epoch()
+        if policy is None:
+            self.recent_error_class = "config_disabled"
+            self.db.finalize_llm_moderation_block(
+                uuid=row["uuid"],
+                lock_owner=self.lock_owner,
+                finalized_at=finalized_at,
+                source="llm_error",
+                reason="never_evaluated",
+                category=None,
+                short_reason="LLM moderation disabled before evaluation",
+                rationale="The configured LLM policy was disabled while the submission was pending.",
+                confidence=None,
+                error_class="config_disabled",
+                metadata=_llm_metadata_from_row(row, settings),
+            )
+            return
+
+        prompt = build_llm_moderation_prompt(policy, row["text"])
+        request = build_llm_provider_request(prompt=prompt, policy=policy)
+        if settings.llm_moderation.raw_retention_enabled:
+            request = replace(request, capture_raw_response=True)
+        response = await self.provider.complete(request)
+        metadata = _llm_metadata_from_response(prompt, request, policy, settings, response)
+        attempted_at = now_epoch()
+        if response.error_class is not None:
+            self._handle_failed_attempt(row, settings, attempted_at, str(response.error_class), metadata)
+            return
+        try:
+            parsed = parse_llm_moderation_response(
+                finish_reason=response.finish_reason or "",
+                content=response.content,
+                original_text=row["text"],
+            )
+        except InvalidLLMModerationResponseError as exc:
+            self._handle_failed_attempt(row, settings, attempted_at, f"invalid_response_{exc.code}", metadata)
+            return
+
+        if parsed.decision == "accept":
+            self.db.finalize_llm_moderation_accept(
+                uuid=row["uuid"],
+                lock_owner=self.lock_owner,
+                finalized_at=attempted_at,
+                metadata={
+                    **metadata,
+                    "decision_json": _decision_json(parsed),
+                    "short_reason": parsed.short_reason,
+                    "rationale": parsed.rationale,
+                },
+            )
+            return
+
+        source, reason = _reject_framing(parsed, settings)
+        self.db.finalize_llm_moderation_block(
+            uuid=row["uuid"],
+            lock_owner=self.lock_owner,
+            finalized_at=attempted_at,
+            source=source,
+            reason=reason,
+            category=parsed.moderation_category,
+            short_reason=parsed.short_reason,
+            rationale=parsed.rationale,
+            confidence=parsed.confidence,
+            error_class="",
+            metadata={**metadata, "decision_json": _decision_json(parsed)},
+        )
+
+    def _handle_failed_attempt(
+        self, row: dict[str, Any], settings: Settings, attempted_at: int, error_class: str, metadata: dict[str, Any]
+    ) -> None:
+        self.recent_error_class = error_class
+        attempt_count = int(row.get("attempt_count") or 0) + 1
+        if attempt_count >= settings.llm_moderation.max_attempts:
+            self.db.finalize_llm_moderation_block(
+                uuid=row["uuid"],
+                lock_owner=self.lock_owner,
+                finalized_at=attempted_at,
+                source="llm_error",
+                reason="never_evaluated",
+                category=None,
+                short_reason="LLM moderation could not evaluate this submission",
+                rationale="The provider did not return a usable moderation decision before attempts were exhausted.",
+                confidence=None,
+                error_class=error_class,
+                metadata=metadata,
+            )
+            return
+        self.db.reschedule_llm_moderation_error(
+            uuid=row["uuid"],
+            lock_owner=self.lock_owner,
+            attempted_at=attempted_at,
+            next_attempt_at=attempted_at + int(settings.llm_moderation.initial_backoff_seconds),
+            error_class=error_class,
+            metadata=metadata,
+        )
+
+    def health(self, *, task_running: bool) -> dict[str, Any]:
+        counts = self.db.llm_moderation_counts(now=now_epoch())
+        return {
+            "enabled": self.settings_provider.current().llm_moderation.enabled,
+            "running": task_running,
+            "pending": counts["pending"],
+            "due": counts["due"],
+            "locked": counts["locked"],
+            "last_successful_check_at": self.last_successful_check_at,
+            "recent_error_class": self.recent_error_class,
+        }
+
+
 class SubmissionService:
     """Asker-side submission behavior, including stealth keyword moderation blocks."""
 
@@ -176,6 +352,17 @@ class SubmissionService:
                 question,
                 source=moderation_decision.source or "keyword",
                 reason=moderation_decision.reason or "keyword",
+                ip=ip,
+            )
+        elif (llm_policy := llm_policy_for(settings, req.owner, req.type)) is not None:
+            prompt = build_llm_moderation_prompt(llm_policy, text)
+            inserted = self.repo.insert_pending(
+                question,
+                provider=llm_policy.provider,
+                model=llm_policy.model,
+                prompt_version=prompt.prompt_version,
+                policy_hash=prompt.policy_hash,
+                config_hash=_llm_config_hash(settings),
                 ip=ip,
             )
         else:
@@ -295,20 +482,39 @@ class OpsService:
         self.repo = repo
         self.settings_provider = settings_provider
 
-    def health(self, visit_task: asyncio.Task | None) -> tuple[int, dict[str, Any]]:
+    def health(
+        self,
+        visit_task: asyncio.Task | None,
+        moderation_task: asyncio.Task | None = None,
+        moderation_worker: LLMModerationWorker | None = None,
+    ) -> tuple[int, dict[str, Any]]:
         db_ok = self.repo.ping()
         config_ok = self.settings_provider.healthy
         worker_ok = visit_task is not None and not visit_task.done()
-        ok = db_ok and config_ok and worker_ok
-        return (
-            200 if ok else 503,
-            {
-                "ok": ok,
-                "db": db_ok,
-                "config": config_ok,
-                "visit_worker": worker_ok,
-            },
-        )
+        payload: dict[str, Any] = {
+            "db": db_ok,
+            "config": config_ok,
+            "visit_worker": worker_ok,
+        }
+        moderation_ok = True
+        if self.settings_provider.current().llm_moderation.enabled:
+            moderation_ok = moderation_task is not None and not moderation_task.done() and moderation_worker is not None
+            payload["moderation_worker"] = (
+                moderation_worker.health(task_running=moderation_ok)
+                if moderation_worker is not None
+                else {
+                    "enabled": True,
+                    "running": False,
+                    "pending": 0,
+                    "due": 0,
+                    "locked": 0,
+                    "last_successful_check_at": None,
+                    "recent_error_class": None,
+                }
+            )
+        ok = db_ok and config_ok and worker_ok and moderation_ok
+        payload["ok"] = ok
+        return (200 if ok else 503, payload)
 
     def config_status(self) -> dict[str, Any]:
         status = self.settings_provider.status_dict()
@@ -332,3 +538,75 @@ def validate_question_type(settings: Settings, owner: str, qtype: str) -> dict[s
     if question_type is None:
         raise LegacyAPIError(400, f"未知提问箱主人 {owner} 或投稿类型 {qtype}")
     return question_type
+
+
+def _llm_config_hash(settings: Settings) -> str:
+    public_config = settings.llm_moderation.public_status()
+    payload = json.dumps(public_config, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _llm_metadata_from_row(row: dict[str, Any], settings: Settings) -> dict[str, Any]:
+    return {
+        "provider": row.get("provider") or settings.llm_moderation.provider,
+        "model": row.get("model") or settings.llm_moderation.model,
+        "prompt_version": row.get("prompt_version") or "",
+        "policy_hash": row.get("policy_hash") or "",
+        "config_hash": row.get("config_hash") or _llm_config_hash(settings),
+    }
+
+
+def _llm_metadata_from_response(
+    prompt: Any, request: Any, policy: Any, settings: Settings, response: LLMProviderResponse
+) -> dict[str, Any]:
+    metadata = {
+        "provider": policy.provider,
+        "model": response.model or policy.model,
+        "prompt_version": prompt.prompt_version,
+        "policy_hash": prompt.policy_hash,
+        "config_hash": _llm_config_hash(settings),
+        "finish_reason": response.finish_reason or "",
+        "latency_ms": int(response.latency_ms),
+        "prompt_tokens": response.usage.prompt_tokens,
+        "completion_tokens": response.usage.completion_tokens,
+        "total_tokens": response.usage.total_tokens,
+    }
+    if settings.llm_moderation.raw_retention_enabled:
+        metadata["raw_prompt"] = json.dumps(prompt.messages, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+        metadata["raw_request"] = json.dumps(
+            {
+                "base_url": request.base_url,
+                "max_tokens": request.max_tokens,
+                "messages": request.messages,
+                "model": request.model,
+                "response_format": request.response_format,
+            },
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        if response.raw_response is not None:
+            metadata["raw_response"] = json.dumps(response.raw_response, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+        if settings.llm_moderation.raw_retention_seconds > 0:
+            metadata["purge_after"] = now_epoch() + settings.llm_moderation.raw_retention_seconds
+    return metadata
+
+
+def _decision_json(parsed: ParsedLLMModerationResponse) -> str:
+    return json.dumps(
+        {
+            "decision": parsed.decision,
+            "moderation_category": parsed.moderation_category,
+            "confidence": parsed.confidence,
+            "short_reason": parsed.short_reason,
+            "rationale": parsed.rationale,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _reject_framing(parsed: ParsedLLMModerationResponse, settings: Settings) -> tuple[str, str]:
+    if parsed.confidence >= settings.llm_moderation.high_confidence_reject_threshold:
+        return "llm", "model_reject"
+    return "llm_low_confidence", "needs_review"

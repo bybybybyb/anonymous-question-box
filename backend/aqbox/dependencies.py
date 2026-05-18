@@ -7,11 +7,13 @@ from fastapi import Request
 from .auth import Principal
 from .config import Settings
 from .db import Database
+from .llm_provider import LLMProvider
 from .rate_limit import TokenBucketRateLimiter
 from .repositories import OpsRepository, SubmissionRepository, VisitRepository
 from .services import (
     AuthService,
     GeoService,
+    LLMModerationWorker,
     ModerationService,
     OpsService,
     OwnerConsoleService,
@@ -75,7 +77,7 @@ def owner_query_rate_limiter(request: Request) -> TokenBucketRateLimiter:
     return cast(TokenBucketRateLimiter, request.app.state.owner_query_rate_limiter)
 
 
-def build_services(db: Database, provider: SettingsProvider) -> dict[str, object]:
+def build_services(db: Database, provider: SettingsProvider, *, llm_provider: LLMProvider) -> dict[str, object]:
     submission_repo = SubmissionRepository(db)
     visit_repo = VisitRepository(db)
     ops_repo = OpsRepository(db)
@@ -85,6 +87,7 @@ def build_services(db: Database, provider: SettingsProvider) -> dict[str, object
         "auth_service": AuthService(),
         "profile_service": ProfileService(),
         "visit_service": VisitService(visit_repo, provider),
+        "moderation_worker": LLMModerationWorker(db, provider, provider=llm_provider),
         "submission_service": SubmissionService(submission_repo, moderation, geo),
         "geo_service": geo,
         "owner_console_service": OwnerConsoleService(submission_repo),
