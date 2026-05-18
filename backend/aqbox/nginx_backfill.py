@@ -140,6 +140,7 @@ def collect_submit_events(
     submit_paths: set[str] | None = None,
     followup_window_seconds: int = 2,
 ) -> tuple[list[SubmitLogEvent], BackfillReport]:
+    """Collect successful submit requests, optionally confirmed by follow-up question reads."""
     report = BackfillReport(sample_matches=[], sample_ambiguous=[])
     events: list[SubmitLogEvent] = []
     allowed_paths = submit_paths or DEFAULT_SUBMIT_PATHS
@@ -210,6 +211,7 @@ def plan_backfill(
     window_seconds: int = 1,
     sample_limit: int = 10,
 ) -> tuple[list[BackfillMatch], BackfillReport]:
+    """Match log events to exactly one question timestamp; ambiguous clusters are skipped."""
     report = BackfillReport(
         total_lines=0,
         submit_events=len(events),
@@ -262,6 +264,7 @@ def apply_backfill(
     *,
     region_lookup: RegionLookup | None = None,
 ) -> BackfillReport:
+    """Write matched IPs and lazily seed ip2region rows when lookup data is available."""
     report = BackfillReport(matched=len(matches))
     with db.lock:
         for match in matches:

@@ -12,6 +12,7 @@ class FilterResult:
 
 
 def keyword_filter(text: str, keywords: list[str]) -> FilterResult:
+    """Current moderation behavior: keyword hit means stealth soft-delete on insert."""
     for keyword in keywords:
         keyword = str(keyword)
         if keyword and keyword in text:
@@ -20,6 +21,7 @@ def keyword_filter(text: str, keywords: list[str]) -> FilterResult:
 
 
 def llm_policy_for(settings: Any, owner: str, qtype: str) -> dict[str, Any] | None:
+    """Phase 3 helper: missing owner/type policy disables LLM moderation for that box."""
     cfg = getattr(settings, "llm_filter", {}) or {}
     per_owner = cfg.get("owners", {}).get(owner, {})
     per_type = per_owner.get("question_types", {}).get(qtype)
@@ -29,6 +31,7 @@ def llm_policy_for(settings: Any, owner: str, qtype: str) -> dict[str, Any] | No
 
 
 def purge_due_raw_audit_fields(db: Any, now_epoch: int) -> int:
+    """Purge raw LLM payloads while retaining permanent moderation metadata."""
     if not getattr(db, "moderation_schema", False):
         return 0
     with db.lock:

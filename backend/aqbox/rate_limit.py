@@ -12,6 +12,12 @@ class _Bucket:
 
 
 class TokenBucketRateLimiter:
+    """Small in-process limiter for owner-list refreshes.
+
+    The current key is an owner/admin principal, but the bucket map is bounded so future
+    per-session keys cannot grow memory without limit.
+    """
+
     def __init__(self, *, rate_per_second: float, burst: int, max_buckets: int = 256):
         self.rate_per_second = rate_per_second
         self.burst = burst
@@ -37,6 +43,7 @@ class TokenBucketRateLimiter:
             return True
 
     def _evict(self, now: float) -> None:
+        """Prefer dropping fully-refilled idle buckets, then oldest buckets if still full."""
         if len(self.buckets) < self.max_buckets:
             return
         full_refill_seconds = self.burst / self.rate_per_second if self.rate_per_second > 0 else 0

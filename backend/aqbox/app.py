@@ -17,6 +17,7 @@ from .settings_provider import SettingsProvider
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Bootstrap SQLite once and drain background workers on application shutdown."""
     app.state.db.bootstrap()
     app.state.visit_worker_task = asyncio.create_task(app.state.visit_service.run())
     try:

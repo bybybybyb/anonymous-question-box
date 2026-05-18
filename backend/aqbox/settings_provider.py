@@ -32,6 +32,8 @@ class ConfigStatus:
 
 
 class SettingsProvider:
+    """Hot-reload config files while preserving last-good settings and restart-only fields."""
+
     def __init__(
         self,
         *,
@@ -53,6 +55,7 @@ class SettingsProvider:
         self._lock = threading.RLock()
 
     def current(self, *, force: bool = False) -> Settings:
+        """Return the latest good settings, reloading from disk after the short TTL."""
         with self._lock:
             if not self._static:
                 self._maybe_reload(force=force)
@@ -118,6 +121,7 @@ class SettingsProvider:
 
     @staticmethod
     def _merge_restart_required(active: Settings, loaded: Settings) -> tuple[Settings, set[str]]:
+        """Keep restart-required values from the active config and report attempted changes."""
         restart_required: set[str] = set()
         replacements: dict[str, Any] = {}
         for field in RESTART_REQUIRED_FIELDS:

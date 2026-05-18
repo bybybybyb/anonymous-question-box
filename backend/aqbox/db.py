@@ -80,6 +80,8 @@ CREATE INDEX IF NOT EXISTS idx_question_moderation_audit_purge_after ON question
 
 
 class Database:
+    """SQLite boundary for schema migration plus the repository-facing SQL contract."""
+
     def __init__(self, path: str, *, geo_enabled: bool = False, moderation_schema: bool = False):
         self.path = path
         self.geo_enabled = geo_enabled
@@ -95,12 +97,14 @@ class Database:
             self.conn.execute("PRAGMA synchronous=NORMAL")
 
     def bootstrap(self) -> None:
+        """Apply all known idempotent migrations and record versions in schema_migrations."""
         with self.lock:
             self.conn.executescript(SCHEMA_MIGRATIONS_SCHEMA)
             self._run_migrations()
             self.conn.commit()
 
     def _run_migrations(self) -> None:
+        """Run unapplied migrations in order; migration bodies stay idempotent for restores."""
         applied = {row["version"] for row in self.conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()}
         for version, name, migration in self._migrations():
             if version in applied:
@@ -112,6 +116,7 @@ class Database:
             )
 
     def _migrations(self) -> tuple[tuple[str, str, Callable[[], None]], ...]:
+        """Central migration registry for the lightweight in-process runner."""
         return (
             ("0001_phase1_core", "Phase 1 core question, visit, and image tables", self._apply_phase1_schema),
             ("0002_ip2region_geo", "Offline ip2region geolocation schema", self.migrate_geo),
@@ -128,6 +133,7 @@ class Database:
         self.conn.executescript(PHASE1_SCHEMA)
 
     def migrate_geo(self) -> None:
+        """Create/repair geo storage and discard rows from the deprecated pconline cache."""
         with self.lock:
             cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(question)").fetchall()}
             if "ip" not in cols:
@@ -163,6 +169,7 @@ class Database:
             self.conn.execute("DELETE FROM ip_geo WHERE provider IS NULL OR provider != 'ip2region'")
 
     def set_geo_enabled(self, enabled: bool) -> None:
+        """Synchronize hot-reloaded geo config with the DB writer and migration state."""
         with self.lock:
             if enabled and not self.geo_enabled:
                 self.migrate_geo()
@@ -170,6 +177,7 @@ class Database:
             self.geo_enabled = enabled
 
     def migrate_moderation(self) -> None:
+        """Create Phase 3 moderation metadata/audit tables without enabling LLM behavior."""
         with self.lock:
             cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(question)").fetchall()}
             for name, ddl in {
@@ -254,6 +262,7 @@ class Database:
             filters.append("q.answered_by = 'manual'")
         if marked:
             filters.append("q.marked_at IS NOT NULL")
+        # Location filtering is owner-only; asker reads never include or filter on geo fields.
         filter_by_location = include_geo and self.geo_enabled and bool(location_addr)
         if filter_by_location:
             if location_addr == LOCATION_NO_DATA_VALUE:
@@ -445,6 +454,7 @@ class Database:
     @staticmethod
     def _question_from_row(row: sqlite3.Row, *, include_geo: bool) -> dict[str, Any]:
         columns = set(row.keys())
+        # The DB stores absent timestamps as NULL; legacy JSON uses epoch strings instead.
         question = {
             "uuid": row["uuid"],
             "type": row["question_type"],

@@ -12,6 +12,7 @@ SECRET_QUERY_KEYS = {"token"}
 
 
 def _safe_path(request: Request) -> str:
+    """Redact secret query values without hiding useful operational parameters."""
     if not request.url.query:
         return request.url.path
     parts = []

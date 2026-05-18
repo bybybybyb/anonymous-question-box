@@ -52,6 +52,8 @@ def _normalize_owner_profiles(raw_profiles: Any) -> dict[str, dict[str, Any]]:
 
 @dataclass(slots=True)
 class Settings:
+    """Runtime configuration after normalizing legacy YAML shapes into dicts keyed by name."""
+
     config_path: str = "./config/config.yaml"
     host: str = ""
     port: int = 8080
@@ -72,6 +74,7 @@ class Settings:
     llm_filter: dict[str, Any] = field(default_factory=dict)
 
     def public_profiles(self) -> dict[str, Any]:
+        """Return public profile config with image upload forcibly disabled for Python v2."""
         profiles = deepcopy(self.owner_profiles)
         for owner in profiles.values():
             for qtype in owner.get("question_types", {}).values():

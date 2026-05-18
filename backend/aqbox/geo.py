@@ -41,6 +41,7 @@ def _trusted_proxy(peer: str | None, settings: Settings) -> bool:
 
 
 def _first_forwarded_for(value: str | None) -> str | None:
+    """Return the client hop for the documented single-nginx deployment."""
     if not value:
         return None
     candidate = value.split(",", 1)[0].strip()
@@ -57,6 +58,11 @@ def _valid_ip(value: str | None) -> str | None:
 
 
 def resolve_client_ip(request: Request, settings: Settings) -> str:
+    """Resolve client IP with nginx as the trust boundary.
+
+    Forwarded headers are accepted only when the socket peer is trusted. Production
+    overwrites X-Real-IP, so that header wins before the X-Forwarded-For fallback.
+    """
     peer = request.client.host if request.client else ""
     if _trusted_proxy(peer, settings):
         return (
@@ -69,6 +75,7 @@ def resolve_client_ip(request: Request, settings: Settings) -> str:
 
 
 def should_lookup(ip: str) -> bool:
+    """Skip private/reserved ranges so geo lookup is fail-open and operator-friendly."""
     try:
         parsed = ipaddress.ip_address(ip)
     except ValueError:
@@ -110,6 +117,7 @@ def _clean_region_part(value: str) -> str:
 
 
 def parse_region(raw_region: str) -> ParsedRegion | None:
+    """Parse ip2region's `Country|Province|City|ISP|CountryCode` record format."""
     parts = raw_region.split("|")
     if len(parts) != 5:
         return None
@@ -153,6 +161,7 @@ def _new_searcher(version: Any, xdb_path: str, cache_policy: str) -> Any:
 
 
 def lookup_region(ip: str, settings: Settings) -> str | None:
+    """Lookup an IP from configured xdb files using the configured cache policy."""
     version_and_path = _xdb_path_for_ip(ip, settings)
     if version_and_path is None:
         return None
@@ -185,6 +194,7 @@ async def lookup_and_store(
     *,
     region_lookup: Callable[[str, Settings], str | None] | None = None,
 ) -> None:
+    """Populate the geo cache for an IP; every lookup failure is fail-open."""
     if not settings.geo_enabled or not should_lookup(ip):
         return
     if db.get_ip_geo(ip) is not None:

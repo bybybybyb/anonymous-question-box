@@ -56,6 +56,8 @@ class ModerationService:
 
 
 class GeoService:
+    """Coordinates background geo lookups and suppresses duplicate in-flight IP work."""
+
     def __init__(self):
         self.background_tasks: set[asyncio.Task[None]] = set()
         self.in_flight_ips: set[str] = set()
@@ -83,6 +85,8 @@ class GeoService:
 
 
 class VisitService:
+    """Batches asker visits so reads stay fast while counts flush on a fixed cadence."""
+
     def __init__(self, repo: VisitRepository, settings_provider: SettingsProvider):
         self.repo = repo
         self.settings_provider = settings_provider
@@ -93,6 +97,7 @@ class VisitService:
             self.queue.put_nowait((uuid, now_epoch()))
 
     async def run(self) -> None:
+        """Flush pending visits by deadline even when traffic never goes idle."""
         pending: dict[str, tuple[int, int]] = {}
         loop = asyncio.get_running_loop()
         interval = max(self.settings_provider.current().visit_flush_interval_seconds, 0.001)
@@ -130,6 +135,8 @@ class VisitService:
 
 
 class SubmissionService:
+    """Asker-side submission behavior, including stealth keyword moderation."""
+
     def __init__(self, repo: SubmissionRepository, moderation: ModerationService, geo: GeoService):
         self.repo = repo
         self.moderation = moderation
@@ -163,6 +170,7 @@ class SubmissionService:
         asked_at = now_epoch()
         deleted_at = self.moderation.keyword_soft_delete_at(text, settings, asked_at)
         ip = self.geo.client_ip(request, settings)
+        # Keyword moderation is intentionally stealthy: insert deleted_at and still return success.
         inserted = self.repo.insert(
             {"uuid": principal.uuid, "owner": req.owner, "type": req.type, "text": text, "asked_at": asked_at},
             deleted_at=deleted_at,
@@ -175,6 +183,8 @@ class SubmissionService:
 
 
 class OwnerConsoleService:
+    """Owner console operations; normal reads hide deleted/soft-deleted submissions."""
+
     def __init__(self, repo: SubmissionRepository):
         self.repo = repo
 

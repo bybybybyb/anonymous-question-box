@@ -18,6 +18,7 @@ class Principal:
 
 
 def generate_token(settings: Settings, uuid: str) -> str:
+    """Issue Go-compatible asker JWTs for the legacy frontend contract."""
     now = int(time())
     claims = {
         "uuid": uuid,
@@ -29,6 +30,7 @@ def generate_token(settings: Settings, uuid: str) -> str:
 
 
 def validate_token(settings: Settings, encoded_token: str) -> Principal:
+    """Decode either an asker token or an owner token using the configured magic claim."""
     claims: dict[str, Any] = jwt.decode(encoded_token, settings.jwt_secret_key, algorithms=["HS256"])
     if settings.magic_spell in claims:
         return Principal(uuid=str(claims[settings.magic_spell]), is_admin=True)
@@ -38,6 +40,7 @@ def validate_token(settings: Settings, encoded_token: str) -> Principal:
 
 
 def bearer_token(auth_header: str | None) -> str | None:
+    """Preserve the old loose Bearer parser instead of FastAPI auth dependencies."""
     if not auth_header:
         return None
     parts = auth_header.split("Bearer ")

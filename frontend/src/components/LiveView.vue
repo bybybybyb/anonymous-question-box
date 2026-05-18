@@ -382,6 +382,7 @@ import Header from "./Header.vue";
 import Pagination from "v-pagination-3";
 import ImageDisplay from "./ImageDisplay.vue";
 const storagePrefix = "ownerView_";
+// Location options are per owner/type and can be empty for historical rows, so never persist them across boxes.
 const transientQueryParamKeys = new Set(["ip_addr"]);
 const orderDirection = [
   { by: "asked_at", reversed: true },
