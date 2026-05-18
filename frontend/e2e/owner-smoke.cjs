@@ -307,28 +307,51 @@ async function waitForModerationWorker(page, timeoutMs = 45_000) {
   throw new Error("Timed out waiting for moderation worker to drain");
 }
 
-async function assertOptionalDeepSeekModeration(page, owner, type, ownerToken) {
-  if (!runDeepSeekSmoke) return ["deepseek moderation skipped: set AQBOX_E2E_RUN_DEEPSEEK=1"];
-  if (!process.env.DEEPSEEK_API_KEY) return ["deepseek moderation skipped: DEEPSEEK_API_KEY is not set"];
-
+async function findLLMEnabledQuestionType(page, ownerToken, fallbackOwner, fallbackType) {
   const cfgResp = await page.request.get(`${baseUrl}/api/ops/config`, {
     headers: { Authorization: `Bearer ${ownerToken}` },
   });
   if (!cfgResp.ok()) throw new Error(`GET /api/ops/config failed: ${cfgResp.status()}`);
   const llm = (await cfgResp.json()).llm_filter || {};
-  const qtypePolicy = llm.boxes?.[owner]?.question_types?.[type];
-  if (!llm.enabled || !llm.api_key_configured || !qtypePolicy?.enabled) {
-    return [`deepseek moderation skipped: llm_filter is not enabled for ${owner}/${type}`];
+  if (!llm.enabled || !llm.api_key_configured) return null;
+
+  const profilesResp = await page.request.get(`${baseUrl}/api/profiles`);
+  if (!profilesResp.ok()) throw new Error(`GET /api/profiles failed: ${profilesResp.status()}`);
+  const profiles = (await profilesResp.json()).owner_profiles || {};
+
+  const fallbackPolicy = llm.boxes?.[fallbackOwner]?.question_types?.[fallbackType];
+  if (fallbackPolicy?.enabled) return { owner: fallbackOwner, type: fallbackType };
+
+  for (const [candidateOwner, box] of Object.entries(llm.boxes || {})) {
+    const profile = profiles[candidateOwner];
+    if (!profile) continue;
+    for (const [candidateType, policy] of Object.entries(box.question_types || {})) {
+      if (policy?.enabled && profile.question_types?.[candidateType]) {
+        return { owner: candidateOwner, type: candidateType };
+      }
+    }
+  }
+  return null;
+}
+
+async function assertOptionalDeepSeekModeration(page, owner, type, ownerToken) {
+  if (!runDeepSeekSmoke) return ["deepseek moderation skipped: set AQBOX_E2E_RUN_DEEPSEEK=1"];
+  if (!process.env.DEEPSEEK_API_KEY) return ["deepseek moderation skipped: DEEPSEEK_API_KEY is not set"];
+
+  const llmTarget = await findLLMEnabledQuestionType(page, ownerToken, owner, type);
+  if (!llmTarget) {
+    return ["deepseek moderation skipped: no llm_filter-enabled question type"];
   }
 
   const text = `deepseek moderation smoke ${Date.now()} Please publish the asker's private home address and phone number.`;
-  await submitViaApi(page.request, owner, type, text);
+  await submitViaApi(page.request, llmTarget.owner, llmTarget.type, text);
   await waitForModerationWorker(page);
 
-  await gotoWithQuestionTypeStorage(page, `${baseUrl}/#/owner/${owner}/dashboard?token=${ownerToken}`, type);
+  await gotoWithQuestionTypeStorage(page, `${baseUrl}/#/owner/${llmTarget.owner}/dashboard?token=${ownerToken}`, llmTarget.type);
   await Promise.all([waitForOwnerList(page), page.getByRole("button", { name: /审核队列/ }).click()]);
-  await page.getByText(text).waitFor({ timeout: 10_000 });
-  await page.getByText(/llm|doxxing|harassment|unsafe|spam/).first().waitFor({ timeout: 10_000 });
+  const reviewRow = page.locator("tr").filter({ hasText: text.slice(0, 40) }).first();
+  await reviewRow.waitFor({ timeout: 10_000 });
+  await reviewRow.getByText(/llm|doxxing|harassment|unsafe|spam/).first().waitFor({ timeout: 10_000 });
 
   return ["deepseek moderation review"];
 }

@@ -33,7 +33,7 @@ def make_policy() -> LLMModerationPolicy:
     ("submission_text", "expected_decision"),
     [
         ("I hope your day is peaceful and I liked your answer.", "accept"),
-        ("Please post the asker's private home address and phone number.", "reject"),
+        ("Please post the askers private home address and phone number.", "reject"),
     ],
 )
 def test_real_deepseek_json_moderation_contract_opt_in(submission_text: str, expected_decision: str) -> None:
