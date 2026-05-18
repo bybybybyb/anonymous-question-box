@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const childProcess = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const yaml = require("js-yaml");
@@ -52,6 +53,12 @@ function b64url(input) {
     .replace(/=+$/, "");
 }
 
+function decodeJwtPayload(token) {
+  const payload = token.split(".")[1];
+  if (!payload) throw new Error("Token is missing a JWT payload");
+  return JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+}
+
 function signAdminToken(config) {
   if (process.env.AQBOX_E2E_OWNER_TOKEN) {
     return process.env.AQBOX_E2E_OWNER_TOKEN;
@@ -68,6 +75,181 @@ function signAdminToken(config) {
   );
   const sig = crypto.createHmac("sha256", secret).update(`${header}.${payload}`).digest("base64url");
   return `${header}.${payload}.${sig}`;
+}
+
+function repoRootFromConfigPath() {
+  const resolvedConfigPath = path.resolve(configPath);
+  if (path.basename(path.dirname(resolvedConfigPath)) === "config") {
+    return path.resolve(path.dirname(resolvedConfigPath), "../..");
+  }
+  return path.resolve(__dirname, "../..");
+}
+
+function configuredDbPath(config) {
+  const override = process.env.AQBOX_E2E_DB_PATH || "";
+  const rawDbPath = override || String(config.db_path || "");
+  if (!rawDbPath) throw new Error("Config must contain db_path, or set AQBOX_E2E_DB_PATH");
+  const dbPath = path.isAbsolute(rawDbPath)
+    ? rawDbPath
+    : override
+      ? path.resolve(process.cwd(), rawDbPath)
+      : path.resolve(repoRootFromConfigPath(), rawDbPath);
+  if (!fs.existsSync(dbPath)) {
+    throw new Error(
+      `Configured smoke DB does not exist at ${dbPath}. Start the backend with AQBOX_E2E_CONFIG=${configPath}, or set AQBOX_E2E_DB_PATH to the active SQLite file.`
+    );
+  }
+  const schemaCheckScript = `
+import sqlite3
+import sys
+
+db_path = sys.argv[1]
+conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+tables = {
+    row[0]
+    for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('question', 'question_moderation_state')"
+    ).fetchall()
+}
+conn.close()
+missing = {"question", "question_moderation_state"} - tables
+if missing:
+    raise SystemExit("missing tables: " + ", ".join(sorted(missing)))
+`;
+  try {
+    childProcess.execFileSync(process.env.PYTHON || "python3", ["-c", schemaCheckScript, dbPath], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (err) {
+    const stderr = err.stderr ? String(err.stderr).trim() : err.message;
+    throw new Error(
+      `Configured smoke DB at ${dbPath} is not an initialized moderation SQLite DB (${stderr}). Set AQBOX_E2E_DB_PATH to the active SQLite file if AQBOX_E2E_CONFIG uses a copied or temporary config.`,
+      { cause: err }
+    );
+  }
+  return dbPath;
+}
+
+function seedBlockedReviewFixture(config, owner, type, label) {
+  const now = Math.floor(Date.now() / 1000);
+  const uuid = crypto.randomUUID();
+  const shortReasonByLabel = {
+    approve: "疑似隐私风险",
+    delete: "疑似骚扰或攻击内容",
+    "delete-only": "疑似垃圾内容",
+  };
+  const rationaleByLabel = {
+    approve: "该投稿可能包含隐私风险，需要进入审核队列。",
+    delete: "该投稿可能包含骚扰或攻击内容，需要进入审核队列。",
+    "delete-only": "该投稿可能包含垃圾内容，需要进入审核队列。",
+  };
+  const fixture = {
+    uuid,
+    owner,
+    type,
+    text: `seeded blocked raw text ${label} ${now} private phone 555-0109`,
+    asked_at: now,
+    word_count: 62,
+    source: "llm",
+    reason: "policy_block",
+    category: "privacy",
+    short_reason: shortReasonByLabel[label] || "需要人工复核",
+    rationale: rationaleByLabel[label] || "该投稿需要进入审核队列。",
+    confidence: 0.98,
+  };
+  const script = `
+import json
+import sqlite3
+import sys
+
+db_path = sys.argv[1]
+payload = json.loads(sys.argv[2])
+conn = sqlite3.connect(db_path)
+conn.execute("PRAGMA busy_timeout = 5000")
+conn.execute(
+    """
+    INSERT INTO question (
+      uuid, owner, question_type, question, asked_at, word_count,
+      answer, answered_at, answered_by, deleted_at, marked_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)
+    """,
+    (
+        payload["uuid"],
+        payload["owner"],
+        payload["type"],
+        payload["text"],
+        payload["asked_at"],
+        payload["word_count"],
+    ),
+)
+state_cols = {row[1] for row in conn.execute("PRAGMA table_info(question_moderation_state)").fetchall()}
+values = {
+    "uuid": payload["uuid"],
+    "status": "blocked",
+    "source": payload["source"],
+    "reason": payload["reason"],
+    "category": payload["category"],
+    "created_at": payload["asked_at"],
+    "updated_at": payload["asked_at"],
+    "short_reason": payload["short_reason"],
+    "rationale": payload["rationale"],
+    "confidence": payload["confidence"],
+    "provider": "seed",
+    "model": "seed",
+    "prompt_version": "smoke-fixture",
+    "attempt_count": 1,
+}
+insert_cols = [name for name in values if name in state_cols]
+placeholders = ", ".join("?" for _ in insert_cols)
+conn.execute(
+    f"INSERT INTO question_moderation_state ({', '.join(insert_cols)}) VALUES ({placeholders})",
+    [values[name] for name in insert_cols],
+)
+conn.commit()
+conn.close()
+`;
+  childProcess.execFileSync(process.env.PYTHON || "python3", [
+    "-c",
+    script,
+    configuredDbPath(config),
+    JSON.stringify(fixture),
+  ]);
+  return fixture;
+}
+
+function ownerListPayload(owner, type, moderationStatus = "normal") {
+  return {
+    owner,
+    type,
+    moderation_status: moderationStatus,
+    order_params: { by: "asked_at", reversed: true },
+    marked: false,
+    reply_status: 0,
+    day_limit: 30,
+    ip_addr: "",
+    page_size: 50,
+    page: 1,
+  };
+}
+
+async function ownerListQuestions(page, ownerToken, owner, type, moderationStatus = "normal") {
+  const resp = await page.request.post(`${baseUrl}/api/owner/questions`, {
+    headers: { Authorization: `Bearer ${ownerToken}` },
+    data: ownerListPayload(owner, type, moderationStatus),
+  });
+  if (!resp.ok()) {
+    throw new Error(`POST /api/owner/questions ${moderationStatus} failed: ${resp.status()} ${await resp.text()}`);
+  }
+  return (await resp.json()).questions || [];
+}
+
+function moderationSafeLocatorText(question) {
+  const moderation = question.moderation || {};
+  return (
+    moderation.short_reason ||
+    [moderation.source, moderation.category, moderation.reason].filter(Boolean).join(" / ")
+  );
 }
 
 async function chooseOwnerAndType(request) {
@@ -212,6 +394,35 @@ async function assertOwnerVisitColor(page, text, expectedColor, label) {
   }
 }
 
+async function assertOwnerMobileFiltersUseTwoColumns(page, owner, type, ownerToken) {
+  await page.setViewportSize({ width: 390, height: 900 });
+  try {
+    await gotoWithQuestionTypeStorage(page, `${baseUrl}/#/owner/${owner}/dashboard?token=${ownerToken}`, type);
+    await page.locator("#question_type").waitFor({ timeout: 10_000 });
+    const layout = await page.locator(".owner-filter-grid .owner-filter-control").evaluateAll((elements) =>
+      elements.map((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          left: Math.round(rect.left),
+          top: Math.round(rect.top),
+          width: Math.round(rect.width),
+        };
+      })
+    );
+    if (layout.length < 6) {
+      throw new Error(`Expected at least 6 owner filter controls on mobile, got ${layout.length}`);
+    }
+    const columns = new Set(layout.slice(0, 6).map((item) => item.left));
+    const rows = new Set(layout.slice(0, 6).map((item) => item.top));
+    if (columns.size < 2 || rows.size > 4) {
+      throw new Error(`Owner mobile filters did not form a two-column grid: ${JSON.stringify(layout.slice(0, 6))}`);
+    }
+  } finally {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+  }
+  return ["owner mobile filters two columns"];
+}
+
 async function assertOptionalGeoDisplay(page, owner, type, ownerToken) {
   if (!geoIp) return [];
 
@@ -256,7 +467,7 @@ async function assertOptionalGeoDisplay(page, owner, type, ownerToken) {
 
 async function assertKeywordModerationReview(page, config, owner, type, ownerToken) {
   const keywords = Array.isArray(config.filtered_keywords) ? config.filtered_keywords.filter(Boolean) : [];
-  if (!keywords.length) return ["keyword moderation review skipped: no filtered_keywords"];
+  if (!keywords.length) return ["keyword moderation hidden skipped: no filtered_keywords"];
 
   const text = `keyword moderation smoke ${Date.now()} ${keywords[0]}`;
   const askerToken = await submitViaApi(page.request, owner, type, text);
@@ -267,30 +478,104 @@ async function assertKeywordModerationReview(page, config, owner, type, ownerTok
   }
 
   await Promise.all([waitForOwnerList(page), page.getByRole("button", { name: /审核队列/ }).click()]);
-  const reviewRow = page.locator("tr").filter({ hasText: text }).first();
-  await reviewRow.waitFor({ timeout: 10_000 });
-  await reviewRow.getByText("keyword / keyword").waitFor({ timeout: 10_000 });
-
-  await reviewRow.getByRole("button", { name: "打开" }).click();
-  await page.locator("#answerModal").getByText("审核队列").waitFor({ timeout: 10_000 });
-  await page
-    .locator("#answerModal h6")
-    .filter({ hasText: "审核：审核队列" })
-    .filter({ hasText: "keyword" })
-    .waitFor({ timeout: 10_000 });
-  await page.locator("#answerModal .btn-close").click();
-  await page.locator("#answerModal").waitFor({ state: "hidden", timeout: 10_000 });
-
-  await Promise.all([waitForOwnerList(page), reviewRow.getByRole("button", { name: "通过" }).click()]);
-  await reviewRow.waitFor({ state: "detached", timeout: 10_000 });
-
-  await Promise.all([waitForOwnerList(page), page.getByRole("button", { name: /全部投稿/ }).click()]);
-  await page.locator(".card.shadow-lg.m-3").filter({ hasText: text }).first().waitFor({ timeout: 10_000 });
+  if ((await page.getByText(text).count()) > 0) {
+    throw new Error("Keyword-moderated submission leaked into review owner list");
+  }
 
   await page.goto(`${baseUrl}/#/question?token=${askerToken}`);
   await page.getByText(text).waitFor({ timeout: 10_000 });
 
-  return ["keyword moderation review queue", "moderation detail metadata", "moderation approve"];
+  return ["keyword moderation hidden from owner", "keyword moderation visible to asker"];
+}
+
+async function assertSeededModerationReview(page, config, owner, type, ownerToken) {
+  const approveFixture = seedBlockedReviewFixture(config, owner, type, "approve");
+  const deleteFixture = seedBlockedReviewFixture(config, owner, type, "delete");
+  const deleteOnlyFixture = seedBlockedReviewFixture(config, owner, type, "delete-only");
+  const reviewCard = (fixture) => page.locator(`[data-review-uuid="${fixture.uuid}"]`);
+
+  await gotoWithQuestionTypeStorage(page, `${baseUrl}/#/owner/${owner}/dashboard?token=${ownerToken}`, type);
+  await Promise.all([waitForOwnerList(page), page.getByRole("button", { name: /审核队列/ }).click()]);
+
+  const approveCard = reviewCard(approveFixture);
+  await approveCard.waitFor({ timeout: 10_000 });
+  await approveCard.getByText(approveFixture.short_reason, { exact: true }).waitFor({ timeout: 10_000 });
+  if ((await approveCard.getByText(approveFixture.text).count()) > 0) {
+    throw new Error("Review queue displayed raw submission text");
+  }
+  await approveCard.getByRole("button", { name: "详情" }).click();
+  const answerModal = page.locator("#answerModal");
+  await answerModal.getByText(approveFixture.rationale).waitFor({ timeout: 10_000 });
+  if ((await answerModal.getByText(approveFixture.text).count()) > 0) {
+    throw new Error("Blocked detail displayed raw submission text before confirmation");
+  }
+  await answerModal.getByRole("button", { name: "查看原文" }).click();
+  await answerModal.getByText("确认显示原文").waitFor({ timeout: 10_000 });
+  if ((await answerModal.getByText(approveFixture.text).count()) > 0) {
+    throw new Error("Blocked detail displayed raw submission text before warning confirmation");
+  }
+  await answerModal.getByRole("button", { name: "确认显示原文" }).click();
+  await answerModal.getByText(approveFixture.text).waitFor({ timeout: 10_000 });
+  await answerModal.locator(".btn-close").click();
+  await answerModal.waitFor({ state: "hidden", timeout: 10_000 });
+
+  await reviewCard(approveFixture).getByRole("button", { name: "详情" }).click();
+  if ((await answerModal.getByText(approveFixture.text).count()) > 0) {
+    throw new Error("Same blocked row reopen displayed raw submission text after prior reveal");
+  }
+  await answerModal.getByText(approveFixture.rationale).waitFor({ timeout: 10_000 });
+  if ((await answerModal.getByText(approveFixture.text).count()) > 0) {
+    throw new Error("Same blocked row reopen displayed raw submission text before fresh confirmation");
+  }
+  await answerModal.locator(".btn-close").click();
+  await answerModal.waitFor({ state: "hidden", timeout: 10_000 });
+
+  const deleteCard = reviewCard(deleteFixture);
+  await deleteCard.waitFor({ timeout: 10_000 });
+  await page.route(`**/api/owner/questions/${deleteFixture.uuid}`, async (route) => {
+    await sleep(500);
+    await route.continue();
+  });
+  await deleteCard.getByRole("button", { name: "详情" }).click();
+  if ((await answerModal.getByText(approveFixture.text).count()) > 0) {
+    throw new Error("Second blocked detail displayed previously revealed raw submission text before fetch completed");
+  }
+  if ((await answerModal.getByText(deleteFixture.text).count()) > 0) {
+    throw new Error("Second blocked detail displayed raw submission text before confirmation");
+  }
+  await answerModal.getByText(deleteFixture.rationale).waitFor({ timeout: 10_000 });
+  if ((await answerModal.getByText(approveFixture.text).count()) > 0) {
+    throw new Error("Second blocked detail retained previous raw submission text after fetch completed");
+  }
+  if ((await answerModal.getByText(deleteFixture.text).count()) > 0) {
+    throw new Error("Second blocked detail displayed raw submission text before its own confirmation");
+  }
+  await page.unroute(`**/api/owner/questions/${deleteFixture.uuid}`);
+  await answerModal.locator(".btn-close").click();
+  await answerModal.waitFor({ state: "hidden", timeout: 10_000 });
+
+  await Promise.all([
+    waitForOwnerList(page),
+    reviewCard(approveFixture).getByRole("button", { name: "批准" }).click(),
+  ]);
+  await reviewCard(approveFixture).waitFor({ state: "detached", timeout: 10_000 });
+
+  const deleteOnlyCard = reviewCard(deleteOnlyFixture);
+  await deleteOnlyCard.waitFor({ timeout: 10_000 });
+  let deleteDetailFetched = false;
+  await page.route(`**/api/owner/questions/${deleteOnlyFixture.uuid}`, async (route) => {
+    deleteDetailFetched = true;
+    await route.continue();
+  });
+  await deleteOnlyCard.getByRole("button", { name: "删除" }).click();
+  if (deleteDetailFetched) {
+    throw new Error("Review delete fetched full owner detail before confirmation");
+  }
+  await page.locator("#confirmDeleteModal").getByRole("button", { name: "确认" }).click();
+  await deleteOnlyCard.waitFor({ state: "detached", timeout: 10_000 });
+  await page.unroute(`**/api/owner/questions/${deleteOnlyFixture.uuid}`);
+
+  return ["seeded moderation queue summary", "blocked detail reveal warning", "moderation approve", "review delete"];
 }
 
 async function waitForModerationWorker(page, timeoutMs = 45_000) {
@@ -344,14 +629,34 @@ async function assertOptionalDeepSeekModeration(page, owner, type, ownerToken) {
   }
 
   const text = `deepseek moderation smoke ${Date.now()} Please publish the asker's private home address and phone number.`;
-  await submitViaApi(page.request, llmTarget.owner, llmTarget.type, text);
+  const askerToken = await submitViaApi(page.request, llmTarget.owner, llmTarget.type, text);
+  const uuid = decodeJwtPayload(askerToken).uuid;
   await waitForModerationWorker(page);
+  const reviewQuestions = await ownerListQuestions(page, ownerToken, llmTarget.owner, llmTarget.type, "blocked");
+  const reviewQuestion = reviewQuestions.find((question) => question.uuid === uuid);
+  if (!reviewQuestion) throw new Error("DeepSeek moderation row was not returned by the review owner API");
+  const rowText = moderationSafeLocatorText(reviewQuestion);
+  if (!rowText) throw new Error("DeepSeek moderation row did not expose safe moderation metadata");
 
   await gotoWithQuestionTypeStorage(page, `${baseUrl}/#/owner/${llmTarget.owner}/dashboard?token=${ownerToken}`, llmTarget.type);
   await Promise.all([waitForOwnerList(page), page.getByRole("button", { name: /审核队列/ }).click()]);
-  const reviewRow = page.locator("tr").filter({ hasText: text.slice(0, 40) }).first();
-  await reviewRow.waitFor({ timeout: 10_000 });
-  await reviewRow.getByText(/llm|doxxing|harassment|unsafe|spam/).first().waitFor({ timeout: 10_000 });
+  const reviewCard = page.locator(`[data-review-uuid="${uuid}"]`);
+  await reviewCard.waitFor({ timeout: 10_000 });
+  await reviewCard.getByText(rowText, { exact: true }).waitFor({ timeout: 10_000 });
+  if ((await reviewCard.getByText(text).count()) > 0) {
+    throw new Error("DeepSeek review queue displayed raw submission text");
+  }
+  await reviewCard.getByRole("button", { name: "详情" }).click();
+  const answerModal = page.locator("#answerModal");
+  await answerModal.getByText(/审核依据|详细理由/).waitFor({ timeout: 10_000 });
+  if ((await answerModal.getByText(text).count()) > 0) {
+    throw new Error("DeepSeek detail displayed raw submission text before confirmation");
+  }
+  await answerModal.getByRole("button", { name: "查看原文" }).click();
+  await answerModal.getByRole("button", { name: "确认显示原文" }).click();
+  await answerModal.getByText(text).waitFor({ timeout: 10_000 });
+  await answerModal.locator(".btn-close").click();
+  await answerModal.waitFor({ state: "hidden", timeout: 10_000 });
 
   return ["deepseek moderation review"];
 }
@@ -414,7 +719,7 @@ async function main() {
     await page.getByText(unique).waitFor({ timeout: 10_000 });
     await Promise.all([waitForOwnerList(page), page.getByText("显示全部").click()]);
 
-    await page.locator(".card.shadow-lg.m-3").filter({ hasText: unique }).first().getByText("打开").click();
+    await page.locator(".card.shadow-lg.m-3").filter({ hasText: unique }).first().getByText("详情").click();
     await page.locator("#answerModal textarea").waitFor({ timeout: 10_000 });
     await page.locator("#answerModal textarea").fill(answer);
     await page.getByRole("button", { name: "提交或更新" }).click();
@@ -443,8 +748,10 @@ async function main() {
     await page.getByText("直播中回应").waitFor({ timeout: 10_000 });
 
     const optionalChecks = [
+      ...(await assertOwnerMobileFiltersUseTwoColumns(page, owner, type, ownerToken)),
       ...(await assertExpiredQuestionTypeVisibility(page, ownerToken)),
       ...(await assertKeywordModerationReview(page, config, owner, type, ownerToken)),
+      ...(await assertSeededModerationReview(page, config, owner, type, ownerToken)),
       ...(await assertOptionalDeepSeekModeration(page, owner, type, ownerToken)),
       ...(await assertOptionalGeoDisplay(page, owner, type, ownerToken)),
     ];

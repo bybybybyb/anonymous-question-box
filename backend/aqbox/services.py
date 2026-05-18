@@ -406,11 +406,11 @@ class SubmissionService:
         ip = self.geo.client_ip(request, settings)
         question = {"uuid": principal.uuid, "owner": req.owner, "type": req.type, "text": text, "asked_at": asked_at}
         if moderation_decision.blocked:
-            # Keyword moderation is stealthy to the submitter but no longer uses owner deletion storage.
-            inserted = self.repo.insert_blocked(
+            inserted = self.repo.insert(
                 question,
-                source=moderation_decision.source or "keyword",
-                reason=moderation_decision.reason or "keyword",
+                deleted_at=asked_at,
+                deletion_source="keyword",
+                deletion_reason="keyword_filter",
                 ip=ip,
             )
         elif (llm_policy := llm_policy_for(settings, req.owner, req.type)) is not None:
@@ -499,7 +499,10 @@ class OwnerConsoleService:
             include_deleted=False,
             include_moderation=True,
         )
-        if question is None or question.get("moderation", {}).get("status") == "pending":
+        if question is None:
+            raise LegacyAPIError(404, "投稿不存在")
+        moderation = question.get("moderation", {})
+        if moderation.get("status") == "pending" or moderation.get("source") == "keyword":
             raise LegacyAPIError(404, "投稿不存在")
         return question
 
@@ -530,10 +533,10 @@ class OwnerConsoleService:
         if result in {"missing", "deleted"}:
             raise LegacyAPIError(404, "投稿不存在或已删除")
         if result == "pending":
-            raise LegacyAPIError(400, "待审核投稿不能手动通过")
+            raise LegacyAPIError(400, "待审核投稿不能手动批准")
         if result == "unmoderated":
             raise LegacyAPIError(400, "投稿没有可审批的审核状态")
-        raise LegacyAPIError(400, "投稿审核状态无法通过")
+        raise LegacyAPIError(400, "投稿审核状态无法批准")
 
 
 class OpsService:

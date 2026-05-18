@@ -163,6 +163,7 @@ class Database:
             ("0003_moderation_scaffold", "Moderation metadata and audit scaffold", self.migrate_moderation),
             ("0004_moderation_state_events", "Moderation state projection and event history", self.migrate_moderation_state_events),
             ("0005_llm_moderation_worker_fields", "LLM moderation worker queue and decision metadata", self.migrate_llm_worker_fields),
+            ("0006_deletion_provenance", "Question deletion provenance metadata", self.migrate_deletion_provenance),
         )
 
     def applied_migrations(self) -> list[str]:
@@ -286,7 +287,27 @@ class Database:
                 """
             )
 
-    def _insert_question_locked(self, question: dict[str, Any], *, deleted_at: int | None = None, ip: str | None = None) -> bool:
+    def migrate_deletion_provenance(self) -> None:
+        """Track who or what hid a question through deleted_at."""
+        with self.lock:
+            cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(question)").fetchall()}
+            for name, ddl in {
+                "deletion_source": "ALTER TABLE question ADD COLUMN deletion_source TEXT",
+                "deletion_reason": "ALTER TABLE question ADD COLUMN deletion_reason TEXT",
+            }.items():
+                if name not in cols:
+                    self.conn.execute(ddl)
+            self.conn.execute("CREATE INDEX IF NOT EXISTS idx_question_deletion_source ON question(deletion_source)")
+
+    def _insert_question_locked(
+        self,
+        question: dict[str, Any],
+        *,
+        deleted_at: int | None = None,
+        deletion_source: str | None = None,
+        deletion_reason: str | None = None,
+        ip: str | None = None,
+    ) -> bool:
         cols = ["uuid", "owner", "question_type", "question", "word_count", "asked_at"]
         vals: list[Any] = [
             question["uuid"],
@@ -299,6 +320,12 @@ class Database:
         if deleted_at is not None:
             cols.append("deleted_at")
             vals.append(deleted_at)
+        if deletion_source is not None:
+            cols.append("deletion_source")
+            vals.append(deletion_source)
+        if deletion_reason is not None:
+            cols.append("deletion_reason")
+            vals.append(deletion_reason)
         if self.geo_enabled:
             cols.append("ip")
             vals.append(ip or "")
@@ -307,9 +334,23 @@ class Database:
         cur = self.conn.execute(sql, vals)
         return cur.rowcount == 1
 
-    def insert_question(self, question: dict[str, Any], *, deleted_at: int | None = None, ip: str | None = None) -> bool:
+    def insert_question(
+        self,
+        question: dict[str, Any],
+        *,
+        deleted_at: int | None = None,
+        deletion_source: str | None = None,
+        deletion_reason: str | None = None,
+        ip: str | None = None,
+    ) -> bool:
         with self.lock:
-            cur = self._insert_question_locked(question, deleted_at=deleted_at, ip=ip)
+            cur = self._insert_question_locked(
+                question,
+                deleted_at=deleted_at,
+                deletion_source=deletion_source,
+                deletion_reason=deletion_reason,
+                ip=ip,
+            )
             self.conn.commit()
             return cur
 
@@ -489,6 +530,10 @@ class Database:
         moderation_select = (
             ", ms.status AS moderation_status, ms.source AS moderation_source, "
             "ms.reason AS moderation_reason, ms.category AS moderation_category, "
+            "ms.short_reason AS moderation_short_reason, ms.rationale AS moderation_rationale, "
+            "ms.confidence AS moderation_confidence, ms.provider AS moderation_provider, ms.model AS moderation_model, "
+            "ms.prompt_version AS moderation_prompt_version, ms.last_error_class AS moderation_last_error_class, "
+            "ms.attempt_count AS moderation_attempt_count, "
             "ms.created_at AS moderation_created_at, ms.updated_at AS moderation_updated_at"
             if include_moderation
             else ""
@@ -533,8 +578,9 @@ class Database:
         moderation_join = " LEFT JOIN question_moderation_state ms ON ms.uuid = q.uuid"
         if moderation_status == "blocked":
             filters.append("ms.status = 'blocked'")
+            filters.append("ms.source != 'keyword'")
         else:
-            filters.append("(ms.uuid IS NULL OR ms.status = 'approved')")
+            filters.append("(ms.uuid IS NULL OR (ms.status = 'approved' AND ms.source != 'keyword'))")
 
         geo_join = " LEFT JOIN ip_geo ig ON ig.ip = q.ip" if include_geo and self.geo_enabled else ""
         filter_by_location = include_geo and self.geo_enabled and bool(location_addr)
@@ -578,6 +624,10 @@ class Database:
         moderation_select = (
             ", ms.status AS moderation_status, ms.source AS moderation_source, "
             "ms.reason AS moderation_reason, ms.category AS moderation_category, "
+            "ms.short_reason AS moderation_short_reason, ms.rationale AS moderation_rationale, "
+            "ms.confidence AS moderation_confidence, ms.provider AS moderation_provider, ms.model AS moderation_model, "
+            "ms.prompt_version AS moderation_prompt_version, ms.last_error_class AS moderation_last_error_class, "
+            "ms.attempt_count AS moderation_attempt_count, "
             "ms.created_at AS moderation_created_at, ms.updated_at AS moderation_updated_at"
         )
         offset = max(page - 1, 0) * page_size
@@ -1121,7 +1171,14 @@ class Database:
             self.conn.commit()
             return cur.rowcount == 1
 
-    def mark_deleted(self, uuid: str, deleted_at: int) -> bool:
+    def mark_deleted(
+        self,
+        uuid: str,
+        deleted_at: int,
+        *,
+        deletion_source: str = "owner_manual",
+        deletion_reason: str = "owner_delete",
+    ) -> bool:
         with self.lock:
             try:
                 state = self.conn.execute(
@@ -1133,8 +1190,15 @@ class Database:
                     (uuid,),
                 ).fetchone()
                 cur = self.conn.execute(
-                    "UPDATE question SET deleted_at = ? WHERE uuid = ? AND deleted_at IS NULL",
-                    (deleted_at, uuid),
+                    """
+                    UPDATE question
+                    SET deleted_at = ?,
+                        deletion_source = ?,
+                        deletion_reason = ?
+                    WHERE uuid = ?
+                      AND deleted_at IS NULL
+                    """,
+                    (deleted_at, deletion_source, deletion_reason, uuid),
                 )
                 if cur.rowcount == 1 and state is not None:
                     self._insert_moderation_event_locked(
@@ -1161,6 +1225,8 @@ class Database:
         status = row["status"]
         if status is None:
             return "unmoderated"
+        if row["source"] == "keyword":
+            return "deleted"
         if status == "approved":
             return "already_approved"
         if status == "pending":
@@ -1188,7 +1254,7 @@ class Database:
                     """
                     UPDATE question_moderation_state
                     SET status = 'approved', updated_at = ?
-                    WHERE uuid = ? AND status = 'blocked'
+                    WHERE uuid = ? AND status = 'blocked' AND source != 'keyword'
                       AND EXISTS (
                         SELECT 1
                         FROM question q
@@ -1315,6 +1381,14 @@ class Database:
                 "source": row["moderation_source"] or "",
                 "reason": row["moderation_reason"] or "",
                 "category": row["moderation_category"],
+                "short_reason": row["moderation_short_reason"] or "",
+                "rationale": row["moderation_rationale"] or "",
+                "confidence": row["moderation_confidence"],
+                "provider": row["moderation_provider"] or "",
+                "model": row["moderation_model"] or "",
+                "prompt_version": row["moderation_prompt_version"] or "",
+                "last_error_class": row["moderation_last_error_class"] or "",
+                "attempt_count": int(row["moderation_attempt_count"] or 0),
                 "created_at": rfc3339_from_epoch(row["moderation_created_at"]),
                 "updated_at": rfc3339_from_epoch(row["moderation_updated_at"]),
             }

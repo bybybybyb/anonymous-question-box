@@ -10,9 +10,10 @@ The Go implementation that originally defined this behavior now lives in
 
 > **Moderation redesign note:** This catalog preserves the historical Phase 1
 > and old Phase 3 contracts. The 2026-05-18 moderation redesign supersedes
-> keyword moderation-as-soft-delete and the old DeepSeek sync/fail-open Phase 3
-> behavior with dedicated moderation state/event tables and async LLM
-> fail-to-review semantics.
+> the old DeepSeek sync/fail-open Phase 3 behavior with dedicated moderation
+> state/event tables and async LLM fail-to-review semantics. Keyword moderation
+> remains the legacy stealth soft-delete path: `deleted_at` is set, no
+> moderation state/event row is created, and the asker still receives success.
 
 ## Phase 1 MUST Behaviors
 
@@ -25,7 +26,7 @@ The Go implementation that originally defined this behavior now lives in
 - User JWT on owner routes returns `401 {"error":"未授权访问"}`.
 - Admin JWT on submit returns `403 {"error":"提问箱主人能问自己和其他提问箱主人问题嘛？答案是不能"}`.
 - `POST /questions/submit` trims `text`, rejects empty text with `400 {"error":"空投稿"}`, enforces owner/type rune limits, validates optional flight windows, and rejects unknown owner/type with the existing Chinese message.
-- Keyword matches are stealth soft-deleted: insert with `deleted_at`, return `200 {uuid, asked_at}`, asker can read it, owner normal lists exclude it.
+- Keyword matches are stealth soft-deleted: insert with `deleted_at` and `deletion_source = "keyword"`, return `200 {uuid, asked_at}`, asker can read it, owner normal lists exclude it.
 - Python Phase 1 rejects any non-empty `images` with `400 {"error":"本提问箱不支持图片上传"}` and never writes `image` rows.
 - Python Phase 1 read/list/detail responses always include `images: []`; this is an intentional non-parity change from Go nil-slice JSON.
 - Python Phase 1 never emits `ip`, `ip_addr`, or `ip_isp`.
@@ -33,7 +34,7 @@ The Go implementation that originally defined this behavior now lives in
 - Non-admin `GET /questions/question` for an answered submission enqueues visit tracking.
 - Owner list supports sort keys `asked_at` and `word_count`; invalid sort keys are rejected with a legacy-shaped 400 as a security hardening exception.
 - Owner list excludes `deleted_at IS NOT NULL`.
-- Owner answer, mark, and delete routes return empty `200` responses on success.
+- Owner answer, mark, and delete routes return empty `200` responses on success. Owner delete sets `deletion_source = "owner_manual"` so it can be distinguished from keyword and future automatic deletion.
 
 ## Absence And Sentinel Values
 

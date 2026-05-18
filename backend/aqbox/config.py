@@ -267,7 +267,7 @@ class Settings:
     owner_profiles: dict[str, dict[str, Any]] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=lambda: {"introductions": [], "console_prints": [], "admin": {}})
     visit_flush_interval_seconds: float = 10.0
-    geo_enabled: bool = False
+    geo_enabled: bool = True
     trusted_proxy_cidrs: list[str] = field(default_factory=lambda: ["127.0.0.1/32", "::1/128"])
     ip2region_ipv4_xdb_path: str = ""
     ip2region_ipv6_xdb_path: str = ""
@@ -331,7 +331,7 @@ def load_settings(config_path: str | None = None) -> Settings:
         owner_profiles=_normalize_owner_profiles(raw.get("owner_profiles")),
         metadata=metadata,
         visit_flush_interval_seconds=float(raw.get("visit_flush_interval_seconds", 10.0)),
-        geo_enabled=bool(raw.get("geo_enabled", False)),
+        geo_enabled=bool(raw.get("geo_enabled", True)),
         trusted_proxy_cidrs=list(raw.get("trusted_proxy_cidrs") or ["127.0.0.1/32", "::1/128"]),
         ip2region_ipv4_xdb_path=str(raw.get("ip2region_ipv4_xdb_path", "")),
         ip2region_ipv6_xdb_path=str(raw.get("ip2region_ipv6_xdb_path", "")),

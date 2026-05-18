@@ -9,8 +9,22 @@ class SubmissionRepository:
     def __init__(self, db: Database):
         self.db = db
 
-    def insert(self, question: dict[str, Any], *, deleted_at: int | None = None, ip: str | None = None) -> bool:
-        return self.db.insert_question(question, deleted_at=deleted_at, ip=ip)
+    def insert(
+        self,
+        question: dict[str, Any],
+        *,
+        deleted_at: int | None = None,
+        deletion_source: str | None = None,
+        deletion_reason: str | None = None,
+        ip: str | None = None,
+    ) -> bool:
+        return self.db.insert_question(
+            question,
+            deleted_at=deleted_at,
+            deletion_source=deletion_source,
+            deletion_reason=deletion_reason,
+            ip=ip,
+        )
 
     def insert_blocked(
         self,
@@ -141,7 +155,7 @@ class SubmissionRepository:
         return self.db.update_mark(uuid, marked_at)
 
     def delete(self, uuid: str, deleted_at: int) -> bool:
-        return self.db.mark_deleted(uuid, deleted_at)
+        return self.db.mark_deleted(uuid, deleted_at, deletion_source="owner_manual", deletion_reason="owner_delete")
 
     def approve_moderation(self, uuid: str, approved_at: int) -> str:
         return self.db.approve_moderation(uuid, approved_at)

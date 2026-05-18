@@ -10,11 +10,11 @@ Implement moderation in three slices: first a small owner-console refactor, then
 
 Retire "soft-delete" as moderation language. Use:
 
-- **Moderation block** for keyword/LLM hiding.
+- **Moderation block** for LLM/manual review hiding.
 - **Review queue** for owner-visible moderation review work.
-- **Owner deletion** for `question.deleted_at`.
+- **Owner/stealth deletion** for `question.deleted_at`.
 
-`deleted_at` remains an owner/manual deletion field. Moderation visibility moves to `question_moderation_state`; moderation history moves to `question_moderation_event`.
+`deleted_at` remains the owner-hidden storage mechanism, including legacy keyword stealth-delete. LLM/manual review visibility moves to `question_moderation_state`; LLM/manual moderation history moves to `question_moderation_event`.
 
 Latest `origin/main` includes the Python backend refactor, migration runner, WAL/busy-timeout setup, tighter owner mutation guards, and frontend cleanup. This plan builds on that shape.
 
@@ -135,7 +135,7 @@ Rejected alternative:
 - Ensure missing `moderation_status` means `normal` so current owner and live flows keep working.
 - Validate with existing owner smoke flow; smoke test is sufficient for this refactor slice.
 
-## Slice 2: Keyword Moderation Tables
+## Slice 2: Moderation Tables And Keyword Stealth-Delete
 
 - Add a new named migration via the existing migration runner in `backend/aqbox/db.py`: `0004_moderation_state_events`.
 - Register `0004_moderation_state_events` unconditionally in `_migrations()`.
@@ -149,14 +149,17 @@ Rejected alternative:
 - Normal accepted submissions have no moderation state row.
 - Approved rows retain `question_moderation_state.status = "approved"` indefinitely unless the submission is owner-deleted.
 - Keyword hits:
-  - insert question with `deleted_at = NULL`;
-  - create `blocked` state and event;
-  - do both in one DB lock/transaction through a new repository/DB method, because current `insert_question()` commits immediately;
+  - insert question with `deleted_at = asked_at`;
+  - set `deletion_source = "keyword"` and `deletion_reason = "keyword_filter"`;
+  - create no moderation state and no moderation event;
+  - skip LLM evaluation;
   - return legacy `200 {uuid, asked_at}`;
-  - remain readable by asker.
-- Do not store matched keyword text by default. Store `source=keyword`, `reason=keyword`, and optional category only.
+  - remain readable by asker;
+  - stay hidden from owner normal lists, review queues, owner detail, counts, and live views.
+- Do not store matched keyword text by default. Keyword filtering creates no moderation state/event metadata.
 - Existing historical `deleted_at` rows are not backfilled.
 - Owner deletion still sets `question.deleted_at`; deleted rows disappear from normal and review queues but remain asker-readable under the existing token behavior.
+- Owner deletion sets `deletion_source = "owner_manual"` and `deletion_reason = "owner_delete"` even for normal unmoderated submissions, so future prompt-improvement pipelines can distinguish owner intent from keyword/future automatic deletion.
 - Deleting a submission with moderation state records a moderation event. Deleting a normal submission does not create a moderation event.
 
 ## State Visibility Matrix
@@ -165,7 +168,8 @@ Rejected alternative:
 | --- | --- | --- | --- | --- | --- | --- |
 | Normal/unmoderated | none | Yes | No | Yes | Yes | Yes |
 | Pending LLM | `pending` | No | No | No | No | Yes |
-| Blocked/reviewable | `blocked` | No | Yes | Yes | No | Yes |
+| Keyword-filtered | none + `deleted_at` | No | No | No | No | Yes |
+| Blocked/reviewable | `blocked` LLM/manual | No | Yes | Yes | No | Yes |
 | Approved override | `approved` | Yes, with subtle badge | No | Yes, with moderation metadata | Yes | Yes |
 | Owner-deleted | any/none + `deleted_at` | No | No | No | No | Yes, unchanged legacy behavior |
 
@@ -176,11 +180,11 @@ Rejected alternative:
 - Invalid `moderation_status` returns a legacy-shaped `400 {"error": "..."}`.
 - Prefer `moderation_status` over existing unused `include_moderated` / `moderation_source`; those fields can remain ignored/deprecated for compatibility.
 - Normal list mode returns unmoderated rows plus approved rows.
-- Blocked mode returns reviewable blocked rows only.
+- Blocked mode returns non-deleted LLM/manual reviewable blocked rows only; keyword-filtered rows never appear.
 - `POST /owner/questions` also returns `moderation_counts`, at least `moderation_counts.blocked`, computed under the same owner/type/day/reply/location filters where applicable.
 - `list_location_options()` must respect `moderation_status`; normal options count normal rows only, blocked options count reviewable rows only.
-- `GET /owner/questions/{uuid}` returns normal, approved, and blocked non-deleted submissions with moderation metadata when present.
-- `GET /owner/questions/{uuid}` returns 404 for pending and owner-deleted submissions.
+- `GET /owner/questions/{uuid}` returns normal, approved, and blocked non-deleted non-keyword submissions with moderation metadata when present.
+- `GET /owner/questions/{uuid}` returns 404 for pending, owner-deleted, and keyword-filtered submissions.
 - Add `PUT /owner/questions/{uuid}/moderation/approve`.
 - Approval semantics:
   - `blocked -> approved` succeeds and records an event.
@@ -198,10 +202,10 @@ Rejected alternative:
   - submission time and answer status;
   - owner/admin metadata such as IP/location when available;
   - actions: reveal text preview, open detail, approve, delete.
-- Review table rows hide question text by default.
-- Revealing text is per-row and session-local.
+- Review table rows show the full backend-constrained `short_reason` or safe moderation metadata fallback, and hide question text by default.
+- Raw submission text is revealed only in detail after a warning confirmation.
 - The review table does not expose mark/unmark.
-- Approved rows return to the normal list with a subtle `已审核通过` badge.
+- Approved rows return to the normal list with a subtle `已审核批准` badge.
 - `LiveView.vue` must always use normal visibility and never show pending or blocked rows.
 
 ## Slice 3: Async LLM Moderation
@@ -378,14 +382,14 @@ llm_filter:
   - submits LLM-enabled safe text and waits for worker accept;
   - submits LLM-enabled reject text and waits for review queue entry;
   - forces provider failures and verifies `llm_error/never_evaluated`.
-- Run owner smoke after Slice 3 with LLM disabled to prove existing flows still work and to cover keyword-backed review queue UI/API behavior.
+- Run owner smoke after Slice 3 with LLM disabled to prove existing flows still work and to cover deterministic seeded review queue UI/API behavior.
 - Optionally run browser smoke with `AQBOX_E2E_RUN_DEEPSEEK=1` plus `DEEPSEEK_API_KEY` and a non-production config before enabling any production config.
 
 ## LLM Output And Privacy
 
 - Model returns both:
   - `short_reason`: safe badge/list reason that does not quote original content.
-  - `rationale`: detailed owner-facing explanation.
+  - `rationale`: detailed safe owner-facing explanation that does not quote original content or repeat private/sensitive tokens.
 - Store parsed short reason, detailed rationale, category, confidence, provider/model metadata.
 - Raw prompt/request/response storage is config-only, defaults off, and when enabled lives in `question_moderation_event` with `purge_after` / `purged_at`.
 - Update/replace the existing raw-audit purge helper to purge event raw fields.
@@ -406,14 +410,13 @@ llm_filter:
 
 ## Test Plan
 
-- Update backend tests that currently lock old keyword `deleted_at` behavior:
-  - keyword hit no longer sets `deleted_at`;
+- Update backend tests for keyword stealth-delete and LLM/manual review separation:
+  - keyword hit sets `deleted_at`, creates no moderation state/event, skips LLM, stays asker-readable, and is hidden from all owner surfaces;
   - normal owner list hides moderation-blocked rows;
-  - review queue/table can list and open them;
-  - asker can still read them;
-  - approve/delete work.
+  - review queue/table can list and open LLM/manual blocked rows;
+  - approve/delete work on LLM/manual blocked rows, not keyword rows.
 - Add migration tests for `0004_moderation_state_events` and idempotent bootstrap.
-- Add repository/service tests for atomic keyword question + moderation state/event insertion.
+- Add repository/service tests for keyword direct soft-delete and LLM/manual moderation state/event insertion.
 - Keep owner/manual delete tests:
   - deleted rows remain inaccessible to normal list, review queue, detail, and live view;
   - owner-deleted rows remain asker-readable under current legacy behavior.

@@ -70,6 +70,37 @@ def new_user_token(client: TestClient) -> str:
     return client.get("/new").json()["token"]
 
 
+def insert_llm_blocked_state(
+    db: Database,
+    uuid: str,
+    *,
+    short_reason: str = "Harassing submission",
+    rationale: str = "The submission is abusive.",
+) -> None:
+    row = db.conn.execute("SELECT asked_at FROM question WHERE uuid = ?", (uuid,)).fetchone()
+    assert row is not None
+    created_at = int(row["asked_at"])
+    db.conn.execute(
+        """
+        INSERT INTO question_moderation_state (
+          uuid, status, source, reason, category, short_reason, rationale, created_at, updated_at
+        )
+        VALUES (?, 'blocked', 'llm', 'model_reject', 'harassment', ?, ?, ?, ?)
+        """,
+        (uuid, short_reason, rationale, created_at, created_at),
+    )
+    db.conn.execute(
+        """
+        INSERT INTO question_moderation_event (
+          uuid, event_type, status, source, reason, category, short_reason, rationale, created_at
+        )
+        VALUES (?, 'blocked', 'blocked', 'llm', 'model_reject', 'harassment', ?, ?, ?)
+        """,
+        (uuid, short_reason, rationale, created_at),
+    )
+    db.conn.commit()
+
+
 def config_payload(tmp_path: Path, **overrides) -> dict:
     payload = {
         "db_path": str(tmp_path / "aqbox.sqlite3"),
@@ -127,6 +158,17 @@ def test_profiles_force_support_image_false(tmp_path: Path) -> None:
     assert qtype["support_image"] is False
 
 
+def test_geo_enabled_defaults_to_true_when_config_omits_it(tmp_path: Path) -> None:
+    payload = config_payload(tmp_path)
+    payload.pop("geo_enabled")
+    config_path = tmp_path / "config.yaml"
+    write_config(config_path, payload)
+
+    s = load_settings(str(config_path))
+
+    assert s.geo_enabled is True
+
+
 def test_sqlite_connection_uses_wal_and_busy_timeout(tmp_path: Path) -> None:
     db = Database(str(tmp_path / "aqbox.sqlite3"))
     try:
@@ -148,6 +190,7 @@ def test_schema_migrations_are_recorded_once(tmp_path: Path) -> None:
         "0003_moderation_scaffold",
         "0004_moderation_state_events",
         "0005_llm_moderation_worker_fields",
+        "0006_deletion_provenance",
     ]
     assert second == first
     assert db.conn.execute("SELECT COUNT(*) FROM question_moderation_state").fetchone()[0] == 0
@@ -181,7 +224,7 @@ def test_images_null_is_accepted_like_legacy_empty_images(tmp_path: Path) -> Non
     assert resp.status_code == 200
 
 
-def test_keyword_block_creates_state_without_deleting_and_respects_visibility(tmp_path: Path) -> None:
+def test_keyword_block_stealth_deletes_without_moderation_state_and_respects_visibility(tmp_path: Path) -> None:
     s = settings(tmp_path)
     app, db = make_app_and_db(s)
     with TestClient(app) as client:
@@ -218,7 +261,7 @@ def test_keyword_block_creates_state_without_deleting_and_respects_visibility(tm
         )
         owner_detail = client.get(f"/owner/questions/{submit.json()['uuid']}", headers=auth(admin_token(s)))
     uuid = submit.json()["uuid"]
-    question_row = db.conn.execute("SELECT deleted_at FROM question WHERE uuid = ?", (uuid,)).fetchone()
+    question_row = db.conn.execute("SELECT asked_at, deleted_at, deletion_source FROM question WHERE uuid = ?", (uuid,)).fetchone()
     state_row = db.conn.execute(
         "SELECT status, source, reason, category FROM question_moderation_state WHERE uuid = ?",
         (uuid,),
@@ -229,10 +272,10 @@ def test_keyword_block_creates_state_without_deleting_and_respects_visibility(tm
     ).fetchall()
     assert submit.status_code == 200
     assert question_row is not None
-    assert question_row["deleted_at"] is None
-    assert state_row is not None
-    assert dict(state_row) == {"status": "blocked", "source": "keyword", "reason": "keyword", "category": None}
-    assert [dict(row) for row in event_rows] == [{"event_type": "blocked", "status": "blocked", "source": "keyword", "reason": "keyword"}]
+    assert question_row["deleted_at"] == question_row["asked_at"]
+    assert question_row["deletion_source"] == "keyword"
+    assert state_row is None
+    assert event_rows == []
     assert asker_read.status_code == 200
     assert asker_read.json()["text"] == "blocked text"
     assert asker_read.json()["images"] == []
@@ -240,15 +283,51 @@ def test_keyword_block_creates_state_without_deleting_and_respects_visibility(tm
     assert "moderation" not in asker_read.json()
     assert owner_list.status_code == 200
     assert owner_list.json()["total"] == 0
-    assert owner_list.json()["moderation_counts"]["blocked"] == 1
+    assert owner_list.json()["moderation_counts"]["blocked"] == 0
     assert owner_review.status_code == 200
-    assert owner_review.json()["total"] == 1
-    assert owner_review.json()["questions"][0]["uuid"] == uuid
-    assert owner_review.json()["questions"][0]["moderation"]["status"] == "blocked"
-    assert owner_review.json()["questions"][0]["moderation"]["source"] == "keyword"
-    assert owner_detail.status_code == 200
-    assert owner_detail.json()["uuid"] == uuid
-    assert owner_detail.json()["moderation"]["status"] == "blocked"
+    assert owner_review.json()["total"] == 0
+    assert owner_detail.status_code == 404
+    assert owner_detail.json() == {"error": "投稿不存在"}
+
+
+def test_owner_blocked_payload_exposes_safe_moderation_metadata(tmp_path: Path) -> None:
+    s = settings(tmp_path)
+    app, db = make_app_and_db(s)
+    with TestClient(app) as client:
+        token = new_user_token(client)
+        uuid = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "mean text"},
+            headers=auth(token),
+        ).json()["uuid"]
+        insert_llm_blocked_state(
+            db,
+            uuid,
+            short_reason="Harassing submission",
+            rationale="The submission targets a person with abusive language.",
+        )
+        owner_headers = auth(admin_token(s))
+        review = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "moderation_status": "blocked", "day_limit": 1},
+            headers=owner_headers,
+        )
+        detail = client.get(f"/owner/questions/{uuid}", headers=owner_headers)
+
+    assert review.status_code == 200
+    assert detail.status_code == 200
+    review_moderation = review.json()["questions"][0]["moderation"]
+    detail_moderation = detail.json()["moderation"]
+    assert review_moderation["status"] == "blocked"
+    assert review_moderation["source"] == "llm"
+    assert review_moderation["category"] == "harassment"
+    assert review_moderation["reason"] == "model_reject"
+    assert review_moderation["short_reason"] == "Harassing submission"
+    assert review_moderation["rationale"] == "The submission targets a person with abusive language."
+    assert detail_moderation["short_reason"] == review_moderation["short_reason"]
+    assert detail_moderation["rationale"] == review_moderation["rationale"]
+    assert "created_at" in detail_moderation
+    assert "updated_at" in detail_moderation
 
 
 def test_answering_blocked_submission_does_not_approve_it(tmp_path: Path) -> None:
@@ -257,10 +336,11 @@ def test_answering_blocked_submission_does_not_approve_it(tmp_path: Path) -> Non
         token = new_user_token(client)
         submit = client.post(
             "/questions/submit",
-            json={"owner": "owner", "type": "type", "text": "blocked text"},
+            json={"owner": "owner", "type": "type", "text": "mean text"},
             headers=auth(token),
         )
         uuid = submit.json()["uuid"]
+        insert_llm_blocked_state(client.app.state.db, uuid)
         owner_headers = auth(admin_token(s))
         answer = client.put(
             f"/owner/questions/{uuid}/answer",
@@ -294,10 +374,11 @@ def test_approve_blocked_submission_is_idempotent_and_returns_to_normal_list(tmp
         token = new_user_token(client)
         submit = client.post(
             "/questions/submit",
-            json={"owner": "owner", "type": "type", "text": "blocked text"},
+            json={"owner": "owner", "type": "type", "text": "mean text"},
             headers=auth(token),
         )
         uuid = submit.json()["uuid"]
+        insert_llm_blocked_state(db, uuid)
         owner_headers = auth(admin_token(s))
         approve = client.put(f"/owner/questions/{uuid}/moderation/approve", headers=owner_headers)
         approve_again = client.put(f"/owner/questions/{uuid}/moderation/approve", headers=owner_headers)
@@ -333,9 +414,10 @@ def test_approve_race_does_not_emit_duplicate_approval_event(tmp_path: Path) -> 
         token = new_user_token(client)
         uuid = client.post(
             "/questions/submit",
-            json={"owner": "owner", "type": "type", "text": "blocked text"},
+            json={"owner": "owner", "type": "type", "text": "mean text"},
             headers=auth(token),
         ).json()["uuid"]
+        insert_llm_blocked_state(db, uuid)
 
     original_conn = db.conn
 
@@ -355,7 +437,7 @@ def test_approve_race_does_not_emit_duplicate_approval_event(tmp_path: Path) -> 
                     INSERT INTO question_moderation_event (
                       uuid, event_type, status, source, reason, category, actor, created_at
                     )
-                    VALUES (?, 'approved', 'approved', 'keyword', 'keyword', NULL, 'other-owner', ?)
+                    VALUES (?, 'approved', 'approved', 'llm', 'model_reject', 'harassment', 'other-owner', ?)
                     """,
                     (uuid, 111),
                 )
@@ -392,9 +474,10 @@ def test_approve_race_with_delete_does_not_emit_approval_event(tmp_path: Path) -
         token = new_user_token(client)
         uuid = client.post(
             "/questions/submit",
-            json={"owner": "owner", "type": "type", "text": "blocked text"},
+            json={"owner": "owner", "type": "type", "text": "mean text"},
             headers=auth(token),
         ).json()["uuid"]
+        insert_llm_blocked_state(db, uuid)
 
     original_conn = db.conn
 
@@ -467,7 +550,6 @@ def test_invalid_approval_states_return_legacy_errors(tmp_path: Path) -> None:
             json={"owner": "owner", "type": "type", "text": "blocked text"},
             headers=auth(blocked_token),
         ).json()["uuid"]
-        client.delete(f"/owner/questions/{deleted_uuid}/delete", headers=owner_headers)
 
         normal_approve = client.put(f"/owner/questions/{normal_uuid}/moderation/approve", headers=owner_headers)
         pending_approve = client.put(f"/owner/questions/{pending_uuid}/moderation/approve", headers=owner_headers)
@@ -477,11 +559,127 @@ def test_invalid_approval_states_return_legacy_errors(tmp_path: Path) -> None:
     assert normal_approve.status_code == 400
     assert normal_approve.json() == {"error": "投稿没有可审批的审核状态"}
     assert pending_approve.status_code == 400
-    assert pending_approve.json() == {"error": "待审核投稿不能手动通过"}
+    assert pending_approve.json() == {"error": "待审核投稿不能手动批准"}
     assert deleted_approve.status_code == 404
     assert deleted_approve.json() == {"error": "投稿不存在或已删除"}
     assert pending_detail.status_code == 404
     assert pending_detail.json() == {"error": "投稿不存在"}
+
+
+def test_approve_old_style_keyword_block_returns_deleted_behavior_without_event(tmp_path: Path) -> None:
+    s = settings(tmp_path)
+    app, db = make_app_and_db(s)
+    with TestClient(app) as client:
+        owner_headers = auth(admin_token(s))
+        token = new_user_token(client)
+        uuid = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "old keyword state"},
+            headers=auth(token),
+        ).json()["uuid"]
+        db.conn.execute(
+            """
+            INSERT INTO question_moderation_state (uuid, status, source, reason, created_at, updated_at)
+            VALUES (?, 'blocked', 'keyword', 'keyword', 1, 1)
+            """,
+            (uuid,),
+        )
+        db.conn.commit()
+
+        approve = client.put(f"/owner/questions/{uuid}/moderation/approve", headers=owner_headers)
+
+    state = db.conn.execute(
+        "SELECT status, source, reason FROM question_moderation_state WHERE uuid = ?",
+        (uuid,),
+    ).fetchone()
+    events = db.conn.execute(
+        "SELECT event_type, status, source, reason FROM question_moderation_event WHERE uuid = ?",
+        (uuid,),
+    ).fetchall()
+
+    assert approve.status_code == 404
+    assert approve.json() == {"error": "投稿不存在或已删除"}
+    assert dict(state) == {"status": "blocked", "source": "keyword", "reason": "keyword"}
+    assert events == []
+
+
+def test_owner_detail_hides_old_style_keyword_block_as_not_found(tmp_path: Path) -> None:
+    s = settings(tmp_path)
+    app, db = make_app_and_db(s)
+    with TestClient(app) as client:
+        owner_headers = auth(admin_token(s))
+        token = new_user_token(client)
+        uuid = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "old keyword"},
+            headers=auth(token),
+        ).json()["uuid"]
+        db.conn.execute(
+            """
+            INSERT INTO question_moderation_state (uuid, status, source, reason, created_at, updated_at)
+            VALUES (?, 'blocked', 'keyword', 'keyword', 1, 1)
+            """,
+            (uuid,),
+        )
+        db.conn.commit()
+
+        detail = client.get(f"/owner/questions/{uuid}", headers=owner_headers)
+
+    assert detail.status_code == 404
+    assert detail.json() == {"error": "投稿不存在"}
+
+
+def test_owner_normal_views_hide_historical_approved_keyword_rows(tmp_path: Path) -> None:
+    s = settings(tmp_path, geo_enabled=True, trusted_proxy_cidrs=["127.0.0.1/32"])
+    app, db = make_app_and_db(s)
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        owner_headers = auth(admin_token(s))
+        normal_token = new_user_token(client)
+        client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "normal"},
+            headers={**auth(normal_token), "X-Real-IP": "8.8.8.8"},
+        )
+        approved_keyword_token = new_user_token(client)
+        approved_keyword_uuid = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "old keyword"},
+            headers={**auth(approved_keyword_token), "X-Real-IP": "9.9.9.9"},
+        ).json()["uuid"]
+        db.conn.execute(
+            """
+            INSERT INTO question_moderation_state (uuid, status, source, reason, created_at, updated_at)
+            VALUES (?, 'approved', 'keyword', 'keyword', 1, 1)
+            """,
+            (approved_keyword_uuid,),
+        )
+        db.conn.commit()
+        db.insert_ip_geo({"ip": "8.8.8.8", "addr": "正常地区", "isp": "正常运营商", "provider": "ip2region", "looked_up_at": 1})
+        db.insert_ip_geo({"ip": "9.9.9.9", "addr": "历史关键词地区", "isp": "历史关键词运营商", "provider": "ip2region", "looked_up_at": 1})
+
+        normal = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "day_limit": 1},
+            headers=owner_headers,
+        )
+        keyword_location = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "day_limit": 1, "ip_addr": "历史关键词地区"},
+            headers=owner_headers,
+        )
+        detail = client.get(f"/owner/questions/{approved_keyword_uuid}", headers=owner_headers)
+        approve = client.put(f"/owner/questions/{approved_keyword_uuid}/moderation/approve", headers=owner_headers)
+
+    assert normal.status_code == 200
+    assert normal.json()["total"] == 1
+    assert [question["text"] for question in normal.json()["questions"]] == ["normal"]
+    assert {option["addr"] for option in normal.json()["location_options"]} == {"正常地区"}
+    assert keyword_location.status_code == 200
+    assert keyword_location.json()["total"] == 0
+    assert detail.status_code == 404
+    assert detail.json() == {"error": "投稿不存在"}
+    assert approve.status_code == 404
+    assert approve.json() == {"error": "投稿不存在或已删除"}
 
 
 def test_delete_moderated_submission_hides_it_and_records_event(tmp_path: Path) -> None:
@@ -491,9 +689,10 @@ def test_delete_moderated_submission_hides_it_and_records_event(tmp_path: Path) 
         token = new_user_token(client)
         uuid = client.post(
             "/questions/submit",
-            json={"owner": "owner", "type": "type", "text": "blocked text"},
+            json={"owner": "owner", "type": "type", "text": "mean text"},
             headers=auth(token),
         ).json()["uuid"]
+        insert_llm_blocked_state(db, uuid)
         owner_headers = auth(admin_token(s))
         delete = client.delete(f"/owner/questions/{uuid}/delete", headers=owner_headers)
         normal = client.post(
@@ -512,13 +711,38 @@ def test_delete_moderated_submission_hides_it_and_records_event(tmp_path: Path) 
         "SELECT event_type, status FROM question_moderation_event WHERE uuid = ? ORDER BY id",
         (uuid,),
     ).fetchall()
+    question_row = db.conn.execute("SELECT deletion_source FROM question WHERE uuid = ?", (uuid,)).fetchone()
     assert delete.status_code == 200
+    assert question_row["deletion_source"] == "owner_manual"
     assert normal.json()["total"] == 0
     assert review.json()["total"] == 0
     assert detail.status_code == 404
     assert asker_read.status_code == 200
-    assert asker_read.json()["text"] == "blocked text"
+    assert asker_read.json()["text"] == "mean text"
     assert [tuple(row) for row in events] == [("blocked", "blocked"), ("deleted", "blocked")]
+
+
+def test_delete_unmoderated_submission_records_owner_manual_deletion_source(tmp_path: Path) -> None:
+    s = settings(tmp_path)
+    app, db = make_app_and_db(s)
+    with TestClient(app) as client:
+        token = new_user_token(client)
+        uuid = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "normal delete"},
+            headers=auth(token),
+        ).json()["uuid"]
+        delete = client.delete(f"/owner/questions/{uuid}/delete", headers=auth(admin_token(s)))
+
+    question_row = db.conn.execute(
+        "SELECT deleted_at, deletion_source FROM question WHERE uuid = ?",
+        (uuid,),
+    ).fetchone()
+    events = db.conn.execute("SELECT event_type FROM question_moderation_event WHERE uuid = ?", (uuid,)).fetchall()
+    assert delete.status_code == 200
+    assert question_row["deleted_at"] is not None
+    assert question_row["deletion_source"] == "owner_manual"
+    assert events == []
 
 
 def test_moderation_status_defaults_validation_counts_and_location_options(tmp_path: Path) -> None:
@@ -532,11 +756,12 @@ def test_moderation_status_defaults_validation_counts_and_location_options(tmp_p
             headers={**auth(normal_token), "X-Real-IP": "8.8.8.8"},
         )
         blocked_token = new_user_token(client)
-        client.post(
+        blocked_uuid = client.post(
             "/questions/submit",
-            json={"owner": "owner", "type": "type", "text": "blocked text"},
+            json={"owner": "owner", "type": "type", "text": "review text"},
             headers={**auth(blocked_token), "X-Real-IP": "9.9.9.9"},
-        )
+        ).json()["uuid"]
+        insert_llm_blocked_state(db, blocked_uuid)
         db.insert_ip_geo({"ip": "8.8.8.8", "addr": "正常地区", "isp": "正常运营商", "provider": "ip2region", "looked_up_at": 1})
         db.insert_ip_geo({"ip": "9.9.9.9", "addr": "审核地区", "isp": "审核运营商", "provider": "ip2region", "looked_up_at": 1})
         owner_headers = auth(admin_token(s))
@@ -573,7 +798,7 @@ def test_moderation_status_defaults_validation_counts_and_location_options(tmp_p
     assert {option["addr"] for option in default_normal.json()["location_options"]} == {"正常地区"}
     assert blocked.status_code == 200
     assert blocked.json()["total"] == 1
-    assert blocked.json()["questions"][0]["text"] == "blocked text"
+    assert blocked.json()["questions"][0]["text"] == "review text"
     assert {option["addr"] for option in blocked.json()["location_options"]} == {"审核地区"}
     assert filtered_blocked.json()["total"] == 1
     assert filtered_blocked.json()["moderation_counts"] == {"blocked": 1}

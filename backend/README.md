@@ -42,7 +42,7 @@ The tool only matches successful submit logs to a single nearby `question.asked_
 - SQLite schema changes use the lightweight in-process migration runner in `aqbox.db`; applied versions are recorded in `schema_migrations`.
 - Images are intentionally unsupported: profiles advertise `support_image: false`, reads return `images: []`, and new image submissions are rejected.
 - Optional event timestamps use `NULL` in SQLite for absence/not-yet-happened. Keep legacy zero/epoch sentinels at API serialization boundaries rather than storing them in the database.
-- Geolocation uses offline ip2region xdb files configured by path; do not commit xdb files.
+- Geolocation is enabled by default and uses offline ip2region xdb files configured by path; do not commit xdb files. Missing xdb paths fail open: owner/admin rows may show IP without a location label.
 - IPv4 lookup uses `ip2region_ipv4_xdb_path`; IPv6 lookup is skipped unless `ip2region_ipv6_xdb_path` is configured.
 - Forwarded IP headers are trusted only when the socket peer is in `trusted_proxy_cidrs`.
 - Asker routes must never expose `ip`, `ip_addr`, or `ip_isp`; owner/admin routes may expose them.

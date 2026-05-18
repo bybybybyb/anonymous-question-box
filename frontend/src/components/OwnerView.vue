@@ -9,8 +9,8 @@
             :style="navbarStyling"
           >
             <div class="container-fluid">
-              <ul class="navbar-nav">
-                <li class="nav-item m-1">
+              <ul class="navbar-nav owner-filter-grid">
+                <li class="nav-item m-1 owner-filter-control">
                   <select
                     class="form-select"
                     aria-label="question type select"
@@ -27,7 +27,7 @@
                     </option>
                   </select>
                 </li>
-                <li class="nav-item m-1">
+                <li class="nav-item m-1 owner-filter-control">
                   <select
                     class="form-select"
                     aria-label="Default select example"
@@ -41,7 +41,7 @@
                     <option value="2">已手动回复</option>
                   </select>
                 </li>
-                <li class="nav-item m-1">
+                <li class="nav-item m-1 owner-filter-control">
                   <select
                     class="form-select"
                     aria-label="Default select example"
@@ -56,7 +56,7 @@
                     <option value="365">1年内</option>
                   </select>
                 </li>
-                <li class="nav-item m-1" v-if="locationOptions.length > 0">
+                <li class="nav-item m-1 owner-filter-control" v-if="locationOptions.length > 0">
                   <select
                     class="form-select"
                     aria-label="location select"
@@ -74,7 +74,7 @@
                     </option>
                   </select>
                 </li>
-                <li class="nav-item m-1">
+                <li class="nav-item m-1 owner-filter-control">
                   <select
                     class="form-select"
                     aria-label="Default select example"
@@ -88,7 +88,7 @@
                     <option value="3">字数从少到多</option>
                   </select>
                 </li>
-                <li class="nav-item m-1">
+                <li class="nav-item m-1 owner-filter-control">
                   <select
                     class="form-select"
                     aria-label="Default select example"
@@ -102,7 +102,7 @@
                     <option value="50">每页50条</option>
                   </select>
                 </li>
-                <li class="nav-item m-1">
+                <li class="nav-item m-1 owner-filter-control owner-filter-wide">
                   <div class="form-check-inline">
                     <input
                       type="checkbox"
@@ -120,7 +120,7 @@
                     </label>
                   </div>
                 </li>
-                <form class="form-inline">
+                <form class="form-inline owner-filter-actions">
                   <button
                     type="button"
                     class="btn d-none d-sm-block btn-primary m-1"
@@ -154,7 +154,9 @@
               v-on:click="switchListMode('review')"
             >
               审核队列
-              <span class="badge text-bg-light ms-1">{{ moderationCounts.blocked }}</span>
+              <span class="badge rounded-pill bg-white text-danger border border-danger ms-1">
+                {{ moderationCounts.blocked }}
+              </span>
             </button>
           </div>
         </div>
@@ -199,7 +201,7 @@
                   </a>
                   <a
                     class="btn btn-sm btn-outline-danger m-1"
-                    v-on:click="openQuestion(q.uuid)"
+                    v-on:click="prepareDeleteQuestion(q.uuid)"
                     data-bs-toggle="modal"
                     data-bs-target="#confirmDeleteModal"
                   >
@@ -207,96 +209,81 @@
                   </a>
                   <a
                     class="btn btn-sm btn-outline-info m-1"
-                    v-on:click="openQuestion(q.uuid)"
+                    v-on:click="openAnswerQuestion(q.uuid)"
                     data-bs-toggle="modal"
                     data-bs-target="#answerModal"
                   >
-                    打开
+                    详情
                   </a>
-                </div>
-                <div class="modal fade" id="confirmDeleteModal" tabindex="-1">
-                  <div class="modal-dialog modal-dialog-centered modal-sm">
-                    <div class="modal-content">
-                      <div class="modal-header">
-                        <h5 class="modal-title">确认删除？</h5>
-                      </div>
-                      <div class="modal-body">
-                        <button
-                          type="button"
-                          class="btn btn-sm btn-danger mx-1"
-                          data-bs-dismiss="modal"
-                          v-on:click="deleteQuestion()"
-                        >
-                          确认
-                        </button>
-                        <button
-                          type="button"
-                          class="btn btn-sm btn-secondary mx-1"
-                          data-bs-dismiss="modal"
-                          v-on:click="closeQuestion()"
-                        >
-                          取消
-                        </button>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-        <div class="table-responsive m-3" v-if="activeListMode === 'review'">
-          <table class="table table-sm align-middle">
-            <thead>
-              <tr>
-                <th scope="col">投稿</th>
-                <th scope="col">来源</th>
-                <th scope="col">时间</th>
-                <th scope="col" class="text-end">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="q in rows" :key="q.uuid">
-                <td style="min-width: 280px">
-                  <div class="fw-semibold">{{ digest(q.text) }}</div>
-                  <div class="small text-muted" v-if="moderationMeta(q)">
-                    {{ moderationMeta(q) }}
-                  </div>
-                </td>
-                <td>
-                  <span class="badge text-bg-warning">
-                    {{ moderationStatusLabel(q) }}
-                  </span>
-                </td>
-                <td class="text-nowrap">{{ formatTime(q.asked_at) }}</td>
-                <td class="text-end text-nowrap">
+        <div v-if="activeListMode === 'review'">
+          <div class="card shadow-lg m-3" v-if="rows.length === 0">
+            <div class="card-body text-center text-muted py-4">暂无待审核投稿</div>
+          </div>
+          <div
+            class="card shadow-lg m-3"
+            v-for="q in rows"
+            :key="q.uuid"
+            :data-review-uuid="q.uuid"
+          >
+            <div class="card-header">
+              <div class="row align-items-center">
+                <div class="col-12">
+                  投稿时间： {{ formatTime(q.asked_at) }}
+                </div>
+                <div class="col-12 mt-1 small text-muted" v-if="q.ip">
+                  IP：{{ q.ip }}
+                  <span v-if="q.ip_addr || q.ip_isp"
+                    >（{{ [q.ip_addr, q.ip_isp].filter(Boolean).join(" / ") }}）</span
+                  >
+                </div>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col-12 col-sm-9">
+                  <p class="card-text fw-semibold mb-0">
+                    {{ moderationReviewSummary(q) }}
+                  </p>
+                </div>
+                <div class="col-12 col-sm-3 mt-2 mt-sm-0">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-success m-1"
+                    v-on:click="approveQuestion(q)"
+                  >
+                    批准
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-danger m-1"
+                    v-on:click="prepareDeleteQuestion(q.uuid)"
+                    data-bs-toggle="modal"
+                    data-bs-target="#confirmDeleteModal"
+                  >
+                    删除
+                  </button>
                   <button
                     type="button"
                     class="btn btn-sm btn-outline-info m-1"
-                    v-on:click="openQuestion(q.uuid)"
+                    v-on:click="openAnswerQuestion(q.uuid)"
                     data-bs-toggle="modal"
                     data-bs-target="#answerModal"
                   >
-                    打开
+                    详情
                   </button>
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-success m-1"
-                    v-on:click="approveQuestion(q)"
-                  >
-                    通过
-                  </button>
-                </td>
-              </tr>
-              <tr v-if="rows.length === 0">
-                <td class="text-center text-muted py-4" colspan="4">暂无待审核投稿</td>
-              </tr>
-            </tbody>
-          </table>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="container">
           <div class="row">
-            <div class="col-12 p-3">
+            <div class="col-12 p-3 owner-pagination">
               <pagination
                 v-model="queryParams['page']"
                 :records="total_count"
@@ -322,6 +309,33 @@
       </div>
     </div>
 
+    <div class="modal fade" id="confirmDeleteModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">确认删除？</h5>
+          </div>
+          <div class="modal-body">
+            <button
+              type="button"
+              class="btn btn-sm btn-danger mx-1"
+              data-bs-dismiss="modal"
+              v-on:click="deleteQuestion()"
+            >
+              确认
+            </button>
+            <button
+              type="button"
+              class="btn btn-sm btn-secondary mx-1"
+              data-bs-dismiss="modal"
+              v-on:click="closeQuestion()"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="modal fade" tabindex="-1" id="answerModal">
       <div
         class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-md-down"
@@ -496,12 +510,16 @@ export default {
     },
     applyListResponse(resp) {
       const rows = resp.data.questions || [];
+      const visibleRows =
+        this.activeListMode === "review"
+          ? rows.filter((row) => row.moderation?.source !== "keyword")
+          : rows;
       this.total_count = resp.data.total;
       this.locationOptions = resp.data.location_options || [];
       this.moderationCounts = {
         blocked: resp.data.moderation_counts?.blocked || 0,
       };
-      this.rows = rows.map((row) => this.withVisitStatusColor(row));
+      this.rows = visibleRows.map((row) => this.withVisitStatusColor(row));
     },
     withVisitStatusColor(row) {
       if (row.answered_by === "manual") {
@@ -597,13 +615,15 @@ export default {
         });
     },
     deleteQuestion() {
-      const toDelete = localStorage.getItem(storagePrefix + "opened_question");
+      const toDelete =
+        this.pendingDeleteUuid || localStorage.getItem(storagePrefix + "opened_question");
       this.axios
         .delete("/api/owner/questions/" + toDelete + "/delete", {
           headers: { Authorization: `Bearer ${this.$route.query.token}` },
         })
         .then(() => {
-          localStorage.removeItem(storagePrefixAnswerView + this.uuid);
+          localStorage.removeItem(storagePrefixAnswerView + toDelete);
+          if (toDelete === this.uuid) this.uuid = "";
           this.closeQuestion();
           this.onQueryChange(false, false, false);
         })
@@ -611,11 +631,19 @@ export default {
           console.log(err.response);
         });
     },
-    openQuestion(uuid) {
-      this.uuid = uuid;
+    openAnswerQuestion(uuid) {
+      this.uuid = "";
+      this.$nextTick(() => {
+        this.uuid = uuid;
+        localStorage.setItem(storagePrefix + "opened_question", uuid);
+      });
+    },
+    prepareDeleteQuestion(uuid) {
+      this.pendingDeleteUuid = uuid;
       localStorage.setItem(storagePrefix + "opened_question", uuid);
     },
     closeQuestion() {
+      this.pendingDeleteUuid = "";
       localStorage.removeItem(storagePrefix + "opened_question");
     },
     openLiveView() {
@@ -630,19 +658,37 @@ export default {
     visitStatusColor() {
       return;
     },
-    moderationStatusLabel(q) {
-      const labels = {
-        blocked: "审核队列",
-        approved: "已通过",
-        pending: "待审核",
-      };
-      return labels[q.moderation?.status] || q.moderation?.status || "审核队列";
-    },
-    moderationMeta(q) {
+    moderationReviewSummary(q) {
       const moderation = q.moderation || {};
-      return [moderation.source, moderation.category, moderation.reason]
-        .filter(Boolean)
-        .join(" / ");
+      if (this.isChineseText(moderation.short_reason)) return moderation.short_reason;
+      return this.moderationChineseFallback(moderation);
+    },
+    moderationChineseFallback(moderation) {
+      const categoryLabels = {
+        privacy: "疑似隐私风险",
+        doxxing: "疑似人肉或隐私泄露",
+        identity_speculation: "疑似身份猜测",
+        harassment: "疑似骚扰或攻击内容",
+        threats: "疑似威胁内容",
+        spam: "疑似垃圾内容",
+        explicit_sexual_content: "疑似露骨内容",
+        fan_drama: "疑似粉圈争议引导",
+        other: "需要人工复核",
+        safe: "未发现明显风险",
+      };
+      const reasonLabels = {
+        model_reject: "需要人工复核",
+        policy_block: "触发审核策略",
+        manual: "人工审核",
+      };
+      return (
+        categoryLabels[moderation.category] ||
+        reasonLabels[moderation.reason] ||
+        "需要人工复核"
+      );
+    },
+    isChineseText(text) {
+      return /[\u3400-\u9fff]/.test(text || "");
     },
   },
   computed: {
@@ -725,6 +771,7 @@ export default {
       navbarStyling: {},
       projected_text: "",
       uuid: "",
+      pendingDeleteUuid: "",
       markedOnly: false,
       activeListMode: defaultListMode,
       moderationCounts: {
@@ -735,3 +782,56 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+@media (max-width: 575.98px) {
+  .owner-filter-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    width: 100%;
+  }
+
+  .owner-filter-control {
+    margin: 0 !important;
+    min-width: 0;
+  }
+
+  .owner-filter-control .form-select,
+  .owner-filter-control .btn {
+    width: 100%;
+  }
+
+  .owner-filter-wide,
+  .owner-filter-actions {
+    grid-column: 1 / -1;
+  }
+
+  .owner-filter-wide {
+    display: flex;
+    justify-content: center;
+  }
+
+  .owner-filter-wide .btn {
+    width: auto;
+    min-width: 9rem;
+  }
+}
+
+.owner-pagination {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.owner-pagination :deep(.VuePagination__pagination) {
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.owner-pagination :deep(.VuePagination__count) {
+  margin-bottom: 0;
+  text-align: center;
+}
+</style>

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import json
 
 import pytest
@@ -53,6 +54,7 @@ def test_llm_prompt_includes_domain_contract_terms_and_safe_fixture_layers(submi
     prompt_text = "\n".join(message["content"] for message in prompt.messages)
 
     assert prompt.prompt_version == LLM_MODERATION_PROMPT_VERSION
+    assert prompt.prompt_version == "aqbox-moderation-v4"
     assert prompt.response_format == {"type": "json_object"}
     assert prompt.max_tokens == 192
     assert prompt.policy_hash
@@ -82,14 +84,18 @@ def test_llm_prompt_includes_domain_contract_terms_and_safe_fixture_layers(submi
     ]:
         assert policy_term in prompt_text
     assert "json" in prompt_text.lower()
+    assert "12 or fewer whitespace-separated words" in prompt_text
+    assert "rationale is a safe owner-detail explanation" in prompt_text
+    assert "must not quote the submission or repeat private/sensitive tokens" in prompt_text
+    assert "Simplified Chinese" in prompt_text
     assert (
         json.dumps(
             {
                 "decision": "reject",
                 "moderation_category": "harassment",
                 "confidence": 0.92,
-                "short_reason": "Harassing or abusive submission",
-                "rationale": "The submission targets a person with abusive language.",
+                "short_reason": "疑似骚扰或攻击内容",
+                "rationale": "该投稿包含针对他人的攻击性表达，需要进入审核队列。",
             }
         )
         in prompt_text
@@ -152,6 +158,19 @@ def test_llm_policy_hash_uses_normalized_prompt_policy_not_runtime_config() -> N
     assert base_prompt.policy_hash == runtime_config_variant.policy_hash
     assert empty_prompt.policy_hash == whitespace_empty_prompt.policy_hash
     assert base_prompt.policy_hash != empty_prompt.policy_hash
+
+
+def test_llm_policy_hash_includes_output_contract_text() -> None:
+    prompt = build_llm_moderation_prompt(make_policy(policy_prompt="  local owner policy  "), "hello")
+    expected_hash_input = {
+        "prompt_version": LLM_MODERATION_PROMPT_VERSION,
+        "system_policy": prompt.messages[0]["content"],
+        "output_contract": prompt.messages[1]["content"],
+        "additive_policy": "local owner policy",
+    }
+    expected_payload = json.dumps(expected_hash_input, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+    assert prompt.policy_hash == hashlib.sha256(expected_payload).hexdigest()
 
 
 def test_parse_llm_moderation_response_accepts_strict_stop_json_object() -> None:
@@ -326,6 +345,18 @@ def test_parse_llm_moderation_response_rejects_non_stop_finish_reasons(finish_re
                     "decision": "reject",
                     "moderation_category": "spam",
                     "confidence": 0.8,
+                    "short_reason": "one two three four five six seven eight nine ten eleven twelve thirteen",
+                    "rationale": "Promotional content.",
+                }
+            ),
+            "string_too_long",
+        ),
+        (
+            json.dumps(
+                {
+                    "decision": "reject",
+                    "moderation_category": "spam",
+                    "confidence": 0.8,
                     "short_reason": "Spam",
                     "rationale": "x" * (LLM_MODERATION_RATIONALE_MAX_LENGTH + 1),
                 }
@@ -395,6 +426,34 @@ def test_parse_llm_moderation_response_rejects_sensitive_short_reason_quotes(sho
         )
 
     assert exc.value.code == "unsafe_short_reason"
+
+
+@pytest.mark.parametrize(
+    ("rationale", "original_text"),
+    [
+        ("Contains 555-123-4567 from the submission.", "please do not leak 555-123-4567 to anyone"),
+        ("Contains user@example.com from the submission.", "please do not leak user@example.com to anyone"),
+        ("Mentions @private_handle from the submission.", "is @private_handle the person's private account?"),
+        ("Quotes: private phone number", "please leak the private phone number from the chat"),
+    ],
+)
+def test_parse_llm_moderation_response_rejects_sensitive_rationale_quotes(rationale: str, original_text: str) -> None:
+    with pytest.raises(InvalidLLMModerationResponseError) as exc:
+        parse_llm_moderation_response(
+            finish_reason="stop",
+            content=json.dumps(
+                {
+                    "decision": "reject",
+                    "moderation_category": "doxxing",
+                    "confidence": 0.93,
+                    "short_reason": "Private identifying details",
+                    "rationale": rationale,
+                }
+            ),
+            original_text=original_text,
+        )
+
+    assert exc.value.code == "unsafe_rationale"
 
 
 def test_parse_llm_moderation_response_allows_exact_length_boundaries() -> None:

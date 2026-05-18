@@ -169,7 +169,8 @@ def test_llm_worker_migration_0005_is_idempotent_and_adds_queue_fields(tmp_path:
     state_columns = {row["name"] for row in db.conn.execute("PRAGMA table_info(question_moderation_state)").fetchall()}
     event_columns = {row["name"] for row in db.conn.execute("PRAGMA table_info(question_moderation_event)").fetchall()}
 
-    assert first[-1] == "0005_llm_moderation_worker_fields"
+    assert "0005_llm_moderation_worker_fields" in first
+    assert first[-1] == "0006_deletion_provenance"
     assert db.applied_migrations() == first
     assert {
         "attempt_count",
@@ -214,10 +215,9 @@ def test_llm_enabled_submit_inserts_pending_atomically_and_keyword_skip_still_bl
         "SELECT status, source, reason, attempt_count, next_attempt_at FROM question_moderation_state WHERE uuid = ?",
         (pending_uuid,),
     ).fetchone()
-    keyword_state = db.conn.execute(
-        "SELECT status, source, reason FROM question_moderation_state WHERE uuid = ?",
-        (keyword_uuid,),
-    ).fetchone()
+    keyword_row = db.conn.execute("SELECT asked_at, deleted_at FROM question WHERE uuid = ?", (keyword_uuid,)).fetchone()
+    keyword_state = db.conn.execute("SELECT 1 FROM question_moderation_state WHERE uuid = ?", (keyword_uuid,)).fetchone()
+    keyword_events = db.conn.execute("SELECT 1 FROM question_moderation_event WHERE uuid = ?", (keyword_uuid,)).fetchall()
     events = db.conn.execute(
         "SELECT event_type, status, source, reason FROM question_moderation_event WHERE uuid = ? ORDER BY id",
         (pending_uuid,),
@@ -232,7 +232,9 @@ def test_llm_enabled_submit_inserts_pending_atomically_and_keyword_skip_still_bl
     }
     assert pending_state["next_attempt_at"] is not None
     assert [tuple(row) for row in events] == [("queued", "pending", "llm", "queued")]
-    assert dict(keyword_state) == {"status": "blocked", "source": "keyword", "reason": "keyword"}
+    assert keyword_row["deleted_at"] == keyword_row["asked_at"]
+    assert keyword_state is None
+    assert keyword_events == []
 
 
 def test_worker_accepts_safe_pending_submission_and_normal_visibility_returns(tmp_path: Path) -> None:
@@ -320,6 +322,8 @@ def test_worker_rejects_to_review_queue_with_threshold_and_review_all_framing(
         )
     assert review.json()["total"] == 1
     assert review.json()["questions"][0]["uuid"] == uuid
+    assert review.json()["questions"][0]["moderation"]["short_reason"] == "Harassing submission"
+    assert review.json()["questions"][0]["moderation"]["rationale"] == "The submission is abusive."
 
 
 def test_worker_provider_error_and_invalid_response_exhaust_to_llm_error_review(tmp_path: Path) -> None:

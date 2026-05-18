@@ -9,8 +9,9 @@ from typing import Any, Literal, cast
 
 from .config import LLMModerationPolicy
 
-LLM_MODERATION_PROMPT_VERSION = "aqbox-moderation-v1"
+LLM_MODERATION_PROMPT_VERSION = "aqbox-moderation-v4"
 LLM_MODERATION_SHORT_REASON_MAX_LENGTH = 120
+LLM_MODERATION_SHORT_REASON_MAX_WORDS = 12
 LLM_MODERATION_RATIONALE_MAX_LENGTH = 800
 
 LLM_MODERATION_CATEGORIES = frozenset(
@@ -97,22 +98,25 @@ def llm_policy_for(settings: Any, owner: str, qtype: str) -> LLMModerationPolicy
 def build_llm_moderation_prompt(policy: LLMModerationPolicy, submission_text: str) -> LLMModerationPrompt:
     """Construct the provider-ready prompt boundary without secrets or requester metadata."""
     additive_policy = _normalized_additive_policy(policy.policy_prompt)
-    policy_hash = _llm_policy_hash(additive_policy)
     example_output = json.dumps(
         {
             "decision": "reject",
             "moderation_category": "harassment",
             "confidence": 0.92,
-            "short_reason": "Harassing or abusive submission",
-            "rationale": "The submission targets a person with abusive language.",
+            "short_reason": "疑似骚扰或攻击内容",
+            "rationale": "该投稿包含针对他人的攻击性表达，需要进入审核队列。",
         }
     )
     output_contract = (
         "Return json only, as one strict JSON object with exactly these fields: decision, moderation_category, "
         "confidence, short_reason, rationale. decision must be accept or reject. confidence must be a number from "
-        "0.0 to 1.0. short_reason is a safe owner-list reason and must not quote the submission. Example JSON object: "
+        "0.0 to 1.0. short_reason is a safe owner-list reason, must be 12 or fewer whitespace-separated words, "
+        "and must not quote the submission. rationale is a safe owner-detail explanation and must not quote the "
+        "submission or repeat private/sensitive tokens from it. short_reason and rationale must be written in "
+        "Simplified Chinese for the owner console. Example JSON object: "
         f"{example_output}"
     )
+    policy_hash = _llm_policy_hash(additive_policy, output_contract)
     owner_policy = (
         f"Additional owner/question-type policy: owner {policy.owner!r}, question type {policy.question_type!r}: {additive_policy}"
     )
@@ -187,10 +191,14 @@ def parse_llm_moderation_response(
         raise InvalidLLMModerationResponseError("schema_mismatch", "LLM response reasons must be strings")
     if not short_reason.strip() or not rationale.strip():
         raise InvalidLLMModerationResponseError("schema_mismatch", "LLM response reasons must be non-empty strings")
+    if len(short_reason.strip().split()) > LLM_MODERATION_SHORT_REASON_MAX_WORDS:
+        raise InvalidLLMModerationResponseError("string_too_long", "LLM response short_reason exceeded word limit")
     if len(short_reason) > LLM_MODERATION_SHORT_REASON_MAX_LENGTH or len(rationale) > LLM_MODERATION_RATIONALE_MAX_LENGTH:
         raise InvalidLLMModerationResponseError("string_too_long", "LLM response reason text exceeded length limits")
-    if original_text and _short_reason_leaks_original_text(short_reason, original_text):
+    if original_text and _reason_leaks_original_text(short_reason, original_text):
         raise InvalidLLMModerationResponseError("unsafe_short_reason", "LLM response short_reason quoted the original submission")
+    if original_text and _reason_leaks_original_text(rationale, original_text):
+        raise InvalidLLMModerationResponseError("unsafe_rationale", "LLM response rationale quoted the original submission")
 
     return ParsedLLMModerationResponse(
         decision=cast("Literal['accept', 'reject']", decision),
@@ -205,10 +213,11 @@ def _normalized_additive_policy(policy_prompt: str) -> str:
     return policy_prompt.strip() or _DEFAULT_ADDITIVE_POLICY
 
 
-def _llm_policy_hash(additive_policy: str) -> str:
+def _llm_policy_hash(additive_policy: str, output_contract: str) -> str:
     hash_input = {
         "prompt_version": LLM_MODERATION_PROMPT_VERSION,
         "system_policy": _SYSTEM_POLICY,
+        "output_contract": output_contract,
         "additive_policy": additive_policy,
     }
     payload = json.dumps(hash_input, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -238,22 +247,22 @@ def _strict_json_object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def _short_reason_leaks_original_text(short_reason: str, original_text: str) -> bool:
-    normalized_reason = " ".join(short_reason.lower().split())
+def _reason_leaks_original_text(reason_text: str, original_text: str) -> bool:
+    normalized_reason = " ".join(reason_text.lower().split())
     normalized_original = " ".join(original_text.lower().split())
     if normalized_original and len(normalized_original) >= 12 and normalized_original in normalized_reason:
         return True
-    if _contains_shared_sensitive_token(short_reason, original_text):
+    if _contains_shared_sensitive_token(reason_text, original_text):
         return True
     return _contains_long_shared_substring(normalized_reason, normalized_original)
 
 
-def _contains_shared_sensitive_token(short_reason: str, original_text: str) -> bool:
+def _contains_shared_sensitive_token(reason_text: str, original_text: str) -> bool:
     for pattern in (_EMAIL_RE, _URL_RE, _HANDLE_RE, _LONG_NUMERIC_RE, _PHONE_RE):
         original_tokens = {_normalize_sensitive_token(match.group(0)) for match in pattern.finditer(original_text)}
         if not original_tokens:
             continue
-        reason_tokens = {_normalize_sensitive_token(match.group(0)) for match in pattern.finditer(short_reason)}
+        reason_tokens = {_normalize_sensitive_token(match.group(0)) for match in pattern.finditer(reason_text)}
         if original_tokens & reason_tokens:
             return True
     return False
