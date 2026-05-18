@@ -133,11 +133,12 @@ async function gotoWithQuestionTypeStorage(page, url, type) {
   await page.goto(url);
 }
 
-async function gotoOwnerWithoutSavedLocation(page, url, type) {
+async function gotoOwnerWithStaleLocationStorage(page, url, type) {
   await page.goto(baseUrl);
   await page.evaluate((selectedType) => {
     localStorage.clear();
     localStorage.setItem("ownerView_type", selectedType);
+    localStorage.setItem("ownerView_ip_addr", "stale smoke region");
   }, type);
   const responsePromise = page.waitForResponse(
     (resp) => resp.url().includes("/api/owner/questions") && resp.request().method() === "POST",
@@ -147,7 +148,7 @@ async function gotoOwnerWithoutSavedLocation(page, url, type) {
   const resp = await responsePromise;
   const body = JSON.parse(resp.request().postData() || "{}");
   if (body.ip_addr !== "") {
-    throw new Error(`Owner console without saved location did not default to all regions: ${body.ip_addr}`);
+    throw new Error(`Owner console defaulted to stale location filter: ${body.ip_addr}`);
   }
 }
 
@@ -240,7 +241,7 @@ async function main() {
     const askerUrl = page.url();
     if (!askerUrl.includes("token=")) throw new Error("Submission URL does not include asker token");
 
-    await gotoOwnerWithoutSavedLocation(page, `${baseUrl}/#/owner/${owner}/dashboard?token=${ownerToken}`, type);
+    await gotoOwnerWithStaleLocationStorage(page, `${baseUrl}/#/owner/${owner}/dashboard?token=${ownerToken}`, type);
     await page.getByText(unique).waitFor({ timeout: 10_000 });
 
     await Promise.all([waitForOwnerList(page), page.locator("#reply_status").selectOption("-1")]);

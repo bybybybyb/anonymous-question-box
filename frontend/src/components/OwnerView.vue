@@ -324,6 +324,7 @@ import ImageDisplay from "./ImageDisplay.vue";
 import { Modal } from "bootstrap";
 const storagePrefix = "ownerView_";
 const storagePrefixAnswerView = "AnswerView_draft_";
+const transientQueryParamKeys = new Set(["ip_addr"]);
 const orderDirection = [
   { by: "asked_at", reversed: true },
   { by: "asked_at", reversed: false },
@@ -433,6 +434,10 @@ export default {
 
       for (var key in this.queryParams) {
         if (this.queryParams.hasOwnProperty(key)) {
+          if (transientQueryParamKeys.has(key)) {
+            localStorage.removeItem(storagePrefix + key);
+            continue;
+          }
           localStorage.setItem(storagePrefix + key, this.queryParams[key]);
         }
       }
@@ -547,6 +552,10 @@ export default {
     // try reading query params from local storage
     for (var key in this.queryParams) {
       if (this.queryParams.hasOwnProperty(key)) {
+        if (transientQueryParamKeys.has(key)) {
+          localStorage.removeItem(storagePrefix + key);
+          continue;
+        }
         let localVal = localStorage.getItem(storagePrefix + key);
         if (localVal && localVal !== "") {
           const parsedInt = parseInt(localVal);
