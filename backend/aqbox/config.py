@@ -110,7 +110,6 @@ class LLMModerationPolicy:
     model: str
     api_key_env: str
     api_key_value: str = field(repr=False)
-    allow_config_api_key: bool
     high_confidence_reject_threshold: float
     review_all_model_rejects: bool
     max_attempts: int
@@ -122,9 +121,7 @@ class LLMModerationPolicy:
         env_key = os.environ.get(self.api_key_env, "") if self.api_key_env else ""
         if env_key:
             return env_key
-        if self.allow_config_api_key:
-            return self.api_key_value
-        return ""
+        return self.api_key_value
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,7 +132,6 @@ class LLMModerationConfig:
     model: str = "deepseek-v4-flash"
     api_key_env: str = "DEEPSEEK_API_KEY"
     api_key_value: str = field(default="", repr=False)
-    allow_config_api_key: bool = False
     high_confidence_reject_threshold: float = 0.85
     review_all_model_rejects: bool = True
     max_attempts: int = 2
@@ -151,9 +147,7 @@ class LLMModerationConfig:
         env_key = os.environ.get(self.api_key_env, "") if self.api_key_env else ""
         if env_key:
             return env_key
-        if self.allow_config_api_key:
-            return self.api_key_value
-        return ""
+        return self.api_key_value
 
     def policy_for(self, owner: str, qtype: str) -> LLMModerationPolicy | None:
         if not self.enabled:
@@ -169,8 +163,7 @@ class LLMModerationConfig:
             base_url=self.base_url,
             model=self.model,
             api_key_env=self.api_key_env,
-            api_key_value=self.api_key_value if self.allow_config_api_key else "",
-            allow_config_api_key=self.allow_config_api_key,
+            api_key_value=self.api_key_value,
             high_confidence_reject_threshold=self.high_confidence_reject_threshold,
             review_all_model_rejects=self.review_all_model_rejects,
             max_attempts=self.max_attempts,
@@ -186,7 +179,6 @@ class LLMModerationConfig:
             "base_url": self.base_url,
             "model": self.model,
             "api_key_env": self.api_key_env,
-            "allow_config_api_key": self.allow_config_api_key,
             "api_key_configured": bool(self.api_key()),
             "high_confidence_reject_threshold": self.high_confidence_reject_threshold,
             "review_all_model_rejects": self.review_all_model_rejects,
@@ -240,7 +232,6 @@ def _parse_llm_moderation_config(raw: dict[str, Any]) -> LLMModerationConfig:
         model=str(raw.get("model") or "deepseek-v4-flash"),
         api_key_env=api_key_env,
         api_key_value=str(raw.get("api_key") or ""),
-        allow_config_api_key=_as_bool(raw.get("allow_config_api_key"), default=False, field_name="llm_filter.allow_config_api_key"),
         high_confidence_reject_threshold=_as_probability(
             raw.get("high_confidence_reject_threshold", raw.get("confidence_threshold")),
             default=0.85,

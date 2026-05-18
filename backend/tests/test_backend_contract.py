@@ -1052,16 +1052,9 @@ def test_llm_moderation_config_requires_global_and_type_enablement(tmp_path: Pat
     assert enabled_policy.initial_backoff_seconds == 1.0
 
     monkeypatch.delenv("AQBOX_TEST_LLM_KEY")
-    assert enabled_policy.api_key() == ""
+    assert enabled_policy.api_key() == "config-fallback-secret"
     assert loaded.llm_moderation.policy_for("owner", "disabled") is None
     assert loaded.llm_moderation.policy_for("owner", "missing") is None
-
-    payload["llm_filter"]["allow_config_api_key"] = True
-    write_config(config_path, payload)
-    local_dev_fallback = load_settings(str(config_path))
-    fallback_policy = local_dev_fallback.llm_moderation.policy_for("owner", "type")
-    assert fallback_policy is not None
-    assert fallback_policy.api_key() == "config-fallback-secret"
 
     payload["llm_filter"]["enabled"] = False
     write_config(config_path, payload)
@@ -1082,7 +1075,7 @@ def test_direct_settings_llm_filter_derives_typed_config() -> None:
     assert policy.policy_prompt == "direct"
 
 
-def test_llm_policy_repr_redacts_config_api_key_and_copies_only_when_allowed(tmp_path: Path) -> None:
+def test_llm_policy_uses_config_api_key_fallback_and_redacts_repr(tmp_path: Path) -> None:
     config_path = tmp_path / "config.yaml"
     payload = config_payload(
         tmp_path,
@@ -1096,17 +1089,9 @@ def test_llm_policy_repr_redacts_config_api_key_and_copies_only_when_allowed(tmp
 
     policy = load_settings(str(config_path)).llm_moderation.policy_for("owner", "type")
     assert policy is not None
-    assert policy.api_key() == ""
-    assert policy.api_key_value == ""
+    assert policy.api_key() == "config-fallback-secret"
+    assert policy.api_key_value == "config-fallback-secret"
     assert "config-fallback-secret" not in repr(policy)
-
-    payload["llm_filter"]["allow_config_api_key"] = True
-    write_config(config_path, payload)
-    allowed_policy = load_settings(str(config_path)).llm_moderation.policy_for("owner", "type")
-    assert allowed_policy is not None
-    assert allowed_policy.api_key() == "config-fallback-secret"
-    assert allowed_policy.api_key_value == "config-fallback-secret"
-    assert "config-fallback-secret" not in repr(allowed_policy)
 
 
 def test_llm_config_and_settings_repr_redact_raw_api_key(tmp_path: Path) -> None:
@@ -1276,7 +1261,6 @@ def test_ops_config_redacts_llm_api_keys_from_env_and_config(tmp_path: Path, mon
 
     assert cfg.status_code == 200
     assert cfg.json()["llm_filter"]["api_key_configured"] is True
-    assert cfg.json()["llm_filter"]["allow_config_api_key"] is False
     assert cfg.json()["llm_filter"]["timeout_seconds"] == 10.0
     assert cfg.json()["llm_filter"]["max_tokens"] == 256
     assert cfg.json()["llm_filter"]["initial_backoff_seconds"] == 1.0

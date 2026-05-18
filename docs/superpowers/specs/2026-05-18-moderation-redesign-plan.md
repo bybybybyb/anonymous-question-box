@@ -225,7 +225,7 @@ Rejected alternative:
 - Add typed config parsing for LLM moderation while keeping raw YAML backward-compatible:
   - global provider settings: provider name, base URL, model, timeout, max tokens, confidence thresholds, max attempts, backoff, raw-retention settings;
   - per owner/question-type opt-in and additive policy prompt;
-  - API key resolution from environment first, config fallback only for local/dev.
+  - API key resolution from environment first, config fallback second; config files stay local/runtime-only and all ops/repr surfaces must redact key values.
 - Require both global `llm_filter.enabled` and per owner/question-type `enabled: true`; keep missing or disabled policy disabled for that owner/type.
 - Support empty additive policy text only when the per-type config is explicitly enabled; do not infer enablement from a provider key alone.
 - Use a sample shape like:
