@@ -22,6 +22,20 @@ uv run ruff format --check backend
 uv run mypy backend/aqbox
 ```
 
+## Nginx Log Backfill
+
+Historical submissions created before IP capture can be backfilled from nginx access logs. Always dry-run first:
+
+```bash
+uv run python backend/tools/backfill_nginx_ips.py \
+  --db test/anonymous_qbox_prod.db \
+  --log /path/to/nginx/logs \
+  --config backend/config/config.prod.local.yaml \
+  --require-followup-get
+```
+
+The tool only matches successful submit logs to a single nearby `question.asked_at` row. Ambiguous timestamp clusters are reported and skipped. Add `--apply` only after reviewing the dry-run report.
+
 ## Notes
 
 - Legacy routes preserve `{"error": "..."}` envelopes rather than FastAPI's default 422 body.
