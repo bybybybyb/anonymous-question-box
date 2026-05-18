@@ -1042,9 +1042,16 @@ def test_llm_moderation_config_requires_global_and_type_enablement(tmp_path: Pat
     assert loaded.llm_moderation.max_attempts == 2
 
     monkeypatch.delenv("AQBOX_TEST_LLM_KEY")
-    assert enabled_policy.api_key() == "config-fallback-secret"
+    assert enabled_policy.api_key() == ""
     assert loaded.llm_moderation.policy_for("owner", "disabled") is None
     assert loaded.llm_moderation.policy_for("owner", "missing") is None
+
+    payload["llm_filter"]["allow_config_api_key"] = True
+    write_config(config_path, payload)
+    local_dev_fallback = load_settings(str(config_path))
+    fallback_policy = local_dev_fallback.llm_moderation.policy_for("owner", "type")
+    assert fallback_policy is not None
+    assert fallback_policy.api_key() == "config-fallback-secret"
 
     payload["llm_filter"]["enabled"] = False
     write_config(config_path, payload)
@@ -1092,6 +1099,7 @@ def test_ops_config_redacts_llm_api_keys_from_env_and_config(tmp_path: Path, mon
 
     assert cfg.status_code == 200
     assert cfg.json()["llm_filter"]["api_key_configured"] is True
+    assert cfg.json()["llm_filter"]["allow_config_api_key"] is False
     assert "env-secret-value" not in cfg.text
     assert "config-fallback-secret" not in cfg.text
 
