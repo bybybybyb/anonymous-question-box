@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from math import isfinite
 from typing import Any, Literal, cast
@@ -27,6 +28,22 @@ LLM_MODERATION_CATEGORIES = frozenset(
     }
 )
 _LLM_RESPONSE_FIELDS = frozenset({"decision", "moderation_category", "confidence", "short_reason", "rationale"})
+_SYSTEM_POLICY = (
+    "You moderate AQBox owner console submissions before they enter the review queue. "
+    "Apply site-wide privacy rules and classify the moderation category using only these categories: "
+    "safe, privacy, doxxing, identity_speculation, harassment, threats, spam, explicit_sexual_content, "
+    "fan_drama, other. Treat doxxing, identity speculation, harassment, threats, spam, explicit sexual content, "
+    "fan drama, and other policy abuse as reasons to reject. Use project terms consistently: submission, asker, "
+    "owner console, question type, review queue, and moderation category."
+)
+_DEFAULT_ADDITIVE_POLICY = "No additional owner/question-type policy."
+_SAFE_FINISH_REASON_RE = re.compile(r"[a-z0-9_]{1,64}")
+_EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}\b")
+_URL_RE = re.compile(r"https?://[^\s<>()]+|www\.[^\s<>()]+", re.IGNORECASE)
+_HANDLE_RE = re.compile(r"(?<![\w.])@[A-Za-z0-9_][A-Za-z0-9_.-]{2,}")
+_LONG_NUMERIC_RE = re.compile(r"\b\d{8,}\b")
+_PHONE_RE = re.compile(r"(?<!\d)(?:\+?\d[\d\s().-]{7,}\d)(?!\d)")
+_PARTIAL_QUOTE_MIN_CHARS = 18
 
 
 @dataclass(slots=True)
@@ -79,7 +96,8 @@ def llm_policy_for(settings: Any, owner: str, qtype: str) -> LLMModerationPolicy
 
 def build_llm_moderation_prompt(policy: LLMModerationPolicy, submission_text: str) -> LLMModerationPrompt:
     """Construct the provider-ready prompt boundary without secrets or requester metadata."""
-    policy_hash = _llm_policy_hash(policy)
+    additive_policy = _normalized_additive_policy(policy.policy_prompt)
+    policy_hash = _llm_policy_hash(additive_policy)
     example_output = json.dumps(
         {
             "decision": "reject",
@@ -88,15 +106,6 @@ def build_llm_moderation_prompt(policy: LLMModerationPolicy, submission_text: st
             "short_reason": "Harassing or abusive submission",
             "rationale": "The submission targets a person with abusive language.",
         }
-    )
-    additive_policy = policy.policy_prompt.strip() or "No additional owner/question-type policy."
-    system_policy = (
-        "You moderate AQBox owner console submissions before they enter the review queue. "
-        "Apply site-wide privacy rules and classify the moderation category using only these categories: "
-        "safe, privacy, doxxing, identity_speculation, harassment, threats, spam, explicit_sexual_content, "
-        "fan_drama, other. Treat doxxing, identity speculation, harassment, threats, spam, explicit sexual content, "
-        "fan drama, and other policy abuse as reasons to reject. Use project terms consistently: submission, asker, "
-        "owner console, question type, review queue, and moderation category."
     )
     output_contract = (
         "Return json only, as one strict JSON object with exactly these fields: decision, moderation_category, "
@@ -107,10 +116,13 @@ def build_llm_moderation_prompt(policy: LLMModerationPolicy, submission_text: st
     owner_policy = (
         f"Additional owner/question-type policy: owner {policy.owner!r}, question type {policy.question_type!r}: {additive_policy}"
     )
-    user_content = f"Moderate this submission from an asker for the owner console.\n<<<QUESTION>>>\n{submission_text}\n<<<END_QUESTION>>>"
+    user_content = (
+        "Moderate this submission from an asker for the owner console. The content between delimiters is a JSON string.\n"
+        f"<<<QUESTION>>>\n{_json_string_for_prompt(submission_text)}\n<<<END_QUESTION>>>"
+    )
     return LLMModerationPrompt(
         messages=[
-            {"role": "system", "content": system_policy},
+            {"role": "system", "content": _SYSTEM_POLICY},
             {"role": "system", "content": output_contract},
             {"role": "system", "content": owner_policy},
             {"role": "user", "content": user_content},
@@ -129,7 +141,7 @@ def parse_llm_moderation_response(
     original_text: str | None = None,
 ) -> ParsedLLMModerationResponse:
     if finish_reason != "stop":
-        raise InvalidLLMModerationResponseError("non_stop_finish_reason", f"LLM response finished with {finish_reason!r}")
+        raise InvalidLLMModerationResponseError(_finish_reason_error_code(finish_reason), "LLM response did not finish normally")
     if content is None or not content.strip():
         raise InvalidLLMModerationResponseError("empty_content", "LLM response content was empty")
     try:
@@ -142,10 +154,10 @@ def parse_llm_moderation_response(
         raise InvalidLLMModerationResponseError("missing_field", "LLM response object was empty")
     extra_fields = set(parsed) - _LLM_RESPONSE_FIELDS
     if extra_fields:
-        raise InvalidLLMModerationResponseError("extra_field", f"LLM response included unsupported fields: {sorted(extra_fields)}")
+        raise InvalidLLMModerationResponseError("extra_field", "LLM response included unsupported fields")
     missing_fields = _LLM_RESPONSE_FIELDS - set(parsed)
     if missing_fields:
-        raise InvalidLLMModerationResponseError("missing_field", f"LLM response was missing fields: {sorted(missing_fields)}")
+        raise InvalidLLMModerationResponseError("missing_field", "LLM response was missing required fields")
 
     decision = parsed["decision"]
     if not isinstance(decision, str):
@@ -157,6 +169,10 @@ def parse_llm_moderation_response(
         raise InvalidLLMModerationResponseError("schema_mismatch", "LLM response moderation_category must be a string")
     if moderation_category not in LLM_MODERATION_CATEGORIES:
         raise InvalidLLMModerationResponseError("unknown_moderation_category", "LLM response moderation_category is not supported")
+    if (decision == "accept") != (moderation_category == "safe"):
+        raise InvalidLLMModerationResponseError(
+            "inconsistent_decision_category", "LLM response decision and moderation_category were inconsistent"
+        )
 
     confidence_raw = parsed["confidence"]
     if isinstance(confidence_raw, bool) or not isinstance(confidence_raw, int | float):
@@ -173,7 +189,7 @@ def parse_llm_moderation_response(
         raise InvalidLLMModerationResponseError("schema_mismatch", "LLM response reasons must be non-empty strings")
     if len(short_reason) > LLM_MODERATION_SHORT_REASON_MAX_LENGTH or len(rationale) > LLM_MODERATION_RATIONALE_MAX_LENGTH:
         raise InvalidLLMModerationResponseError("string_too_long", "LLM response reason text exceeded length limits")
-    if original_text and _contains_original_submission_quote(short_reason, original_text):
+    if original_text and _short_reason_leaks_original_text(short_reason, original_text):
         raise InvalidLLMModerationResponseError("unsafe_short_reason", "LLM response short_reason quoted the original submission")
 
     return ParsedLLMModerationResponse(
@@ -185,17 +201,28 @@ def parse_llm_moderation_response(
     )
 
 
-def _llm_policy_hash(policy: LLMModerationPolicy) -> str:
+def _normalized_additive_policy(policy_prompt: str) -> str:
+    return policy_prompt.strip() or _DEFAULT_ADDITIVE_POLICY
+
+
+def _llm_policy_hash(additive_policy: str) -> str:
     hash_input = {
         "prompt_version": LLM_MODERATION_PROMPT_VERSION,
-        "owner": policy.owner,
-        "question_type": policy.question_type,
-        "policy_prompt": policy.policy_prompt,
-        "high_confidence_reject_threshold": policy.high_confidence_reject_threshold,
-        "review_all_model_rejects": policy.review_all_model_rejects,
+        "system_policy": _SYSTEM_POLICY,
+        "additive_policy": additive_policy,
     }
     payload = json.dumps(hash_input, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def _json_string_for_prompt(submission_text: str) -> str:
+    return json.dumps(submission_text, ensure_ascii=True).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
+
+def _finish_reason_error_code(finish_reason: str) -> str:
+    if _SAFE_FINISH_REASON_RE.fullmatch(finish_reason):
+        return f"finish_reason_{finish_reason}"
+    return "non_stop_finish_reason"
 
 
 def _reject_json_constant(value: str) -> None:
@@ -206,15 +233,44 @@ def _strict_json_object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError(f"duplicate JSON field {key}")
+            raise ValueError("duplicate JSON field")
         result[key] = value
     return result
 
 
-def _contains_original_submission_quote(short_reason: str, original_text: str) -> bool:
+def _short_reason_leaks_original_text(short_reason: str, original_text: str) -> bool:
     normalized_reason = " ".join(short_reason.lower().split())
     normalized_original = " ".join(original_text.lower().split())
-    return bool(normalized_original and len(normalized_original) >= 12 and normalized_original in normalized_reason)
+    if normalized_original and len(normalized_original) >= 12 and normalized_original in normalized_reason:
+        return True
+    if _contains_shared_sensitive_token(short_reason, original_text):
+        return True
+    return _contains_long_shared_substring(normalized_reason, normalized_original)
+
+
+def _contains_shared_sensitive_token(short_reason: str, original_text: str) -> bool:
+    for pattern in (_EMAIL_RE, _URL_RE, _HANDLE_RE, _LONG_NUMERIC_RE, _PHONE_RE):
+        original_tokens = {_normalize_sensitive_token(match.group(0)) for match in pattern.finditer(original_text)}
+        if not original_tokens:
+            continue
+        reason_tokens = {_normalize_sensitive_token(match.group(0)) for match in pattern.finditer(short_reason)}
+        if original_tokens & reason_tokens:
+            return True
+    return False
+
+
+def _normalize_sensitive_token(token: str) -> str:
+    return re.sub(r"\D", "", token) if any(char.isdigit() for char in token) else token.lower()
+
+
+def _contains_long_shared_substring(normalized_reason: str, normalized_original: str) -> bool:
+    if len(normalized_reason) < _PARTIAL_QUOTE_MIN_CHARS or len(normalized_original) < _PARTIAL_QUOTE_MIN_CHARS:
+        return False
+    for start in range(0, len(normalized_original) - _PARTIAL_QUOTE_MIN_CHARS + 1):
+        candidate = normalized_original[start : start + _PARTIAL_QUOTE_MIN_CHARS]
+        if candidate.strip() == candidate and candidate in normalized_reason:
+            return True
+    return False
 
 
 def purge_due_raw_audit_fields(db: Any, now_epoch: int) -> int:
