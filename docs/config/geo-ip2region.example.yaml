@@ -1,0 +1,16 @@
+# Example geolocation settings.
+#
+# Copy these keys into the real backend config. Do not point production at
+# temporary paths such as /private/tmp; use a durable versioned location so
+# xdb updates are explicit and reversible.
+
+geo_enabled: true
+trusted_proxy_cidrs:
+  - 127.0.0.1/32
+  - ::1/128
+  # Add the nginx/load-balancer peer CIDR here, for example:
+  # - 10.0.0.0/8
+
+ip2region_ipv4_xdb_path: /opt/aqbox/ip2region/2026-05/ip2region_v4.xdb
+ip2region_ipv6_xdb_path: /opt/aqbox/ip2region/2026-05/ip2region_v6.xdb
+ip2region_cache_policy: vectorIndex

@@ -3,7 +3,9 @@
   "version": "0.0.0",
   "scripts": {
     "dev": "vite --port 80",
-    "build": "vite build"
+    "build": "vite build",
+    "e2e:smoke": "node e2e/owner-smoke.cjs",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@popperjs/core": "^2.11.2",
@@ -26,7 +28,12 @@
     "vue-router": "^4.0.13"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/js-yaml": "^4.0.5",
+    "eslint": "^10.4.0",
+    "eslint-plugin-vue": "^10.9.1",
+    "globals": "^17.6.0",
+    "playwright": "^1.60.0",
     "sass": "^1.49.9",
     "snowpack": "^3.8.8",
     "vite": "^2.8.6"

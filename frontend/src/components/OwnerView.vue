@@ -56,6 +56,24 @@
                     <option value="365">1年内</option>
                   </select>
                 </li>
+                <li class="nav-item m-1" v-if="locationOptions.length > 0">
+                  <select
+                    class="form-select"
+                    aria-label="location select"
+                    id="location_addr"
+                    v-on:change="onQueryChange(true)"
+                    v-model="queryParams['ip_addr']"
+                  >
+                    <option value="">全部地区</option>
+                    <option
+                      v-for="option in locationOptions"
+                      v-bind:key="option.addr"
+                      :value="option.addr"
+                    >
+                      {{ option.label }}（{{ option.count }}）
+                    </option>
+                  </select>
+                </li>
                 <li class="nav-item m-1">
                   <select
                     class="form-select"
@@ -74,7 +92,7 @@
                   <select
                     class="form-select"
                     aria-label="Default select example"
-                    id="order"
+                    id="page_size"
                     v-on:change="onQueryChange(true)"
                     v-model="queryParams['page_size']"
                   >
@@ -126,6 +144,12 @@
               </div>
               <div class="col-12 col-md-5" :style="q.visit_status_color">
                 回复时间： {{ formatTime(q.answered_at) }}
+              </div>
+              <div class="col-12 mt-1 small text-muted" v-if="q.ip">
+                IP：{{ q.ip }}
+                <span v-if="q.ip_addr || q.ip_isp"
+                  >（{{ [q.ip_addr, q.ip_isp].filter(Boolean).join(" / ") }}）</span
+                >
               </div>
             </div>
           </div>
@@ -300,12 +324,15 @@ import ImageDisplay from "./ImageDisplay.vue";
 import { Modal } from "bootstrap";
 const storagePrefix = "ownerView_";
 const storagePrefixAnswerView = "AnswerView_draft_";
+// Location options are per owner/type and can be empty for historical rows, so never persist them across boxes.
+const transientQueryParamKeys = new Set(["ip_addr"]);
 const orderDirection = [
   { by: "asked_at", reversed: true },
   { by: "asked_at", reversed: false },
   { by: "word_count", reversed: true },
   { by: "word_count", reversed: false },
 ];
+const queryDebounceMs = 200;
 
 export default {
   name: "OwnerView",
@@ -324,7 +351,16 @@ export default {
       Modal.getOrCreateInstance(document.querySelector("#answerModal")).hide();
       Modal.getOrCreateInstance(document.querySelector("#imgModal")).show();
     },
-    onQueryChange(resetPage, needRetry = false) {
+    onQueryChange(resetPage, needRetry = false, debounce = true) {
+      if (debounce) {
+        clearTimeout(this.queryDebounceTimer);
+        this.queryDebounceTimer = setTimeout(
+          () => this.onQueryChange(resetPage, needRetry, false),
+          queryDebounceMs
+        );
+        return;
+      }
+      clearTimeout(this.queryDebounceTimer);
       if (resetPage) this.queryParams["page"] = 1;
       this.axios
         .post(
@@ -340,6 +376,7 @@ export default {
             marked: this.markedOnly,
             reply_status: +this.queryParams["reply_status"],
             day_limit: +this.queryParams["day_limit"],
+            ip_addr: this.queryParams["ip_addr"],
             page_size: +this.queryParams["page_size"],
             page: +this.queryParams["page"],
           },
@@ -350,6 +387,7 @@ export default {
         .then((resp) => {
           const rows = resp.data.questions;
           this.total_count = resp.data.total;
+          this.locationOptions = resp.data.location_options || [];
           for (let row of rows) {
             if (row.answered_by === "manual") {
               if (row.visit_count > 0) {
@@ -383,10 +421,11 @@ export default {
                 order_params_index: 0,
                 reply_status: 0,
                 day_limit: 7,
+                ip_addr: "",
                 page_size: 5,
                 page: 1,
               };
-              this.onQueryChange(false, false);
+              this.onQueryChange(false, false, false);
             } else {
               alert("提问箱好像坏掉了，直接ping管理员吧！");
               this.$router.push("/");
@@ -396,6 +435,10 @@ export default {
 
       for (var key in this.queryParams) {
         if (this.queryParams.hasOwnProperty(key)) {
+          if (transientQueryParamKeys.has(key)) {
+            localStorage.removeItem(storagePrefix + key);
+            continue;
+          }
           localStorage.setItem(storagePrefix + key, this.queryParams[key]);
         }
       }
@@ -403,7 +446,7 @@ export default {
     markQuestion(q) {
       this.axios
         .put(
-          "api/owner/questions/" + q.uuid + "/mark",
+          "/api/owner/questions/" + q.uuid + "/mark",
           {
             owner: q.owner,
             type: q.type,
@@ -413,8 +456,8 @@ export default {
             headers: { Authorization: `Bearer ${this.$route.query.token}` },
           }
         )
-        .then((resp) => {
-          this.onQueryChange(true);
+        .then(() => {
+          this.onQueryChange(true, false, false);
         })
         .catch((err) => {
           console.log(err.response);
@@ -433,13 +476,13 @@ export default {
     deleteQuestion() {
       const toDelete = localStorage.getItem(storagePrefix + "opened_question");
       this.axios
-        .delete("api/owner/questions/" + toDelete + "/delete", {
+        .delete("/api/owner/questions/" + toDelete + "/delete", {
           headers: { Authorization: `Bearer ${this.$route.query.token}` },
         })
         .then(() => {
           localStorage.removeItem(storagePrefixAnswerView + this.uuid);
           this.closeQuestion();
-          this.onQueryChange();
+          this.onQueryChange(false, false, false);
         })
         .catch((err) => {
           console.log(err.response);
@@ -466,13 +509,6 @@ export default {
     },
   },
   computed: {
-    answerPopup() {
-      var cc = Vue.extend(AnswerView);
-      var ans = new cc(this.token, this.uuid);
-      return {
-        ans,
-      };
-    },
     formatTime() {
       return (timeStr) => {
         let time = Date.parse(timeStr);
@@ -510,6 +546,10 @@ export default {
     // try reading query params from local storage
     for (var key in this.queryParams) {
       if (this.queryParams.hasOwnProperty(key)) {
+        if (transientQueryParamKeys.has(key)) {
+          localStorage.removeItem(storagePrefix + key);
+          continue;
+        }
         let localVal = localStorage.getItem(storagePrefix + key);
         if (localVal && localVal !== "") {
           const parsedInt = parseInt(localVal);
@@ -517,9 +557,10 @@ export default {
         }
       }
     }
-    this.onQueryChange(true, true);
+    this.onQueryChange(true, true, false);
   },
   beforeUnmount() {
+    clearTimeout(this.queryDebounceTimer);
     // change back the body background
     document.body.classList.remove(
       "body-background-texture-" + this.owner + "-light"
@@ -533,16 +574,19 @@ export default {
         order_params_index: 0,
         reply_status: 0,
         day_limit: 30,
+        ip_addr: "",
         page_size: 5,
         page: 1,
       },
       rows: [],
       images: [],
+      locationOptions: [],
       total_count: 0,
       navbarStyling: {},
       projected_text: "",
       uuid: "",
       markedOnly: false,
+      queryDebounceTimer: null,
     };
   },
 };

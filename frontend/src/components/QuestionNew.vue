@@ -181,7 +181,6 @@ setOptions({
   labelIdle: "请把图片拖到这里，或点击此处浏览。",
   maxFileSize: "10MB",
   maxFiles: 9,
-  server: "/api/image/process",
 });
 const FilePond = vueFilePond(
   FilePondPluginFileValidateType,
@@ -341,7 +340,7 @@ export default {
         const loadingOverlay = Modal.getInstance(
           document.querySelector("#loadingOverlay")
         );
-        loadingOverlay.hide();
+        loadingOverlay?.hide();
       }
     },
   },
@@ -388,7 +387,7 @@ export default {
     const loadingOverlay = Modal.getInstance(
       document.querySelector("#loadingOverlay")
     );
-    loadingOverlay.dispose();
+    loadingOverlay?.dispose();
   },
   data() {
     return {
