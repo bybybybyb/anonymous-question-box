@@ -11,6 +11,8 @@ const configPath =
 const preferredOwner = process.env.AQBOX_E2E_OWNER || "";
 const preferredType = process.env.AQBOX_E2E_TYPE || "normal";
 const headed = process.env.AQBOX_E2E_HEADED === "1";
+const proxyServer = process.env.AQBOX_E2E_PROXY_SERVER || "";
+const ignoreHttpsErrors = process.env.AQBOX_E2E_IGNORE_HTTPS_ERRORS === "1";
 const geoIp = process.env.AQBOX_E2E_GEO_IP || "";
 const geoAddr = process.env.AQBOX_E2E_GEO_ADDR || "";
 const geoIsp = process.env.AQBOX_E2E_GEO_ISP || "";
@@ -174,8 +176,16 @@ async function assertOptionalGeoDisplay(page, owner, type, ownerToken) {
 async function main() {
   const config = loadConfig();
   const ownerToken = signAdminToken(config);
-  const browser = await chromium.launch({ headless: !headed });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const launchOptions = { headless: !headed };
+  if (proxyServer) {
+    launchOptions.proxy = { server: proxyServer };
+  }
+  const browser = await chromium.launch(launchOptions);
+  const context = await browser.newContext({
+    ignoreHTTPSErrors: ignoreHttpsErrors,
+    viewport: { width: 1440, height: 1000 },
+  });
+  const page = await context.newPage();
   const failures = [];
 
   page.on("pageerror", (err) => failures.push(`pageerror: ${err.message}`));
