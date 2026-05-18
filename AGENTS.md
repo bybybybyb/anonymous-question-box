@@ -32,6 +32,13 @@
 - Keyword moderation is stealth soft-delete: submitter gets success; owner normal lists hide the submission.
 - Do not add new features to `legacy/go_backend/`.
 
+## Data Semantics
+
+- In SQLite, `NULL` means absent, unknown, or not-yet-happened. Use it for optional event timestamps such as `answered_at`, `deleted_at`, `marked_at`, `moderated_at`, `purge_after`, and `purged_at`.
+- Numeric `0` is reserved for real numeric zero values such as counts, totals, and legacy request enum defaults. Do not use `0` as a storage sentinel for optional timestamps.
+- Legacy API compatibility sentinels belong at the serialization boundary. For example, DB `NULL answered_at` is returned as `"1970-01-01T00:00:00Z"` because the frontend inherited that Go-era contract.
+- Request filter defaults such as `reply_status: 0` and `day_limit: 0` are HTTP/schema syntax, not database absence semantics.
+
 ## Commands
 
 ```bash

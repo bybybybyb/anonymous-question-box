@@ -29,6 +29,13 @@ The Go implementation that originally defined this behavior now lives in
 - Owner list excludes `deleted_at IS NOT NULL`.
 - Owner answer, mark, and delete routes return empty `200` responses on success.
 
+## Absence And Sentinel Values
+
+- SQLite storage uses `NULL` for absent/unknown/not-yet-happened values. This includes optional timestamps such as `answered_at`, `deleted_at`, `marked_at`, `moderated_at`, `purge_after`, and `purged_at`.
+- Numeric `0` is a real numeric value, not a database sentinel. It is appropriate for counts and totals.
+- Legacy request enums may still use `0` at the API boundary, such as `reply_status: 0` for all reply states.
+- Legacy response compatibility may still convert DB absence into a sentinel value. The important example is `answered_at`: DB `NULL` is serialized as Unix epoch RFC3339 for the Go-era frontend contract.
+
 ## Phase 2 Behaviors
 
 - Add `question.ip` and `ip_geo` idempotently.
