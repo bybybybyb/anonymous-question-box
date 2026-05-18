@@ -18,7 +18,6 @@ RESTART_REQUIRED_FIELDS = {
     "ip2region_ipv6_xdb_path",
     "jwt_secret_key",
     "magic_spell",
-    "llm_filter",
 }
 
 

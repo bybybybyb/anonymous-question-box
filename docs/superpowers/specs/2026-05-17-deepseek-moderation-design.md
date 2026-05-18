@@ -1,5 +1,11 @@
 # DeepSeek LLM Moderation Design
 
+> **Superseded:** The 2026-05-18 moderation redesign plan supersedes this
+> deferred DeepSeek design. Do not implement the sync request-time LLM flow,
+> keyword soft-delete framing, or fail-open error table from this document.
+> Current implementation guidance lives in
+> [`2026-05-18-moderation-redesign-plan.md`](./2026-05-18-moderation-redesign-plan.md).
+
 > **Status: Phase 3 only — deferred; pending re-brainstorm.**  
 > Do not implement during Python rewrite Phases 1–2. LLM moderation is isolated from backend parity and IP geo work. Delivery phasing: see [`2026-05-17-phased-python-rewrite-design.md`](./2026-05-17-phased-python-rewrite-design.md). Revisit this spec with a dedicated brainstorm/grill session before Phase 3 implementation.
 

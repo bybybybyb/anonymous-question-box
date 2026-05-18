@@ -1,33 +1,285 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import re
 from dataclasses import dataclass
-from typing import Any
+from math import isfinite
+from typing import Any, Literal, cast
+
+from .config import LLMModerationPolicy
+
+LLM_MODERATION_PROMPT_VERSION = "aqbox-moderation-v4"
+LLM_MODERATION_SHORT_REASON_MAX_LENGTH = 120
+LLM_MODERATION_SHORT_REASON_MAX_WORDS = 12
+LLM_MODERATION_RATIONALE_MAX_LENGTH = 800
+
+LLM_MODERATION_CATEGORIES = frozenset(
+    {
+        "safe",
+        "privacy",
+        "doxxing",
+        "identity_speculation",
+        "harassment",
+        "threats",
+        "spam",
+        "explicit_sexual_content",
+        "fan_drama",
+        "other",
+    }
+)
+_LLM_RESPONSE_FIELDS = frozenset({"decision", "moderation_category", "confidence", "short_reason", "rationale"})
+_SYSTEM_POLICY = (
+    "You moderate AQBox owner console submissions before they enter the review queue. "
+    "Apply site-wide privacy rules and classify the moderation category using only these categories: "
+    "safe, privacy, doxxing, identity_speculation, harassment, threats, spam, explicit_sexual_content, "
+    "fan_drama, other. Treat doxxing, identity speculation, harassment, threats, spam, explicit sexual content, "
+    "fan drama, and other policy abuse as reasons to reject. Use project terms consistently: submission, asker, "
+    "owner console, question type, review queue, and moderation category."
+)
+_DEFAULT_ADDITIVE_POLICY = "No additional owner/question-type policy."
+_SAFE_FINISH_REASON_RE = re.compile(r"[a-z0-9_]{1,64}")
+_EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}\b")
+_URL_RE = re.compile(r"https?://[^\s<>()]+|www\.[^\s<>()]+", re.IGNORECASE)
+_HANDLE_RE = re.compile(r"(?<![\w.])@[A-Za-z0-9_][A-Za-z0-9_.-]{2,}")
+_LONG_NUMERIC_RE = re.compile(r"\b\d{8,}\b")
+_PHONE_RE = re.compile(r"(?<!\d)(?:\+?\d[\d\s().-]{7,}\d)(?!\d)")
+_PARTIAL_QUOTE_MIN_CHARS = 18
 
 
 @dataclass(slots=True)
 class FilterResult:
-    soft_delete: bool
+    blocked: bool
     source: str | None = None
     reason: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class LLMModerationPrompt:
+    messages: list[dict[str, str]]
+    prompt_version: str
+    policy_hash: str
+    response_format: dict[str, str]
+    max_tokens: int
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedLLMModerationResponse:
+    decision: Literal["accept", "reject"]
+    moderation_category: str
+    confidence: float
+    short_reason: str
+    rationale: str
+
+
+class InvalidLLMModerationResponseError(ValueError):
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
 def keyword_filter(text: str, keywords: list[str]) -> FilterResult:
-    """Current moderation behavior: keyword hit means stealth soft-delete on insert."""
+    """Keyword hits are stealth moderation blocks with no matched keyword stored."""
     for keyword in keywords:
         keyword = str(keyword)
         if keyword and keyword in text:
-            return FilterResult(soft_delete=True, source="keyword", reason="keyword")
-    return FilterResult(soft_delete=False)
+            return FilterResult(blocked=True, source="keyword", reason="keyword")
+    return FilterResult(blocked=False)
 
 
-def llm_policy_for(settings: Any, owner: str, qtype: str) -> dict[str, Any] | None:
-    """Phase 3 helper: missing owner/type policy disables LLM moderation for that box."""
-    cfg = getattr(settings, "llm_filter", {}) or {}
-    per_owner = cfg.get("owners", {}).get(owner, {})
-    per_type = per_owner.get("question_types", {}).get(qtype)
-    if per_type and per_type.get("prompt"):
-        return dict(per_type)
-    return None
+def llm_policy_for(settings: Any, owner: str, qtype: str) -> LLMModerationPolicy | None:
+    """Return typed LLM policy only when global and owner/type enablement both opt in."""
+    llm_moderation = getattr(settings, "llm_moderation", None)
+    if llm_moderation is None:
+        return None
+    return cast("LLMModerationPolicy | None", llm_moderation.policy_for(owner, qtype))
+
+
+def build_llm_moderation_prompt(policy: LLMModerationPolicy, submission_text: str) -> LLMModerationPrompt:
+    """Construct the provider-ready prompt boundary without secrets or requester metadata."""
+    additive_policy = _normalized_additive_policy(policy.policy_prompt)
+    example_output = json.dumps(
+        {
+            "decision": "reject",
+            "moderation_category": "harassment",
+            "confidence": 0.92,
+            "short_reason": "疑似骚扰或攻击内容",
+            "rationale": "该投稿包含针对他人的攻击性表达，需要进入审核队列。",
+        }
+    )
+    output_contract = (
+        "Return json only, as one strict JSON object with exactly these fields: decision, moderation_category, "
+        "confidence, short_reason, rationale. decision must be accept or reject. confidence must be a number from "
+        "0.0 to 1.0. short_reason is a safe owner-list reason, must be 12 or fewer whitespace-separated words, "
+        "and must not quote the submission. rationale is a safe owner-detail explanation and must not quote the "
+        "submission or repeat private/sensitive tokens from it. short_reason and rationale must be written in "
+        "Simplified Chinese for the owner console. Example JSON object: "
+        f"{example_output}"
+    )
+    policy_hash = _llm_policy_hash(additive_policy, output_contract)
+    owner_policy = (
+        f"Additional owner/question-type policy: owner {policy.owner!r}, question type {policy.question_type!r}: {additive_policy}"
+    )
+    user_content = (
+        "Moderate this submission from an asker for the owner console. The content between delimiters is a JSON string.\n"
+        f"<<<QUESTION>>>\n{_json_string_for_prompt(submission_text)}\n<<<END_QUESTION>>>"
+    )
+    return LLMModerationPrompt(
+        messages=[
+            {"role": "system", "content": _SYSTEM_POLICY},
+            {"role": "system", "content": output_contract},
+            {"role": "system", "content": owner_policy},
+            {"role": "user", "content": user_content},
+        ],
+        prompt_version=LLM_MODERATION_PROMPT_VERSION,
+        policy_hash=policy_hash,
+        response_format={"type": "json_object"},
+        max_tokens=policy.max_tokens,
+    )
+
+
+def parse_llm_moderation_response(
+    *,
+    finish_reason: str,
+    content: str | None,
+    original_text: str | None = None,
+) -> ParsedLLMModerationResponse:
+    if finish_reason != "stop":
+        raise InvalidLLMModerationResponseError(_finish_reason_error_code(finish_reason), "LLM response did not finish normally")
+    if content is None or not content.strip():
+        raise InvalidLLMModerationResponseError("empty_content", "LLM response content was empty")
+    try:
+        parsed = json.loads(content, parse_constant=_reject_json_constant, object_pairs_hook=_strict_json_object_pairs)
+    except ValueError as exc:
+        raise InvalidLLMModerationResponseError("invalid_json", "LLM response content was not strict JSON") from exc
+    if not isinstance(parsed, dict):
+        raise InvalidLLMModerationResponseError("non_json_object", "LLM response content must be a JSON object")
+    if not parsed:
+        raise InvalidLLMModerationResponseError("missing_field", "LLM response object was empty")
+    extra_fields = set(parsed) - _LLM_RESPONSE_FIELDS
+    if extra_fields:
+        raise InvalidLLMModerationResponseError("extra_field", "LLM response included unsupported fields")
+    missing_fields = _LLM_RESPONSE_FIELDS - set(parsed)
+    if missing_fields:
+        raise InvalidLLMModerationResponseError("missing_field", "LLM response was missing required fields")
+
+    decision = parsed["decision"]
+    if not isinstance(decision, str):
+        raise InvalidLLMModerationResponseError("schema_mismatch", "LLM response decision must be a string")
+    if decision not in {"accept", "reject"}:
+        raise InvalidLLMModerationResponseError("invalid_decision", "LLM response decision must be accept or reject")
+    moderation_category = parsed["moderation_category"]
+    if not isinstance(moderation_category, str):
+        raise InvalidLLMModerationResponseError("schema_mismatch", "LLM response moderation_category must be a string")
+    if moderation_category not in LLM_MODERATION_CATEGORIES:
+        raise InvalidLLMModerationResponseError("unknown_moderation_category", "LLM response moderation_category is not supported")
+    if (decision == "accept") != (moderation_category == "safe"):
+        raise InvalidLLMModerationResponseError(
+            "inconsistent_decision_category", "LLM response decision and moderation_category were inconsistent"
+        )
+
+    confidence_raw = parsed["confidence"]
+    if isinstance(confidence_raw, bool) or not isinstance(confidence_raw, int | float):
+        raise InvalidLLMModerationResponseError("invalid_confidence", "LLM response confidence must be numeric")
+    confidence = float(confidence_raw)
+    if not isfinite(confidence) or confidence < 0.0 or confidence > 1.0:
+        raise InvalidLLMModerationResponseError("invalid_confidence", "LLM response confidence must be finite and between 0 and 1")
+
+    short_reason = parsed["short_reason"]
+    rationale = parsed["rationale"]
+    if not isinstance(short_reason, str) or not isinstance(rationale, str):
+        raise InvalidLLMModerationResponseError("schema_mismatch", "LLM response reasons must be strings")
+    if not short_reason.strip() or not rationale.strip():
+        raise InvalidLLMModerationResponseError("schema_mismatch", "LLM response reasons must be non-empty strings")
+    if len(short_reason.strip().split()) > LLM_MODERATION_SHORT_REASON_MAX_WORDS:
+        raise InvalidLLMModerationResponseError("string_too_long", "LLM response short_reason exceeded word limit")
+    if len(short_reason) > LLM_MODERATION_SHORT_REASON_MAX_LENGTH or len(rationale) > LLM_MODERATION_RATIONALE_MAX_LENGTH:
+        raise InvalidLLMModerationResponseError("string_too_long", "LLM response reason text exceeded length limits")
+    if original_text and _reason_leaks_original_text(short_reason, original_text):
+        raise InvalidLLMModerationResponseError("unsafe_short_reason", "LLM response short_reason quoted the original submission")
+    if original_text and _reason_leaks_original_text(rationale, original_text):
+        raise InvalidLLMModerationResponseError("unsafe_rationale", "LLM response rationale quoted the original submission")
+
+    return ParsedLLMModerationResponse(
+        decision=cast("Literal['accept', 'reject']", decision),
+        moderation_category=moderation_category,
+        confidence=confidence,
+        short_reason=short_reason,
+        rationale=rationale,
+    )
+
+
+def _normalized_additive_policy(policy_prompt: str) -> str:
+    return policy_prompt.strip() or _DEFAULT_ADDITIVE_POLICY
+
+
+def _llm_policy_hash(additive_policy: str, output_contract: str) -> str:
+    hash_input = {
+        "prompt_version": LLM_MODERATION_PROMPT_VERSION,
+        "system_policy": _SYSTEM_POLICY,
+        "output_contract": output_contract,
+        "additive_policy": additive_policy,
+    }
+    payload = json.dumps(hash_input, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _json_string_for_prompt(submission_text: str) -> str:
+    return json.dumps(submission_text, ensure_ascii=True).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
+
+def _finish_reason_error_code(finish_reason: str) -> str:
+    if _SAFE_FINISH_REASON_RE.fullmatch(finish_reason):
+        return f"finish_reason_{finish_reason}"
+    return "non_stop_finish_reason"
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"unsupported JSON constant {value}")
+
+
+def _strict_json_object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON field")
+        result[key] = value
+    return result
+
+
+def _reason_leaks_original_text(reason_text: str, original_text: str) -> bool:
+    normalized_reason = " ".join(reason_text.lower().split())
+    normalized_original = " ".join(original_text.lower().split())
+    if normalized_original and len(normalized_original) >= 12 and normalized_original in normalized_reason:
+        return True
+    if _contains_shared_sensitive_token(reason_text, original_text):
+        return True
+    return _contains_long_shared_substring(normalized_reason, normalized_original)
+
+
+def _contains_shared_sensitive_token(reason_text: str, original_text: str) -> bool:
+    for pattern in (_EMAIL_RE, _URL_RE, _HANDLE_RE, _LONG_NUMERIC_RE, _PHONE_RE):
+        original_tokens = {_normalize_sensitive_token(match.group(0)) for match in pattern.finditer(original_text)}
+        if not original_tokens:
+            continue
+        reason_tokens = {_normalize_sensitive_token(match.group(0)) for match in pattern.finditer(reason_text)}
+        if original_tokens & reason_tokens:
+            return True
+    return False
+
+
+def _normalize_sensitive_token(token: str) -> str:
+    return re.sub(r"\D", "", token) if any(char.isdigit() for char in token) else token.lower()
+
+
+def _contains_long_shared_substring(normalized_reason: str, normalized_original: str) -> bool:
+    if len(normalized_reason) < _PARTIAL_QUOTE_MIN_CHARS or len(normalized_original) < _PARTIAL_QUOTE_MIN_CHARS:
+        return False
+    for start in range(0, len(normalized_original) - _PARTIAL_QUOTE_MIN_CHARS + 1):
+        candidate = normalized_original[start : start + _PARTIAL_QUOTE_MIN_CHARS]
+        if candidate.strip() == candidate and candidate in normalized_reason:
+            return True
+    return False
 
 
 def purge_due_raw_audit_fields(db: Any, now_epoch: int) -> int:
@@ -49,4 +301,8 @@ def purge_due_raw_audit_fields(db: Any, now_epoch: int) -> int:
             (now_epoch, now_epoch),
         )
         db.conn.commit()
-        return int(cur.rowcount)
+        audit_count = int(cur.rowcount)
+    event_count = 0
+    if hasattr(db, "purge_due_raw_moderation_event_fields"):
+        event_count = int(db.purge_due_raw_moderation_event_fields(now=now_epoch))
+    return audit_count + event_count

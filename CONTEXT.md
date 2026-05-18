@@ -35,8 +35,20 @@ The subject identifier embedded in an admin JWT, returned as the JSON field `own
 _Avoid_: owner slug, profile id
 
 **Soft-delete**:
-A submission hidden from the owner list by setting `deleted_at`, while the asker may still see it. Used for keyword filtering and (planned) LLM moderation.
+A submission hidden from the owner list by setting `deleted_at`, while the asker may still see it. Used for owner deletion and keyword filtering's stealth block. `deletion_source` distinguishes `owner_manual` from `keyword` and future automatic deletion. LLM review uses moderation state instead of `deleted_at`.
 _Avoid_: hard delete, ban
+
+**Moderation block**:
+A non-deleted submission hidden from normal owner/live views because it is waiting for owner review in moderation state. Used for LLM/manual reviewable submissions, not keyword filtering. Owner APIs redact the raw submission text for blocked rows until an explicit raw reveal request.
+_Avoid_: soft-delete
+
+**Review queue**:
+The owner console list of non-deleted moderation-blocked submissions. Rows show safe moderation reasons by default and hide raw submission text until explicit reveal.
+_Avoid_: deleted list, public rejection queue
+
+**Owner approval**:
+An owner action that moves a review-queue submission back to normal visibility by changing moderation state to approved. It does not apply to keyword-filtered soft-deleted submissions.
+_Avoid_: pass-through, undelete
 
 **Client IP**:
 The visitor IP stored on submit, intended to reflect the real client behind nginx via `X-Real-IP`.
@@ -59,7 +71,7 @@ _Avoid_: geolocation object, geo JSON, provider response
 > **Domain expert:** "No — same as today. They get success and can still open their submission; owners never see it in the list. That's **soft-delete**, not a public rejection."
 
 **Automated moderation**:
-Keyword and/or LLM checks that may **soft-delete** a submission before owners see it.
+Keyword and/or LLM checks that may hide a submission before owners see it. Keyword matches are stealth **soft-deletes**; LLM rejects become reviewable **moderation blocks**.
 _Avoid_: censorship, ban (unless owner manually deletes)
 
 **Rewrite phase**:

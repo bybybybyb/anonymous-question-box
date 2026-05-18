@@ -6,6 +6,8 @@ The Python backend uses offline **ip2region** xdb files for IP geolocation. The 
 
 The lookup is fail-open. Submissions still persist **Client IP** when geolocation is disabled, misconfigured, or lookup fails; owner/admin responses keep returning `ip_addr: ""` when no cached **IP location label** exists. Asker routes never expose IP or location fields.
 
+Geolocation is enabled by default. Operators can still set `geo_enabled: false` to suppress IP capture and lookup, but the normal deployment path is to capture owner-visible IPs and enrich them when xdb paths are available.
+
 Config uses separate xdb paths for IPv4 and IPv6. IPv4 lookup uses `ip2region_ipv4_xdb_path`; IPv6 is skipped unless `ip2region_ipv6_xdb_path` is configured. The default cache policy is `vectorIndex` to keep memory bounded at about 512 KiB per xdb file while still avoiding repeated vector-index reads. Shared vector-index searchers are cached and searched under a lock because they own file handles. Xdb paths and cache policy are restart-required settings.
 
 The `ip_geo` table keeps `ip` as the cache key. Rows inserted by the current provider use `provider = "ip2region"` and store the raw ip2region string. `addr` is the location label and future location-filter key; `isp` is stored separately for owner-friendly display and is exposed as `ip_isp` only on owner/admin routes. Stale WIP cache rows from previous providers are deleted during migration because they have no production value.

@@ -75,6 +75,13 @@ cd frontend
 AQBOX_E2E_CONFIG=../backend/config/config.local.yaml npm run e2e:smoke
 ```
 
+On macOS inside Codex, Playwright smoke may fail before app code runs with a Chromium
+MachPort/bootstrap permission error such as `bootstrap_check_in ... Permission denied`.
+Treat that as a sandbox launch issue, not an application regression: rerun the same
+`npm run e2e:smoke` command with escalated permissions. If the smoke temporarily
+disables paid LLM calls or mutates a preview config, restore that config immediately
+after the rerun.
+
 When local geo is enabled and xdb paths are configured, include the optional geo assertions:
 
 ```bash

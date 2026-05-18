@@ -427,8 +427,7 @@ export default {
         hourCycle: "h23",
         timeZone: "Asia/Shanghai",
       })} 在直播中回应。
-                请移步MeUmy录播组：https://space.bilibili.com/674622242
-                根据回应时间寻找相应录播观看。
+                请根据回应时间寻找相应录播观看。
                 再次感谢投稿！
                 `.replace(/(\n)\s+/g, "$1");
 
@@ -467,6 +466,7 @@ export default {
           {
             owner: this.owner,
             type: this.queryParams["type"],
+            moderation_status: "normal",
             order_params: {
               by: orderDirection[this.queryParams["order_params_index"]].by,
               reversed:

@@ -29,7 +29,11 @@ async def checkalive() -> PlainTextResponse:
 
 @router.get("/ops/health")
 async def ops_health(request: Request) -> JSONResponse:
-    status_code, payload = ops_service(request).health(request.app.state.visit_worker_task)
+    status_code, payload = ops_service(request).health(
+        request.app.state.visit_worker_task,
+        request.app.state.moderation_worker_task,
+        request.app.state.moderation_worker,
+    )
     return JSONResponse(payload, status_code=status_code)
 
 
@@ -87,7 +91,8 @@ async def list_submissions(request: Request) -> dict[str, Any]:
 async def owner_submission_detail(request: Request, uuid: str) -> dict[str, Any]:
     settings = current_settings(request)
     require_owner(request)
-    return owner_console_service(request).detail(uuid, settings)
+    reveal_raw = request.query_params.get("reveal_raw", "").lower() in {"1", "true", "yes"}
+    return owner_console_service(request).detail(uuid, settings, reveal_raw=reveal_raw)
 
 
 @router.put("/owner/questions/{uuid}/answer")
@@ -106,6 +111,13 @@ async def mark_submission(request: Request, uuid: str) -> Response:
     payload = await read_body(request, "标记")
     req: UpdateQuestionMarkRequest = parse_model(UpdateQuestionMarkRequest, payload, "标记")
     owner_console_service(request).mark(uuid, req, settings)
+    return Response(status_code=200)
+
+
+@router.put("/owner/questions/{uuid}/moderation/approve")
+async def approve_moderation(request: Request, uuid: str) -> Response:
+    require_owner(request)
+    owner_console_service(request).approve_moderation(uuid)
     return Response(status_code=200)
 
 

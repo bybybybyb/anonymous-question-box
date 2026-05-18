@@ -87,7 +87,7 @@
   </div>
 </template>
 <script>
-import { Navigation, Pagination, Zoom } from "swiper";
+import { Navigation, Pagination, Zoom } from "swiper/modules";
 import { Swiper, SwiperSlide } from "swiper/vue";
 import { Modal } from "bootstrap";
 import "swiper/css";

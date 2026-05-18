@@ -9,11 +9,71 @@ class SubmissionRepository:
     def __init__(self, db: Database):
         self.db = db
 
-    def insert(self, question: dict[str, Any], *, deleted_at: int | None = None, ip: str | None = None) -> bool:
-        return self.db.insert_question(question, deleted_at=deleted_at, ip=ip)
+    def insert(
+        self,
+        question: dict[str, Any],
+        *,
+        deleted_at: int | None = None,
+        deletion_source: str | None = None,
+        deletion_reason: str | None = None,
+        ip: str | None = None,
+    ) -> bool:
+        return self.db.insert_question(
+            question,
+            deleted_at=deleted_at,
+            deletion_source=deletion_source,
+            deletion_reason=deletion_reason,
+            ip=ip,
+        )
 
-    def get(self, uuid: str, *, with_visit: bool = False, include_geo: bool = False, include_deleted: bool = True) -> dict[str, Any] | None:
-        return self.db.get_question(uuid, with_visit=with_visit, include_geo=include_geo, include_deleted=include_deleted)
+    def insert_blocked(
+        self,
+        question: dict[str, Any],
+        *,
+        source: str,
+        reason: str,
+        category: str | None = None,
+        ip: str | None = None,
+    ) -> bool:
+        return self.db.insert_blocked_question(question, source=source, reason=reason, category=category, ip=ip)
+
+    def insert_pending(
+        self,
+        question: dict[str, Any],
+        *,
+        provider: str,
+        model: str,
+        prompt_version: str,
+        policy_hash: str,
+        config_hash: str,
+        ip: str | None = None,
+    ) -> bool:
+        return self.db.insert_pending_question(
+            question,
+            provider=provider,
+            model=model,
+            prompt_version=prompt_version,
+            policy_hash=policy_hash,
+            config_hash=config_hash,
+            ip=ip,
+        )
+
+    def get(
+        self,
+        uuid: str,
+        *,
+        with_visit: bool = False,
+        include_geo: bool = False,
+        include_deleted: bool = True,
+        include_moderation: bool = False,
+    ) -> dict[str, Any] | None:
+        return self.db.get_question(
+            uuid,
+            with_visit=with_visit,
+            include_geo=include_geo,
+            include_deleted=include_deleted,
+            include_moderation=include_moderation,
+        )
 
     def list_owner(
         self,
@@ -29,6 +89,7 @@ class SubmissionRepository:
         reply_status: int,
         include_geo: bool = False,
         location_addr: str = "",
+        moderation_status: str = "normal",
     ) -> tuple[list[dict[str, Any]], int]:
         return self.db.list_questions(
             owner=owner,
@@ -42,6 +103,30 @@ class SubmissionRepository:
             reply_status=reply_status,
             include_geo=include_geo,
             location_addr=location_addr,
+            moderation_status=moderation_status,
+        )
+
+    def count_owner(
+        self,
+        *,
+        owner: str,
+        qtype: str,
+        marked: bool,
+        due_after: int,
+        reply_status: int,
+        include_geo: bool = False,
+        location_addr: str = "",
+        moderation_status: str = "normal",
+    ) -> int:
+        return self.db.count_questions(
+            owner=owner,
+            qtype=qtype,
+            marked=marked,
+            due_after=due_after,
+            reply_status=reply_status,
+            include_geo=include_geo,
+            location_addr=location_addr,
+            moderation_status=moderation_status,
         )
 
     def list_location_options(
@@ -52,6 +137,7 @@ class SubmissionRepository:
         marked: bool,
         due_after: int,
         reply_status: int,
+        moderation_status: str = "normal",
     ) -> list[dict[str, Any]]:
         return self.db.list_location_options(
             owner=owner,
@@ -59,6 +145,7 @@ class SubmissionRepository:
             marked=marked,
             due_after=due_after,
             reply_status=reply_status,
+            moderation_status=moderation_status,
         )
 
     def answer(self, uuid: str, answer: str, answered_by: str, answered_at: int) -> bool:
@@ -68,7 +155,10 @@ class SubmissionRepository:
         return self.db.update_mark(uuid, marked_at)
 
     def delete(self, uuid: str, deleted_at: int) -> bool:
-        return self.db.mark_deleted(uuid, deleted_at)
+        return self.db.mark_deleted(uuid, deleted_at, deletion_source="owner_manual", deletion_reason="owner_delete")
+
+    def approve_moderation(self, uuid: str, approved_at: int) -> str:
+        return self.db.approve_moderation(uuid, approved_at)
 
 
 class VisitRepository:
