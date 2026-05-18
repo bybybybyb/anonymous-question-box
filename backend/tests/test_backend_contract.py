@@ -13,6 +13,7 @@ from aqbox.app import create_app
 from aqbox.config import Settings
 from aqbox.db import LOCATION_NO_DATA_LABEL, LOCATION_NO_DATA_VALUE, Database
 from aqbox.geo import lookup_and_store, parse_region
+from aqbox.rate_limit import TokenBucketRateLimiter
 from aqbox.services import GeoService, VisitService
 from aqbox.settings_provider import SettingsProvider
 
@@ -193,6 +194,36 @@ def test_keyword_soft_delete_stays_stealth_and_asker_can_read(tmp_path: Path) ->
     assert owner_detail.status_code == 404
 
 
+def test_owner_mutations_do_not_touch_keyword_soft_deleted_submission(tmp_path: Path) -> None:
+    s = settings(tmp_path)
+    with make_client(s) as client:
+        token = new_user_token(client)
+        submit = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "blocked text"},
+            headers=auth(token),
+        )
+        uuid = submit.json()["uuid"]
+        owner_headers = auth(admin_token(s))
+        answer = client.put(
+            f"/owner/questions/{uuid}/answer",
+            json={"uuid": uuid, "answer": "should not write", "answered_by": "manual"},
+            headers=owner_headers,
+        )
+        mark = client.put(
+            f"/owner/questions/{uuid}/mark",
+            json={"owner": "owner", "type": "type", "mark": True},
+            headers=owner_headers,
+        )
+        delete = client.delete(f"/owner/questions/{uuid}/delete", headers=owner_headers)
+        asker_read = client.get("/questions/question", headers=auth(token))
+    assert answer.status_code == 404
+    assert mark.status_code == 404
+    assert delete.status_code == 404
+    assert asker_read.status_code == 200
+    assert asker_read.json()["answer"] == ""
+
+
 def test_visit_queue_flushes_on_shutdown(tmp_path: Path) -> None:
     s = settings(tmp_path)
     app, db = make_app_and_db(s)
@@ -270,6 +301,34 @@ def test_go_compatible_admin_magic_claim(tmp_path: Path) -> None:
         resp = client.get("/owner", headers=auth(admin_token(s, "admin-session")))
     assert resp.status_code == 200
     assert resp.json() == {"owner": "admin-session"}
+
+
+def test_owner_answer_body_uuid_cannot_shadow_url_uuid(tmp_path: Path) -> None:
+    s = settings(tmp_path)
+    with make_client(s) as client:
+        first_token = new_user_token(client)
+        first = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "first"},
+            headers=auth(first_token),
+        ).json()["uuid"]
+        second_token = new_user_token(client)
+        second = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "second"},
+            headers=auth(second_token),
+        ).json()["uuid"]
+        mismatch = client.put(
+            f"/owner/questions/{first}/answer",
+            json={"uuid": second, "answer": "wrong target", "answered_by": "manual"},
+            headers=auth(admin_token(s)),
+        )
+        first_read = client.get("/questions/question", headers=auth(first_token))
+        second_read = client.get("/questions/question", headers=auth(second_token))
+    assert mismatch.status_code == 400
+    assert mismatch.json() == {"error": "投稿UUID不匹配"}
+    assert first_read.json()["answer"] == ""
+    assert second_read.json()["answer"] == ""
 
 
 def test_phase2_trusted_proxy_header_and_spoof_rejection(tmp_path: Path) -> None:
@@ -773,6 +832,15 @@ def test_owner_questions_rate_limit_uses_legacy_error(tmp_path: Path) -> None:
         ]
     assert statuses[-1].status_code == 429
     assert statuses[-1].json() == {"error": "请求过于频繁"}
+
+
+def test_rate_limiter_keeps_keys_independent_and_bounded() -> None:
+    limiter = TokenBucketRateLimiter(rate_per_second=1.0, burst=1, max_buckets=2)
+    assert limiter.allow("owner-a") is True
+    assert limiter.allow("owner-a") is False
+    assert limiter.allow("owner-b") is True
+    assert limiter.allow("owner-c") is True
+    assert len(limiter.buckets) <= 2
 
 
 def test_geo_service_suppresses_duplicate_in_flight_ip(tmp_path: Path) -> None:

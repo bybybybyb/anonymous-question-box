@@ -332,7 +332,7 @@ class Database:
     def update_answer(self, uuid: str, answer: str, answered_by: str, answered_at: int) -> bool:
         with self.lock:
             cur = self.conn.execute(
-                "UPDATE question SET answer = ?, answered_at = ?, answered_by = ? WHERE uuid = ?",
+                "UPDATE question SET answer = ?, answered_at = ?, answered_by = ? WHERE uuid = ? AND deleted_at IS NULL",
                 (answer, answered_at, answered_by, uuid),
             )
             self.conn.commit()
@@ -340,13 +340,19 @@ class Database:
 
     def mark_deleted(self, uuid: str, deleted_at: int) -> bool:
         with self.lock:
-            cur = self.conn.execute("UPDATE question SET deleted_at = ? WHERE uuid = ?", (deleted_at, uuid))
+            cur = self.conn.execute(
+                "UPDATE question SET deleted_at = ? WHERE uuid = ? AND deleted_at IS NULL",
+                (deleted_at, uuid),
+            )
             self.conn.commit()
             return cur.rowcount == 1
 
     def update_mark(self, uuid: str, marked_at: int | None) -> bool:
         with self.lock:
-            cur = self.conn.execute("UPDATE question SET marked_at = ? WHERE uuid = ?", (marked_at, uuid))
+            cur = self.conn.execute(
+                "UPDATE question SET marked_at = ? WHERE uuid = ? AND deleted_at IS NULL",
+                (marked_at, uuid),
+            )
             self.conn.commit()
             return cur.rowcount == 1
 

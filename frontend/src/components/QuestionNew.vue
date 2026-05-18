@@ -181,7 +181,6 @@ setOptions({
   labelIdle: "请把图片拖到这里，或点击此处浏览。",
   maxFileSize: "10MB",
   maxFiles: 9,
-  server: "/api/image/process",
 });
 const FilePond = vueFilePond(
   FilePondPluginFileValidateType,

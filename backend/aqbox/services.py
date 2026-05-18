@@ -225,7 +225,9 @@ class OwnerConsoleService:
         return question
 
     def answer(self, uuid: str, req: AnswerQuestionRequest) -> None:
-        ok = self.repo.answer(req.uuid or uuid, req.answer, req.answered_by, now_epoch())
+        if req.uuid and req.uuid != uuid:
+            raise LegacyAPIError(400, "投稿UUID不匹配")
+        ok = self.repo.answer(uuid, req.answer, req.answered_by, now_epoch())
         if not ok:
             raise LegacyAPIError(404, "投稿不存在或已过期销毁")
 
@@ -233,7 +235,7 @@ class OwnerConsoleService:
         validate_question_type(settings, req.owner, req.type)
         ok = self.repo.mark(uuid, now_epoch() if req.mark else None)
         if not ok:
-            raise LegacyAPIError(404, "投稿不存在或已标记")
+            raise LegacyAPIError(404, "投稿不存在或已删除")
 
     def delete(self, uuid: str) -> None:
         ok = self.repo.delete(uuid, now_epoch())

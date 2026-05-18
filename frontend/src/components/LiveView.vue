@@ -546,7 +546,7 @@ export default {
     markQuestion(q) {
       this.axios
         .put(
-          "api/owner/questions/" + q.uuid + "/mark",
+          "/api/owner/questions/" + q.uuid + "/mark",
           {
             owner: q.owner,
             type: q.type,
@@ -576,7 +576,7 @@ export default {
     deleteQuestion() {
       const toDelete = localStorage.getItem(storagePrefix + "opened_question");
       this.axios
-        .delete("api/owner/questions/" + toDelete + "/delete", {
+        .delete("/api/owner/questions/" + toDelete + "/delete", {
           headers: { Authorization: `Bearer ${this.$route.query.token}` },
         })
         .then(() => {

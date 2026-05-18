@@ -445,7 +445,7 @@ export default {
     markQuestion(q) {
       this.axios
         .put(
-          "api/owner/questions/" + q.uuid + "/mark",
+          "/api/owner/questions/" + q.uuid + "/mark",
           {
             owner: q.owner,
             type: q.type,
@@ -475,7 +475,7 @@ export default {
     deleteQuestion() {
       const toDelete = localStorage.getItem(storagePrefix + "opened_question");
       this.axios
-        .delete("api/owner/questions/" + toDelete + "/delete", {
+        .delete("/api/owner/questions/" + toDelete + "/delete", {
           headers: { Authorization: `Bearer ${this.$route.query.token}` },
         })
         .then(() => {
@@ -508,13 +508,6 @@ export default {
     },
   },
   computed: {
-    answerPopup() {
-      var cc = Vue.extend(AnswerView);
-      var ans = new cc(this.token, this.uuid);
-      return {
-        ans,
-      };
-    },
     formatTime() {
       return (timeStr) => {
         let time = Date.parse(timeStr);
