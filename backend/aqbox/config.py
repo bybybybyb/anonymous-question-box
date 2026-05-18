@@ -91,13 +91,13 @@ def _as_int(value: Any, *, default: int) -> int:
 class LLMQuestionTypeConfig:
     enabled: bool = False
     policy_prompt: str = ""
-    raw: dict[str, Any] = field(default_factory=dict)
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
 
 @dataclass(frozen=True, slots=True)
 class LLMBoxConfig:
     question_types: dict[str, LLMQuestionTypeConfig] = field(default_factory=dict)
-    raw: dict[str, Any] = field(default_factory=dict)
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,7 +145,7 @@ class LLMModerationConfig:
     raw_retention_enabled: bool = False
     raw_retention_seconds: int = 0
     boxes: dict[str, LLMBoxConfig] = field(default_factory=dict)
-    raw: dict[str, Any] = field(default_factory=dict)
+    raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     def api_key(self) -> str:
         env_key = os.environ.get(self.api_key_env, "") if self.api_key_env else ""
@@ -281,7 +281,7 @@ class Settings:
     ip2region_ipv4_xdb_path: str = ""
     ip2region_ipv6_xdb_path: str = ""
     ip2region_cache_policy: str = "vectorIndex"
-    llm_filter: dict[str, Any] = field(default_factory=dict)
+    llm_filter: dict[str, Any] = field(default_factory=dict, repr=False)
     llm_moderation: LLMModerationConfig = field(default_factory=LLMModerationConfig)
 
     def __post_init__(self) -> None:

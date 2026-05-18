@@ -1109,6 +1109,30 @@ def test_llm_policy_repr_redacts_config_api_key_and_copies_only_when_allowed(tmp
     assert "config-fallback-secret" not in repr(allowed_policy)
 
 
+def test_llm_config_and_settings_repr_redact_raw_api_key(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    payload = config_payload(
+        tmp_path,
+        llm_filter={
+            "enabled": True,
+            "api_key": "config-fallback-secret",
+            "boxes": {"owner": {"question_types": {"type": {"enabled": True, "policy_prompt": "policy"}}}},
+        },
+    )
+    write_config(config_path, payload)
+
+    loaded = load_settings(str(config_path))
+    assert loaded.llm_filter["api_key"] == "config-fallback-secret"
+    assert loaded.llm_moderation.raw["api_key"] == "config-fallback-secret"
+    assert "config-fallback-secret" not in repr(loaded.llm_moderation)
+    assert "config-fallback-secret" not in repr(loaded)
+
+    direct = Settings(llm_filter=payload["llm_filter"])
+    assert direct.llm_filter["api_key"] == "config-fallback-secret"
+    assert direct.llm_moderation.raw["api_key"] == "config-fallback-secret"
+    assert "config-fallback-secret" not in repr(direct)
+
+
 def test_llm_threshold_and_boolean_validation_rejects_invalid_values(tmp_path: Path) -> None:
     config_path = tmp_path / "config.yaml"
     base_filter = {
