@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -29,6 +30,8 @@ from .repositories import OpsRepository, SubmissionRepository, VisitRepository
 from .schemas import AnswerQuestionRequest, ListQuestionsRequest, SubmitQuestionRequest, UpdateQuestionMarkRequest
 from .settings_provider import SettingsProvider
 from .timeutil import now_epoch, rfc3339_from_epoch
+
+logger = logging.getLogger(__name__)
 
 
 class AuthService:
@@ -202,6 +205,7 @@ class LLMModerationWorker:
             try:
                 await self._process_claimed(row)
             except Exception:
+                logger.exception("Unexpected LLM moderation worker error for %s", row.get("uuid"))
                 self._handle_worker_exception(row, now_epoch())
 
     def _claim_disabled_policy_rows(self, settings: Settings, now: int, limit: int) -> list[dict[str, Any]]:
@@ -350,10 +354,17 @@ class LLMModerationWorker:
             uuid=row["uuid"],
             lock_owner=self.lock_owner,
             attempted_at=attempted_at,
-            next_attempt_at=attempted_at + int(settings.llm_moderation.initial_backoff_seconds),
+            next_attempt_at=attempted_at + self._retry_delay_seconds(settings, attempt_count),
             error_class=error_class,
             metadata=metadata,
         )
+
+    @staticmethod
+    def _retry_delay_seconds(settings: Settings, attempt_count: int) -> int:
+        base_delay = max(0.0, settings.llm_moderation.initial_backoff_seconds)
+        if base_delay == 0:
+            return 0
+        return int(min(base_delay * (2 ** max(attempt_count - 1, 0)), 3600))
 
     def health(self, *, task_running: bool) -> dict[str, Any]:
         counts = self.db.llm_moderation_counts(now=now_epoch())
@@ -483,7 +494,7 @@ class OwnerConsoleService:
             else []
         )
         return {
-            "questions": questions,
+            "questions": [_redact_blocked_question_text(question) for question in questions],
             "total": total,
             "page_size": page_size,
             "page": page,
@@ -491,7 +502,7 @@ class OwnerConsoleService:
             "moderation_counts": {"blocked": blocked_count},
         }
 
-    def detail(self, uuid: str, settings: Settings) -> dict[str, Any]:
+    def detail(self, uuid: str, settings: Settings, *, reveal_raw: bool = False) -> dict[str, Any]:
         question = self.repo.get(
             uuid,
             with_visit=True,
@@ -504,6 +515,8 @@ class OwnerConsoleService:
         moderation = question.get("moderation", {})
         if moderation.get("status") == "pending" or moderation.get("source") == "keyword":
             raise LegacyAPIError(404, "投稿不存在")
+        if moderation.get("status") == "blocked" and not reveal_raw:
+            question = _redact_blocked_question_text(question)
         return question
 
     def answer(self, uuid: str, req: AnswerQuestionRequest) -> None:
@@ -574,7 +587,9 @@ class OpsService:
                     "recent_error_class": None,
                 }
             )
-        ok = db_ok and config_ok and worker_ok and moderation_ok
+        ok = db_ok and config_ok and worker_ok
+        if self.settings_provider.current().llm_moderation.enabled:
+            payload["degraded"] = not moderation_ok
         payload["ok"] = ok
         return (200 if ok else 503, payload)
 
@@ -672,3 +687,13 @@ def _reject_framing(parsed: ParsedLLMModerationResponse, settings: Settings) -> 
     if parsed.confidence >= settings.llm_moderation.high_confidence_reject_threshold:
         return "llm", "model_reject"
     return "llm_low_confidence", "needs_review"
+
+
+def _redact_blocked_question_text(question: dict[str, Any]) -> dict[str, Any]:
+    moderation = question.get("moderation") or {}
+    if moderation.get("status") != "blocked":
+        return question
+    redacted = dict(question)
+    redacted["text"] = ""
+    redacted["raw_text_hidden"] = True
+    return redacted

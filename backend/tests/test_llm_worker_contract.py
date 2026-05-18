@@ -356,6 +356,34 @@ def test_worker_provider_error_and_invalid_response_exhaust_to_llm_error_review(
     }
 
 
+def test_worker_retry_backoff_is_exponential_with_cap(tmp_path: Path) -> None:
+    s = llm_settings(tmp_path, max_attempts=3, initial_backoff_seconds=10)
+    db = Database(s.db_path, moderation_schema=True)
+    provider = FakeLLMProvider(
+        provider_response(error_class="timeout", finish_reason=None),
+        provider_response(error_class="network", finish_reason=None),
+    )
+    uuid = submitted_pending_uuid(db, s, "retry", provider=provider)
+
+    asyncio.run(run_worker_once(db, s, provider))
+    first_retry = db.conn.execute(
+        "SELECT attempt_count, last_attempt_at, next_attempt_at FROM question_moderation_state WHERE uuid = ?",
+        (uuid,),
+    ).fetchone()
+    db.conn.execute("UPDATE question_moderation_state SET next_attempt_at = 0 WHERE uuid = ?", (uuid,))
+    db.conn.commit()
+    asyncio.run(run_worker_once(db, s, provider))
+    second_retry = db.conn.execute(
+        "SELECT attempt_count, last_attempt_at, next_attempt_at FROM question_moderation_state WHERE uuid = ?",
+        (uuid,),
+    ).fetchone()
+
+    assert first_retry["attempt_count"] == 1
+    assert first_retry["next_attempt_at"] - first_retry["last_attempt_at"] == 10
+    assert second_retry["attempt_count"] == 2
+    assert second_retry["next_attempt_at"] - second_retry["last_attempt_at"] == 20
+
+
 def test_worker_moves_pending_to_review_when_llm_hot_reload_disables_policy(tmp_path: Path) -> None:
     s = llm_settings(tmp_path)
     db = Database(s.db_path, moderation_schema=True)
@@ -764,7 +792,7 @@ def test_worker_finalize_noops_when_submission_deleted_in_flight(
     asyncio.run(run())
 
 
-def test_lifespan_shutdown_suppresses_crashed_moderation_worker_and_closes_provider(tmp_path: Path) -> None:
+def test_lifespan_shutdown_reports_crashed_moderation_worker_as_degraded_and_closes_provider(tmp_path: Path) -> None:
     class ClosingProvider(FakeLLMProvider):
         def __init__(self) -> None:
             super().__init__()
@@ -782,7 +810,12 @@ def test_lifespan_shutdown_suppresses_crashed_moderation_worker_and_closes_provi
     app.state.moderation_worker.run = crashed_run
 
     with TestClient(app) as client:
-        assert client.get("/ops/health").status_code == 503
+        health = client.get("/ops/health")
+
+    assert health.status_code == 200
+    assert health.json()["ok"] is True
+    assert health.json()["degraded"] is True
+    assert health.json()["moderation_worker"]["running"] is False
 
     assert provider.closed is True
 

@@ -161,7 +161,7 @@
           </div>
         </div>
         <div v-if="activeListMode === 'normal'">
-          <div class="card shadow-lg m-3" v-for="(q, i) in rows" :key="i">
+          <div class="card shadow-lg m-3" v-for="q in rows" :key="q.uuid">
             <div class="card-header">
               <div class="row">
                 <div class="col-12 col-md-2 d-none d-sm-table-cell">
@@ -482,7 +482,7 @@ export default {
               this.queryParams = this.defaultQueryParams();
               this.onQueryChange(false, false, false);
             } else {
-              alert("提问箱好像坏掉了，直接ping管理员吧！");
+              alert(this.legacyErrorMessage(err, "提问箱好像坏掉了，直接ping管理员吧！"));
               this.$router.push("/");
             }
           }
@@ -610,7 +610,7 @@ export default {
             );
             this.$router.push("/");
           } else {
-            alert("提问箱提问审核好像坏掉了，直接ping管理员吧！");
+            alert(this.legacyErrorMessage(err, "提问箱提问审核好像坏掉了，直接ping管理员吧！"));
           }
         });
     },
@@ -657,6 +657,9 @@ export default {
     },
     visitStatusColor() {
       return;
+    },
+    legacyErrorMessage(err, fallback) {
+      return err?.response?.data?.error || fallback;
     },
     moderationReviewSummary(q) {
       const moderation = q.moderation || {};

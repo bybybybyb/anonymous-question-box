@@ -19,7 +19,9 @@ Use dedicated moderation tables:
 
 Normal accepted submissions have no state row. Keyword-filtered submissions also have no state row: they are inserted with `question.deleted_at = asked_at` and `question.deletion_source = "keyword"`, return legacy submit success, remain asker-readable, and stay hidden from owner normal lists, review queues, owner detail, and live views. Approved rows keep state so the owner console can show that they passed review. Owner deletion continues to set `question.deleted_at` and now records `question.deletion_source = "owner_manual"` for both normal and moderated rows; it records a moderation event only when the submission already has moderation state.
 
-LLM moderation is asynchronous. LLM-enabled submissions enter `pending` state and are hidden from owner normal lists, review queues, owner detail, and live views until resolved. Provider rejects go to owner review, and timeout/max-attempt/config failures also fail to review as `blocked` with an explicit LLM error reason.
+LLM moderation is asynchronous. LLM-enabled submissions enter `pending` state and are hidden from owner normal lists, review queues, owner detail, and live views until resolved. Provider rejects go to owner review, and timeout/max-attempt/config failures also fail to review as `blocked` with an explicit LLM error reason. Retry scheduling uses exponential backoff from the configured initial delay, capped at one hour.
+
+Blocked review rows expose safe moderation metadata by default, but raw submission text is redacted from owner list and detail responses until owner detail is explicitly requested with raw reveal. UI confirmation is therefore backed by an API contract rather than only client-side hiding.
 
 ## Consequences
 
@@ -27,4 +29,4 @@ The owner console and repository queries must treat reviewable moderation visibi
 
 The old `question.moderation_*` scaffold and `question_moderation_audit` table remain historical/deprecated until a deliberate cleanup migration. New LLM/manual moderation behavior should use state/event tables. Keyword filtering should not create moderation state/events and should avoid storing matched keyword text by default.
 
-Ops and audit records should store provider/model, prompt/config hashes, thresholds, and reason metadata for LLM decisions. Raw prompts, requests, responses, and question text must not appear in ops surfaces; any raw event retention must be explicit and purgeable.
+Ops and audit records should store provider/model, prompt/config hashes, thresholds, and reason metadata for LLM decisions. Raw prompts, requests, responses, and question text must not appear in ops surfaces; any raw event retention must be explicit and purgeable. `/ops/health` reports moderation-worker status as a subcheck; a stopped moderation worker degrades moderation health but does not make core DB/config/visit health fail.

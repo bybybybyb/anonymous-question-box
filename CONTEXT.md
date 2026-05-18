@@ -39,7 +39,7 @@ A submission hidden from the owner list by setting `deleted_at`, while the asker
 _Avoid_: hard delete, ban
 
 **Moderation block**:
-A non-deleted submission hidden from normal owner/live views because it is waiting for owner review in moderation state. Used for LLM/manual reviewable submissions, not keyword filtering.
+A non-deleted submission hidden from normal owner/live views because it is waiting for owner review in moderation state. Used for LLM/manual reviewable submissions, not keyword filtering. Owner APIs redact the raw submission text for blocked rows until an explicit raw reveal request.
 _Avoid_: soft-delete
 
 **Review queue**:

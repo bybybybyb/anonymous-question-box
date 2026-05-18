@@ -91,7 +91,8 @@ async def list_submissions(request: Request) -> dict[str, Any]:
 async def owner_submission_detail(request: Request, uuid: str) -> dict[str, Any]:
     settings = current_settings(request)
     require_owner(request)
-    return owner_console_service(request).detail(uuid, settings)
+    reveal_raw = request.query_params.get("reveal_raw", "").lower() in {"1", "true", "yes"}
+    return owner_console_service(request).detail(uuid, settings, reveal_raw=reveal_raw)
 
 
 @router.put("/owner/questions/{uuid}/answer")

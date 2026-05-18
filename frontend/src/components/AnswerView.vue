@@ -65,7 +65,7 @@
                         </p>
                         <button
                           class="btn btn-sm btn-danger me-2"
-                          v-on:click="rawContentRevealed = true"
+                          v-on:click="revealRawContent"
                         >
                           确认显示原文
                         </button>
@@ -236,6 +236,24 @@ export default {
         })
         .finally(() => {
           if (this.uuid === requestedUuid) this.detailLoading = false;
+        });
+    },
+    revealRawContent() {
+      const requestedUuid = this.uuid;
+      const authHeader = {
+        headers: { Authorization: `Bearer ${this.$route.query.token}` },
+        params: { reveal_raw: "1" },
+      };
+      this.axios
+        .get("/api/owner/questions/" + requestedUuid, authHeader)
+        .then((resp) => {
+          if (this.uuid !== requestedUuid) return;
+          this.question_text = resp.data.text;
+          this.rawContentRevealed = true;
+          this.rawRevealWarningOpen = false;
+        })
+        .catch((err) => {
+          if (this.uuid === requestedUuid) console.log(err.response);
         });
     },
     submit() {

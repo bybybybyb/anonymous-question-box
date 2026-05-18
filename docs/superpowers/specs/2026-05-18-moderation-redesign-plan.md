@@ -181,9 +181,11 @@ Rejected alternative:
 - Prefer `moderation_status` over existing unused `include_moderated` / `moderation_source`; those fields can remain ignored/deprecated for compatibility.
 - Normal list mode returns unmoderated rows plus approved rows.
 - Blocked mode returns non-deleted LLM/manual reviewable blocked rows only; keyword-filtered rows never appear.
+- Blocked mode redacts raw submission text in owner list responses; the queue preview comes from safe moderation metadata such as `short_reason`.
 - `POST /owner/questions` also returns `moderation_counts`, at least `moderation_counts.blocked`, computed under the same owner/type/day/reply/location filters where applicable.
 - `list_location_options()` must respect `moderation_status`; normal options count normal rows only, blocked options count reviewable rows only.
 - `GET /owner/questions/{uuid}` returns normal, approved, and blocked non-deleted non-keyword submissions with moderation metadata when present.
+- Blocked detail responses redact raw submission text unless the owner explicitly requests raw reveal after UI confirmation.
 - `GET /owner/questions/{uuid}` returns 404 for pending, owner-deleted, and keyword-filtered submissions.
 - Add `PUT /owner/questions/{uuid}/moderation/approve`.
 - Approval semantics:
@@ -196,14 +198,14 @@ Rejected alternative:
 ## Owner UI Behavior
 
 - Normal owner list may stay card-based.
-- Add a dedicated review queue/table for `moderation_status = "blocked"`, labeled as `审核队列` or equivalent rather than "blocked".
+- Add a dedicated review queue/card list for `moderation_status = "blocked"`, labeled as `审核队列` or equivalent rather than "blocked".
 - Review table rows show:
   - moderation source/category/short reason;
   - submission time and answer status;
   - owner/admin metadata such as IP/location when available;
-  - actions: reveal text preview, open detail, approve, delete.
+  - actions: open detail, approve, delete.
 - Review table rows show the full backend-constrained `short_reason` or safe moderation metadata fallback, and hide question text by default.
-- Raw submission text is revealed only in detail after a warning confirmation.
+- Raw submission text is revealed only in detail after a warning confirmation, backed by a raw-reveal API request rather than only client state.
 - The review table does not expose mark/unmark.
 - Approved rows return to the normal list with a subtle `已审核批准` badge.
 - `LiveView.vue` must always use normal visibility and never show pending or blocked rows.
@@ -214,7 +216,8 @@ Rejected alternative:
 - Use a provider-generic OpenAI-compatible interface, with DeepSeek as the first adapter/default.
 - LLM-enabled submissions create `pending` state and are hidden from normal/review/live/detail until resolved.
 - Worker uses DB-backed pending rows with attempts/locks.
-- Two attempts total; auth/config 4xx errors are non-retryable.
+- Two attempts total by default; auth/config 4xx errors are non-retryable.
+- Retryable failures use exponential backoff from `initial_backoff_seconds`, capped at one hour.
 - High-confidence reject becomes `blocked/source=llm`.
 - Low-confidence reject becomes `blocked/source=llm_low_confidence/reason=needs_review`.
 - Timeout/max failure becomes `blocked/source=llm_error/reason=never_evaluated`.
@@ -334,7 +337,7 @@ llm_filter:
 - With `review_all_model_rejects: true`, every model `reject` enters the review queue; `high_confidence_reject_threshold` only chooses source/reason framing.
 - Preserve keyword-first behavior: keyword block skips LLM entirely.
 - Prevent pending rows from appearing in normal/review/live/detail until resolved.
-- Add `/ops/health` moderation worker details when LLM is enabled: enabled/running, pending/due/locked counts, last successful check, and recent error class. Redact secrets and raw prompt/question text.
+- Add `/ops/health` moderation worker details when LLM is enabled: enabled/running, pending/due/locked counts, last successful check, and recent error class. A stopped moderation worker should set a degraded subcheck while core `ok` remains tied to DB/config/visit health. Redact secrets and raw prompt/question text.
 
 #### 3.6 Persistence And Raw Retention
 
@@ -367,7 +370,7 @@ llm_filter:
   - latency and finish reason are recorded;
   - no database write occurs unless the test is explicitly an end-to-end worker test against a temp DB.
 - Keep real-provider tests skipped by default in CI and local smoke.
-- Browser smoke should cover the new moderation UI/API path deterministically via keyword moderation: review queue visibility, owner detail metadata, approve, and return to the normal list.
+- Browser smoke should cover the new moderation UI/API path deterministically with seeded non-cost blocked fixtures: review queue visibility, owner detail metadata, raw reveal warning, approve/delete, and return to the normal list.
 - Browser smoke may additionally call real DeepSeek only behind `AQBOX_E2E_RUN_DEEPSEEK=1` and `DEEPSEEK_API_KEY`; when either is absent, report a skipped check rather than failing.
 - Suggested browser command shape:
   - `cd frontend && AQBOX_E2E_CONFIG=../backend/config/config.local.yaml npm run e2e:smoke`

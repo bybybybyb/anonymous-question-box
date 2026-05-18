@@ -313,9 +313,17 @@ def test_owner_blocked_payload_exposes_safe_moderation_metadata(tmp_path: Path) 
             headers=owner_headers,
         )
         detail = client.get(f"/owner/questions/{uuid}", headers=owner_headers)
+        revealed_detail = client.get(f"/owner/questions/{uuid}?reveal_raw=1", headers=owner_headers)
 
     assert review.status_code == 200
     assert detail.status_code == 200
+    assert revealed_detail.status_code == 200
+    assert review.json()["questions"][0]["text"] == ""
+    assert review.json()["questions"][0]["raw_text_hidden"] is True
+    assert detail.json()["text"] == ""
+    assert detail.json()["raw_text_hidden"] is True
+    assert revealed_detail.json()["text"] == "mean text"
+    assert "raw_text_hidden" not in revealed_detail.json()
     review_moderation = review.json()["questions"][0]["moderation"]
     detail_moderation = detail.json()["moderation"]
     assert review_moderation["status"] == "blocked"
@@ -798,7 +806,8 @@ def test_moderation_status_defaults_validation_counts_and_location_options(tmp_p
     assert {option["addr"] for option in default_normal.json()["location_options"]} == {"正常地区"}
     assert blocked.status_code == 200
     assert blocked.json()["total"] == 1
-    assert blocked.json()["questions"][0]["text"] == "review text"
+    assert blocked.json()["questions"][0]["text"] == ""
+    assert blocked.json()["questions"][0]["raw_text_hidden"] is True
     assert {option["addr"] for option in blocked.json()["location_options"]} == {"审核地区"}
     assert filtered_blocked.json()["total"] == 1
     assert filtered_blocked.json()["moderation_counts"] == {"blocked": 1}
