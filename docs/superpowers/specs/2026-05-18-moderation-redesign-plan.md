@@ -97,6 +97,27 @@ The Slice 3 refinement grill focused on turning "async LLM moderation" into impl
 - Keep real DeepSeek tests opt-in behind both `AQBOX_RUN_DEEPSEEK_INTEGRATION=1` and `DEEPSEEK_API_KEY`.
 - Update docs/ADR before Slice 3 code so old sync/fail-open DeepSeek language cannot mislead implementers.
 
+### Hot-Reload Decision Context
+
+The grill initially argued for making all `llm_filter` changes restart-required, because a queued moderation job can otherwise be submitted under one policy and processed under a newer one. That is a real nondeterminism risk, but the product/ops decision is to accept it in exchange for being able to adjust policy prompts, thresholds, provider settings, and temporary disables without restarting the service.
+
+This is consistent with the rest of the owner-config experience: AQBox already treats config as an operational control surface, not a compiled deployment artifact. LLM moderation should behave the same way unless a setting truly changes process wiring or persistent storage shape. The important requirement is therefore not enqueue-time determinism; it is auditability of what actually happened.
+
+Implementation implications:
+
+- The current backend still lists `llm_filter` in `SettingsProvider.RESTART_REQUIRED_FIELDS`; Slice 3 must remove or narrow that restart-required treatment when typed LLM config lands.
+- The worker must read current settings at claim/evaluation time, not cache one startup snapshot forever.
+- The submit path may enqueue based on the current config, but the worker is allowed to re-check current config before calling the provider.
+- If config changes between submit and worker claim, the event should make that visible by recording config hash/version, policy hash, prompt version, provider, model, and thresholds used for the actual decision.
+- If LLM is disabled after rows are already pending, the worker should use the current config decision path when claiming them. The first v1 behavior is to move such rows into review as `llm_error/never_evaluated` or another explicit config-disabled reason, rather than silently accepting or deleting them.
+- If policy text or thresholds change while a provider call is in flight, only the claimed attempt uses the policy snapshot assembled for that call. The finalize step records that snapshot facts.
+- If API key/base URL/model is changed, new claims use the new values; in-flight calls finish or time out with the old values.
+- Hot reload does not excuse leaky observability: `/ops/config`, `/ops/health`, logs, and moderation events must never expose API keys or raw prompt/question text unless raw retention is explicitly enabled for the event table.
+
+Rejected alternative:
+
+- Freeze the full LLM policy at enqueue time and store it with the pending row. This would make replay/debugging more deterministic, but it increases raw policy retention, complicates key rotation/provider rollout, and fights the operator goal of "current config controls current behavior." We instead store hashes/versions plus provider/model/threshold facts, and only store raw prompt/request/response behind the explicit raw-retention setting.
+
 ## Prep TODOs
 
 - Keep package cleanup separate from moderation behavior, either as an adjacent prep PR or an isolated first commit.
@@ -227,8 +248,10 @@ llm_filter:
 
 - Add `/ops/config` redaction for any LLM API key material.
 - Make `llm_filter` hot-reloadable in Slice 3 v1. Operators accept that pending rows may be processed under the config that is current at worker execution time, not necessarily the config that existed when the submission was queued.
+- Remove or narrow `llm_filter` from `SettingsProvider.RESTART_REQUIRED_FIELDS`; do not leave the new typed LLM config stuck behind restart-required merge behavior.
 - Record what was actually used on each queued/processed moderation event: settings version/config hash, prompt version, policy hash, provider, model, and relevant thresholds.
-- If hot reload disables LLM for a box while rows are already pending, process pending rows according to the current config when the worker claims them; record the decision path in the event. This is intentionally operationally flexible rather than enqueue-time deterministic.
+- If hot reload disables LLM for a box while rows are already pending, process pending rows according to the current config when the worker claims them; first v1 behavior should move them to review with an explicit config-disabled/never-evaluated decision path rather than silently accepting them.
+- Treat this as intentionally operationally flexible rather than enqueue-time deterministic.
 
 #### 3.2 Prompt Construction
 
