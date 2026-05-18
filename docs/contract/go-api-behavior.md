@@ -8,6 +8,12 @@ The Go implementation that originally defined this behavior now lives in
 `legacy/go_backend/` and is deprecated. Current backend development happens in
 `backend/`.
 
+> **Moderation redesign note:** This catalog preserves the historical Phase 1
+> and old Phase 3 contracts. The 2026-05-18 moderation redesign supersedes
+> keyword moderation-as-soft-delete and the old DeepSeek sync/fail-open Phase 3
+> behavior with dedicated moderation state/event tables and async LLM
+> fail-to-review semantics.
+
 ## Phase 1 MUST Behaviors
 
 - `GET /checkalive` returns plain text `pong`.
@@ -44,7 +50,11 @@ The Go implementation that originally defined this behavior now lives in
 - Cache the human-readable location label in `ip_geo.addr`, store ISP separately, and expose `ip` / `ip_addr` / `ip_isp` only to owner/admin responses.
 - Geo failures are fail-open: `ip` remains stored and `ip_addr` is `""`.
 
-## Phase 3 Behaviors
+## Historical Phase 3 Behaviors Superseded By Moderation Redesign
+
+The following bullets describe the old deferred DeepSeek design. They are kept
+only as historical context; implement the 2026-05-18 moderation redesign for
+current work.
 
 - DeepSeek moderation is opt-in per owner/question type config.
 - Missing policy disables LLM calls for that box.

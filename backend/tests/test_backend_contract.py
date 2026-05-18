@@ -10,7 +10,7 @@ import yaml
 from fastapi.testclient import TestClient
 
 from aqbox.app import create_app
-from aqbox.config import Settings
+from aqbox.config import Settings, load_settings
 from aqbox.db import LOCATION_NO_DATA_LABEL, LOCATION_NO_DATA_VALUE, Database
 from aqbox.geo import lookup_and_store, parse_region
 from aqbox.rate_limit import TokenBucketRateLimiter
@@ -1006,6 +1006,94 @@ def test_profiles_and_keywords_hot_reload_without_restart(tmp_path: Path) -> Non
         )
     assert submit.status_code == 200
     assert owner_list.json()["total"] == 1
+
+
+def test_llm_moderation_config_requires_global_and_type_enablement(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "config.yaml"
+    payload = config_payload(
+        tmp_path,
+        llm_filter={
+            "enabled": True,
+            "api_key_env": "AQBOX_TEST_LLM_KEY",
+            "api_key": "config-fallback-secret",
+            "boxes": {
+                "owner": {
+                    "question_types": {
+                        "type": {"enabled": True, "policy_prompt": ""},
+                        "disabled": {"enabled": False, "policy_prompt": "unused"},
+                    }
+                }
+            },
+        },
+    )
+    write_config(config_path, payload)
+    monkeypatch.setenv("AQBOX_TEST_LLM_KEY", "env-secret")
+
+    loaded = load_settings(str(config_path))
+    enabled_policy = loaded.llm_moderation.policy_for("owner", "type")
+    assert enabled_policy is not None
+    assert enabled_policy.policy_prompt == ""
+    assert enabled_policy.api_key() == "env-secret"
+    assert loaded.llm_moderation.provider == "deepseek"
+    assert loaded.llm_moderation.base_url == "https://api.deepseek.com"
+    assert loaded.llm_moderation.model == "deepseek-v4-flash"
+    assert loaded.llm_moderation.high_confidence_reject_threshold == 0.85
+    assert loaded.llm_moderation.review_all_model_rejects is True
+    assert loaded.llm_moderation.max_attempts == 2
+
+    monkeypatch.delenv("AQBOX_TEST_LLM_KEY")
+    assert enabled_policy.api_key() == "config-fallback-secret"
+    assert loaded.llm_moderation.policy_for("owner", "disabled") is None
+    assert loaded.llm_moderation.policy_for("owner", "missing") is None
+
+    payload["llm_filter"]["enabled"] = False
+    write_config(config_path, payload)
+    globally_disabled = load_settings(str(config_path))
+    assert globally_disabled.llm_moderation.policy_for("owner", "type") is None
+
+
+def test_llm_filter_hot_reloads_without_restart_required(tmp_path: Path) -> None:
+    payload = config_payload(tmp_path)
+    client, config_path = config_client(tmp_path, payload)
+    with client:
+        old_admin = admin_token(settings(tmp_path))
+        assert client.app.state.settings_provider.current().llm_moderation.policy_for("owner", "type") is None
+
+        payload["llm_filter"] = {
+            "enabled": True,
+            "boxes": {"owner": {"question_types": {"type": {"enabled": True, "policy_prompt": "local policy"}}}},
+        }
+        write_config(config_path, payload)
+
+        cfg = client.get("/ops/config", headers=auth(old_admin))
+        current = client.app.state.settings_provider.current()
+
+    assert cfg.status_code == 200
+    assert "llm_filter" not in cfg.json()["restart_required"]
+    policy = current.llm_moderation.policy_for("owner", "type")
+    assert policy is not None
+    assert policy.policy_prompt == "local policy"
+
+
+def test_ops_config_redacts_llm_api_keys_from_env_and_config(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("AQBOX_TEST_LLM_KEY", "env-secret-value")
+    payload = config_payload(
+        tmp_path,
+        llm_filter={
+            "enabled": True,
+            "api_key_env": "AQBOX_TEST_LLM_KEY",
+            "api_key": "config-fallback-secret",
+            "boxes": {"owner": {"question_types": {"type": {"enabled": True, "policy_prompt": "policy text"}}}},
+        },
+    )
+    client, _ = config_client(tmp_path, payload)
+    with client:
+        cfg = client.get("/ops/config", headers=auth(admin_token(settings(tmp_path))))
+
+    assert cfg.status_code == 200
+    assert cfg.json()["llm_filter"]["api_key_configured"] is True
+    assert "env-secret-value" not in cfg.text
+    assert "config-fallback-secret" not in cfg.text
 
 
 def test_invalid_config_keeps_last_good_and_marks_unhealthy(tmp_path: Path) -> None:

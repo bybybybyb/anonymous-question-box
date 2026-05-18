@@ -312,6 +312,7 @@ class OpsService:
 
     def config_status(self) -> dict[str, Any]:
         status = self.settings_provider.status_dict()
+        status["llm_filter"] = self.settings_provider.current().llm_moderation.public_status()
         status["geo"] = geo_status()
         return status
 
