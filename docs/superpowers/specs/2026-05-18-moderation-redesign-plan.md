@@ -78,6 +78,25 @@ The final `grill-with-docs` pass challenged the plan against existing code, docs
 | 24 | Where should raw LLM prompt/request/response live? | Old audit table modeled raw purge, but event table now owns moderation history. | Store raw event fields only when config enables retention; purge event fields. |
 | 25 | Should package upgrades be mixed into moderation work? | Dependency lockfile churn can obscure moderation behavior changes. | Keep package upgrades adjacent or isolated from moderation implementation. |
 
+## Slice 3 Grill Follow-Up Context
+
+The Slice 3 refinement grill focused on turning "async LLM moderation" into implementation-ready boundaries. The accepted refinements:
+
+- Concede, with product choice changed: keep `llm_filter` hot-reloadable, and record the exact config/prompt/provider facts used when the worker actually processes a row.
+- Require both global and per owner/question-type opt-in; missing per-type policy remains disabled even if the global provider is configured.
+- Add worker-only schema with a new `0005_llm_moderation_worker_fields` migration; do not rewrite `0004_moderation_state_events`.
+- Never hold `Database.lock` across provider I/O; use short DB transactions for claiming/finalizing work.
+- Add an atomic `insert_pending_question(...)` path for question insert + pending state + queued event.
+- Treat `reason` as a stable machine code; store/display `short_reason`, `rationale`, `confidence`, provider, model, prompt version, and policy/config hashes separately.
+- Route every model `reject` to owner review; use `high_confidence_reject_threshold` only to distinguish `llm` from `llm_low_confidence`, unless the config later adds an explicit auto-approve-on-low-confidence behavior.
+- Prompt in project terms: submission, asker, owner console, question type, moderation category.
+- Only a strict, non-empty JSON object with acceptable schema and `finish_reason = "stop"` can produce a moderation decision.
+- Use `httpx.AsyncClient` behind a provider-generic boundary; classify errors as config/auth, rate limited, timeout, network, server, invalid response, or quota/circuit cap.
+- Expose moderation worker state in `/ops/health` when LLM is enabled; never expose secrets or raw prompt text in ops/logs.
+- Replace the old raw audit purge helper with an event-field purge helper.
+- Keep real DeepSeek tests opt-in behind both `AQBOX_RUN_DEEPSEEK_INTEGRATION=1` and `DEEPSEEK_API_KEY`.
+- Update docs/ADR before Slice 3 code so old sync/fail-open DeepSeek language cannot mislead implementers.
+
 ## Prep TODOs
 
 - Keep package cleanup separate from moderation behavior, either as an adjacent prep PR or an isolated first commit.
@@ -186,9 +205,30 @@ The final `grill-with-docs` pass challenged the plan against existing code, docs
   - global provider settings: provider name, base URL, model, timeout, max tokens, confidence thresholds, max attempts, backoff, raw-retention settings;
   - per owner/question-type opt-in and additive policy prompt;
   - API key resolution from environment first, config fallback only for local/dev.
-- Keep missing policy disabled for that owner/type.
+- Require both global `llm_filter.enabled` and per owner/question-type `enabled: true`; keep missing or disabled policy disabled for that owner/type.
+- Support empty additive policy text only when the per-type config is explicitly enabled; do not infer enablement from a provider key alone.
+- Use a sample shape like:
+
+```yaml
+llm_filter:
+  enabled: true
+  provider: deepseek
+  model: deepseek-v4-flash
+  api_key_env: DEEPSEEK_API_KEY
+  high_confidence_reject_threshold: 0.85
+  review_all_model_rejects: true
+  boxes:
+    default:
+      question_types:
+        default:
+          enabled: true
+          policy_prompt: ""
+```
+
 - Add `/ops/config` redaction for any LLM API key material.
-- Ensure `llm_filter` remains restart-required or explicitly decide which fields are hot-reloadable before implementation.
+- Make `llm_filter` hot-reloadable in Slice 3 v1. Operators accept that pending rows may be processed under the config that is current at worker execution time, not necessarily the config that existed when the submission was queued.
+- Record what was actually used on each queued/processed moderation event: settings version/config hash, prompt version, policy hash, provider, model, and relevant thresholds.
+- If hot reload disables LLM for a box while rows are already pending, process pending rows according to the current config when the worker claims them; record the decision path in the event. This is intentionally operationally flexible rather than enqueue-time deterministic.
 
 #### 3.2 Prompt Construction
 
@@ -198,6 +238,7 @@ The final `grill-with-docs` pass challenged the plan against existing code, docs
   - output contract: explicitly require **json** output and include an example JSON object;
   - per owner/question-type additive policy text;
   - user content wrapped in delimiters, e.g. `<<<QUESTION>>> ... <<<END_QUESTION>>>`.
+- Use project/domain terms in the prompt: submission, asker, owner console, question type, review queue, moderation category.
 - Do not send to the model:
   - client IP, IP location, owner/admin token data, matched keyword text, full keyword list, or asker JWT/submission UUID unless a later design explicitly needs it.
 - Keep prompt versioned, e.g. `aqbox-moderation-v1`, and store prompt version in events.
@@ -210,15 +251,16 @@ The final `grill-with-docs` pass challenged the plan against existing code, docs
 - Set `max_tokens` high enough for the full object so `finish_reason = "length"` does not truncate JSON under normal conditions.
 - Validate parsed output with a strict internal schema:
   - `decision`: `accept | reject`
-  - `category`: fixed site-tuned enum
+  - `moderation_category`: fixed site-tuned enum
   - `confidence`: float `0.0..1.0`
   - `short_reason`: short safe owner-list reason; must not quote original question content
   - `rationale`: detailed owner-facing explanation
 - Normalize or reject invalid outputs:
   - empty content: provider error event and retry if attempts remain;
+  - free text or Markdown/code-fenced JSON: invalid-response event and retry if attempts remain;
   - invalid JSON: provider error event and retry if attempts remain;
-  - schema mismatch or unknown enum: invalid-response event and retry if attempts remain;
-  - `finish_reason = "length"`: invalid-response event and retry if attempts remain;
+  - schema mismatch, extra fields, unknown enum, NaN, infinite confidence, or over-length strings: invalid-response event and retry if attempts remain;
+  - any `finish_reason` other than `stop`, including `length`: invalid-response/provider event and retry if attempts remain;
   - `finish_reason = "content_filter"` or `insufficient_system_resource`: provider event and retry/fail according to attempts.
 - Do not trust model-provided reason text without length limits and display-safe escaping through normal Vue rendering.
 
@@ -227,6 +269,15 @@ The final `grill-with-docs` pass challenged the plan against existing code, docs
 - Define a provider interface independent of DeepSeek naming:
   - input: prompt/messages, model, timeout, response format flag, max tokens;
   - output: parsed raw response envelope including content, finish reason, model, latency, token usage, provider error class.
+- Implement provider calls with `httpx.AsyncClient`; do not introduce the OpenAI SDK for this slice.
+- Classify provider errors as:
+  - `config_auth`: missing key, bad key, model/base URL configuration failures;
+  - `rate_limited`: provider 429;
+  - `timeout`: request timeout;
+  - `network`: DNS/connectivity/TLS failures;
+  - `server`: provider 5xx;
+  - `invalid_response`: malformed, truncated, empty, or schema-invalid responses;
+  - `quota_exceeded`: local circuit/cost cap exhaustion if added in this slice.
 - Implement the DeepSeek adapter first:
   - endpoint: `POST /chat/completions`;
   - base URL default: `https://api.deepseek.com`;
@@ -245,29 +296,40 @@ The final `grill-with-docs` pass challenged the plan against existing code, docs
   - acquire a short DB-backed lock before calling provider;
   - release/advance lock after success/failure;
   - on shutdown, stop accepting new work and let in-flight provider calls finish or time out.
+- Never hold `Database.lock` or a SQLite write transaction across provider I/O.
+- Use a lock owner token when claiming rows; only the matching owner can finalize, retry, or release the row.
 - State transitions:
-  - LLM queued: create `pending` state/event during submit after keyword pass and LLM policy match.
+  - LLM queued: create `pending` state/event during submit after keyword pass and LLM policy match through atomic `insert_pending_question(...)`.
   - Accept: delete pending state row and append accepted event.
   - High-confidence reject: update to `blocked/source=llm` and append event.
   - Low-confidence reject: update to `blocked/source=llm_low_confidence/reason=needs_review` and append event.
   - Attempts exhausted/provider failure: update to `blocked/source=llm_error/reason=never_evaluated` and append event.
+- With `review_all_model_rejects: true`, every model `reject` enters the review queue; `high_confidence_reject_threshold` only chooses source/reason framing.
 - Preserve keyword-first behavior: keyword block skips LLM entirely.
 - Prevent pending rows from appearing in normal/review/live/detail until resolved.
+- Add `/ops/health` moderation worker details when LLM is enabled: enabled/running, pending/due/locked counts, last successful check, and recent error class. Redact secrets and raw prompt/question text.
 
 #### 3.6 Persistence And Raw Retention
 
+- Add a named migration `0005_llm_moderation_worker_fields` for worker metadata and parsed LLM display fields; keep `0004_moderation_state_events` as the keyword/review-table migration.
 - Store parsed decision fields on `question_moderation_event`.
 - Store current review display fields on `question_moderation_state`.
+- Field semantics:
+  - `reason`: stable machine code such as `keyword`, `needs_review`, `never_evaluated`;
+  - `category`/`moderation_category`: stable site enum from the model output;
+  - `short_reason`: compact owner-list text that does not quote the submission;
+  - `rationale`: owner-detail explanation, length-limited and escaped by normal rendering;
+  - `confidence`, `provider`, `model`, `prompt_version`, `policy_hash`, `config_hash`, `finish_reason`, token/latency metadata: stored for audit/debugging.
 - Raw prompt/request/response:
   - default off;
   - when enabled, store on event with `purge_after`;
-  - add/update purge helper to null raw event fields and set `purged_at`;
+  - replace `purge_due_raw_audit_fields()` with `purge_due_raw_moderation_event_fields()` for event raw fields;
   - never log raw question text at INFO.
 - Consider whether accepted events should keep `rationale`; default can store parsed decision metadata without owner-visible rationale because accepted rows have no state row.
 
 #### 3.7 Real DeepSeek API Test Path
 
-- Add a deliberately opt-in integration test or tool that calls the real DeepSeek API only when `DEEPSEEK_API_KEY` is set and an explicit flag is present.
+- Add a deliberately opt-in integration test or tool that calls the real DeepSeek API only when both `AQBOX_RUN_DEEPSEEK_INTEGRATION=1` and `DEEPSEEK_API_KEY` are present.
 - Suggested command shape:
   - `AQBOX_RUN_DEEPSEEK_INTEGRATION=1 DEEPSEEK_API_KEY=... uv run pytest backend/tests/test_deepseek_integration.py -q`
   - or a backend tool `uv run python backend/tools/check_deepseek_moderation.py --text "..."`
@@ -278,6 +340,7 @@ The final `grill-with-docs` pass challenged the plan against existing code, docs
   - latency and finish reason are recorded;
   - no database write occurs unless the test is explicitly an end-to-end worker test against a temp DB.
 - Keep this test skipped by default in CI and local smoke.
+- Use `pytest.skip` when either opt-in variable is absent; do not print raw prompt text, raw response text, or the API key.
 - Document expected costs/rate-limit behavior in the test/tool help text.
 
 #### 3.8 End-To-End Local Validation
