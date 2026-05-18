@@ -637,6 +637,12 @@ class Database:
                     UPDATE question_moderation_state
                     SET status = 'approved', updated_at = ?
                     WHERE uuid = ? AND status = 'blocked'
+                      AND EXISTS (
+                        SELECT 1
+                        FROM question q
+                        WHERE q.uuid = question_moderation_state.uuid
+                          AND q.deleted_at IS NULL
+                      )
                     """,
                     (approved_at, uuid),
                 )

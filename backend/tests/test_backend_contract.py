@@ -382,6 +382,57 @@ def test_approve_race_does_not_emit_duplicate_approval_event(tmp_path: Path) -> 
     assert events[1]["created_at"] == 111
 
 
+def test_approve_race_with_delete_does_not_emit_approval_event(tmp_path: Path) -> None:
+    s = settings(tmp_path)
+    app, db = make_app_and_db(s)
+    with TestClient(app) as client:
+        token = new_user_token(client)
+        uuid = client.post(
+            "/questions/submit",
+            json={"owner": "owner", "type": "type", "text": "blocked text"},
+            headers=auth(token),
+        ).json()["uuid"]
+
+    original_conn = db.conn
+
+    class ConcurrentDeleteConnection:
+        def __init__(self) -> None:
+            self.raced = False
+
+        def execute(self, sql: str, params: tuple = ()):
+            if not self.raced and "UPDATE question_moderation_state" in sql and "SET status = 'approved'" in sql:
+                self.raced = True
+                original_conn.execute(
+                    "UPDATE question SET deleted_at = ? WHERE uuid = ? AND deleted_at IS NULL",
+                    (111, uuid),
+                )
+            return original_conn.execute(sql, params)
+
+        def commit(self) -> None:
+            original_conn.commit()
+
+        def rollback(self) -> None:
+            original_conn.rollback()
+
+    db.conn = ConcurrentDeleteConnection()  # type: ignore[assignment]
+    try:
+        result = db.approve_moderation(uuid, 222)
+    finally:
+        db.conn = original_conn
+    events = db.conn.execute(
+        "SELECT event_type, status FROM question_moderation_event WHERE uuid = ? ORDER BY id",
+        (uuid,),
+    ).fetchall()
+    state = db.conn.execute(
+        "SELECT status FROM question_moderation_state WHERE uuid = ?",
+        (uuid,),
+    ).fetchone()
+
+    assert result == "deleted"
+    assert [tuple(row) for row in events] == [("blocked", "blocked")]
+    assert state["status"] == "blocked"
+
+
 def test_invalid_approval_states_return_legacy_errors(tmp_path: Path) -> None:
     s = settings(tmp_path)
     app, db = make_app_and_db(s)
