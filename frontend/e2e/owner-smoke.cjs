@@ -93,6 +93,23 @@ async function chooseOwnerAndType(request) {
   return { owner, type };
 }
 
+async function findExpiredQuestionType(request) {
+  const resp = await request.get(`${baseUrl}/api/profiles`);
+  if (!resp.ok()) throw new Error(`GET /api/profiles failed: ${resp.status()}`);
+  const profiles = (await resp.json()).owner_profiles || {};
+  const now = Date.now();
+  for (const [owner, profile] of Object.entries(profiles)) {
+    for (const qType of Object.values(profile.question_types || {})) {
+      const start = Date.parse(qType.start_time);
+      const end = Date.parse(qType.end_time);
+      if (!Number.isNaN(start) && !Number.isNaN(end) && (now < start || now > end)) {
+        return { owner, type: qType.name, description: qType.description };
+      }
+    }
+  }
+  return null;
+}
+
 async function submitViaApi(request, owner, type, text, extraHeaders = {}) {
   const tokenResp = await request.get(`${baseUrl}/api/new`);
   if (!tokenResp.ok()) throw new Error(`GET /api/new failed: ${tokenResp.status()}`);
@@ -156,6 +173,41 @@ async function selectQuestionType(page, type) {
   const radio = page.locator(`#${type}_receiver_radio`);
   if ((await radio.count()) > 0) {
     await radio.check();
+  }
+}
+
+async function assertExpiredQuestionTypeVisibility(page, ownerToken) {
+  const expired = await findExpiredQuestionType(page.request);
+  if (!expired) return [];
+
+  await gotoWithClearedStorage(page, `${baseUrl}/#/question/${expired.owner}/new`);
+  if ((await page.locator(`#${expired.type}_receiver_radio`).count()) > 0) {
+    throw new Error(`Expired question type ${expired.owner}/${expired.type} is visible in submit UI`);
+  }
+
+  await gotoWithQuestionTypeStorage(
+    page,
+    `${baseUrl}/#/owner/${expired.owner}/dashboard?token=${ownerToken}`,
+    expired.type
+  );
+  const ownerOption = page.locator("#question_type").locator(`option[value="${expired.type}"]`);
+  if ((await ownerOption.count()) !== 1) {
+    throw new Error(`Expired question type ${expired.owner}/${expired.type} is missing from owner console`);
+  }
+  const selectedType = await page.locator("#question_type").inputValue();
+  if (selectedType !== expired.type) {
+    throw new Error(`Expired question type ${expired.owner}/${expired.type} is not selectable in owner console`);
+  }
+  return ["expired type hidden from submit", "expired type visible in owner console"];
+}
+
+async function assertOwnerVisitColor(page, text, expectedColor, label) {
+  const card = page.locator(".card.shadow-lg.m-3").filter({ hasText: text }).first();
+  await card.waitFor({ timeout: 10_000 });
+  const replyTime = card.locator(".card-header .col-12.col-md-5").filter({ hasText: "回复时间" }).first();
+  const color = await replyTime.evaluate((el) => getComputedStyle(el).color);
+  if (color !== expectedColor) {
+    throw new Error(`${label} expected ${expectedColor}, got ${color}`);
   }
 }
 
@@ -267,8 +319,15 @@ async function main() {
     await page.locator("#answerModal .btn-close").click();
     await page.locator("#answerModal").waitFor({ state: "hidden", timeout: 10_000 });
 
+    await gotoWithQuestionTypeStorage(page, `${baseUrl}/#/owner/${owner}/dashboard?token=${ownerToken}`, type);
+    await assertOwnerVisitColor(page, unique, "rgb(135, 206, 250)", "Manual answer before asker visit");
+
     await page.goto(askerUrl);
     await page.getByText(answer).waitFor({ timeout: 10_000 });
+
+    await sleep(11_000);
+    await gotoWithQuestionTypeStorage(page, `${baseUrl}/#/owner/${owner}/dashboard?token=${ownerToken}`, type);
+    await assertOwnerVisitColor(page, unique, "rgb(0, 128, 0)", "Manual answer after asker visit");
 
     const liveText = `live auto ${Date.now()}`;
     const liveToken = await submitViaApi(page.request, owner, type, liveText);
@@ -280,7 +339,10 @@ async function main() {
     await page.goto(`${baseUrl}/#/question?token=${liveToken}`);
     await page.getByText("直播中回应").waitFor({ timeout: 10_000 });
 
-    const optionalChecks = await assertOptionalGeoDisplay(page, owner, type, ownerToken);
+    const optionalChecks = [
+      ...(await assertExpiredQuestionTypeVisibility(page, ownerToken)),
+      ...(await assertOptionalGeoDisplay(page, owner, type, ownerToken)),
+    ];
 
     if (failures.length) throw new Error(failures.join("\n"));
     console.log(
@@ -293,6 +355,7 @@ async function main() {
           "owner filters",
           "mark",
           "manual answer",
+          "visit color before/after asker visit",
           "asker sees answer",
           "live auto reply",
           ...optionalChecks,
