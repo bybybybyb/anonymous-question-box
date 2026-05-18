@@ -124,6 +124,34 @@ async function gotoWithClearedStorage(page, url) {
   await page.goto(url);
 }
 
+async function gotoWithQuestionTypeStorage(page, url, type) {
+  await page.goto(baseUrl);
+  await page.evaluate((selectedType) => {
+    localStorage.clear();
+    localStorage.setItem("ownerView_type", selectedType);
+  }, type);
+  await page.goto(url);
+}
+
+async function gotoOwnerWithStaleLocationStorage(page, url, type) {
+  await page.goto(baseUrl);
+  await page.evaluate((selectedType) => {
+    localStorage.clear();
+    localStorage.setItem("ownerView_type", selectedType);
+    localStorage.setItem("ownerView_ip_addr", "stale smoke region");
+  }, type);
+  const responsePromise = page.waitForResponse(
+    (resp) => resp.url().includes("/api/owner/questions") && resp.request().method() === "POST",
+    { timeout: 10_000 }
+  );
+  await page.goto(url);
+  const resp = await responsePromise;
+  const body = JSON.parse(resp.request().postData() || "{}");
+  if (body.ip_addr !== "") {
+    throw new Error(`Owner console defaulted to stale location filter: ${body.ip_addr}`);
+  }
+}
+
 async function selectQuestionType(page, type) {
   const radio = page.locator(`#${type}_receiver_radio`);
   if ((await radio.count()) > 0) {
@@ -213,7 +241,7 @@ async function main() {
     const askerUrl = page.url();
     if (!askerUrl.includes("token=")) throw new Error("Submission URL does not include asker token");
 
-    await gotoWithClearedStorage(page, `${baseUrl}/#/owner/${owner}/dashboard?token=${ownerToken}`);
+    await gotoOwnerWithStaleLocationStorage(page, `${baseUrl}/#/owner/${owner}/dashboard?token=${ownerToken}`, type);
     await page.getByText(unique).waitFor({ timeout: 10_000 });
 
     await Promise.all([waitForOwnerList(page), page.locator("#reply_status").selectOption("-1")]);
@@ -222,6 +250,7 @@ async function main() {
     await Promise.all([waitForOwnerList(page), page.locator("#day_limit").selectOption("30")]);
     await Promise.all([waitForOwnerList(page), page.locator("#order").first().selectOption("2")]);
     await Promise.all([waitForOwnerList(page), page.locator("#page_size").selectOption("10")]);
+    await Promise.all([waitForOwnerList(page), page.locator("#order").first().selectOption("0")]);
     await page.getByText(unique).waitFor({ timeout: 10_000 });
 
     const card = page.locator(".card.shadow-lg.m-3").filter({ hasText: unique }).first();
@@ -243,7 +272,7 @@ async function main() {
 
     const liveText = `live auto ${Date.now()}`;
     const liveToken = await submitViaApi(page.request, owner, type, liveText);
-    await gotoWithClearedStorage(page, `${baseUrl}/#/owner/${owner}/live?token=${ownerToken}`);
+    await gotoWithQuestionTypeStorage(page, `${baseUrl}/#/owner/${owner}/live?token=${ownerToken}`, type);
     await page.getByText(liveText).waitFor({ timeout: 10_000 });
     await page.locator(".card.shadow-sm.my-2").filter({ hasText: liveText }).first().getByText("← 投屏").click();
     await page.locator("#textProjectArea").getByText(liveText).waitFor({ timeout: 10_000 });

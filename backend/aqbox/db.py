@@ -7,6 +7,9 @@ from typing import Any
 
 from .timeutil import rfc3339_from_epoch
 
+LOCATION_NO_DATA_VALUE = "__aqbox_no_location__"
+LOCATION_NO_DATA_LABEL = "无地区信息"
+
 PHASE1_SCHEMA = """
 CREATE TABLE IF NOT EXISTS question (
   id INTEGER PRIMARY KEY,
@@ -207,8 +210,11 @@ class Database:
             filters.append("q.marked_at IS NOT NULL")
         filter_by_location = include_geo and self.geo_enabled and bool(location_addr)
         if filter_by_location:
-            filters.append("ig.addr = ?")
-            params.append(location_addr)
+            if location_addr == LOCATION_NO_DATA_VALUE:
+                filters.append("(ig.addr IS NULL OR ig.addr = '')")
+            else:
+                filters.append("ig.addr = ?")
+                params.append(location_addr)
 
         where = " AND ".join(filters)
         direction = "DESC" if reversed_order else "ASC"
@@ -243,8 +249,6 @@ class Database:
             "q.question_type = ?",
             "q.asked_at > ?",
             "q.deleted_at IS NULL",
-            "ig.addr IS NOT NULL",
-            "ig.addr != ''",
         ]
         params: list[Any] = [owner, qtype, due_after]
         if reply_status < 0:
@@ -258,6 +262,8 @@ class Database:
             filters.append("q.marked_at IS NOT NULL")
 
         where = " AND ".join(filters)
+        located_where = where + " AND ig.addr IS NOT NULL AND ig.addr != ''"
+        missing_where = where + " AND (ig.addr IS NULL OR ig.addr = '')"
         with self.lock:
             rows = self.conn.execute(
                 """
@@ -265,13 +271,17 @@ class Database:
                 FROM question q
                 JOIN ip_geo ig ON ig.ip = q.ip
                 WHERE """
-                + where
+                + located_where
                 + """
                 GROUP BY ig.addr, ig.isp
                 ORDER BY ig.addr ASC, ig.isp ASC
                 """,
                 params,
             ).fetchall()
+            missing_count = self.conn.execute(
+                "SELECT COUNT(*) FROM question q LEFT JOIN ip_geo ig ON ig.ip = q.ip WHERE " + missing_where,
+                params,
+            ).fetchone()[0]
 
         grouped: dict[str, dict[str, Any]] = {}
         for row in rows:
@@ -293,7 +303,19 @@ class Database:
                     "count": option["count"],
                 }
             )
-        return sorted(result, key=lambda item: item["addr"])
+        result = sorted(result, key=lambda item: item["addr"])
+        if missing_count:
+            result.insert(
+                0,
+                {
+                    "addr": LOCATION_NO_DATA_VALUE,
+                    "isps": [],
+                    "label": LOCATION_NO_DATA_LABEL,
+                    "count": int(missing_count),
+                    "is_missing": True,
+                },
+            )
+        return result
 
     def update_answer(self, uuid: str, answer: str, answered_by: str, answered_at: int) -> bool:
         with self.lock:

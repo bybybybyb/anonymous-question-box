@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from aqbox.app import create_app
 from aqbox.config import Settings
-from aqbox.db import Database
+from aqbox.db import LOCATION_NO_DATA_LABEL, LOCATION_NO_DATA_VALUE, Database
 from aqbox.geo import lookup_and_store, parse_region
 from aqbox.services import GeoService
 
@@ -305,6 +305,7 @@ def test_owner_location_filter_uses_cached_addr_and_dedupes_isp(tmp_path: Path) 
             ("8.8.8.8", "hangzhou one"),
             ("1.1.1.1", "hangzhou two"),
             ("9.9.9.9", "beijing"),
+            ("127.0.0.1", "no geo data"),
         ]:
             token = new_user_token(client)
             submit = client.post(
@@ -351,15 +352,34 @@ def test_owner_location_filter_uses_cached_addr_and_dedupes_isp(tmp_path: Path) 
             json={"owner": "owner", "type": "type", "day_limit": 1, "ip_addr": "浙江省杭州市"},
             headers=auth(admin_token(s)),
         ).json()
+        missing_filtered = client.post(
+            "/owner/questions",
+            json={"owner": "owner", "type": "type", "day_limit": 1, "ip_addr": LOCATION_NO_DATA_VALUE},
+            headers=auth(admin_token(s)),
+        ).json()
 
     hangzhou_option = next(option for option in unfiltered["location_options"] if option["addr"] == "浙江省杭州市")
+    missing_option = next(option for option in unfiltered["location_options"] if option["addr"] == LOCATION_NO_DATA_VALUE)
     assert hangzhou_option["count"] == 2
     assert set(hangzhou_option["isps"]) == {"阿里", "电信"}
     assert "阿里" in hangzhou_option["label"]
     assert "电信" in hangzhou_option["label"]
+    assert missing_option == {
+        "addr": LOCATION_NO_DATA_VALUE,
+        "isps": [],
+        "label": LOCATION_NO_DATA_LABEL,
+        "count": 1,
+        "is_missing": True,
+    }
     assert filtered["total"] == 2
     assert {question["text"] for question in filtered["questions"]} == {"hangzhou one", "hangzhou two"}
-    assert {option["addr"] for option in filtered["location_options"]} == {"浙江省杭州市", "北京市"}
+    assert missing_filtered["total"] == 1
+    assert {question["text"] for question in missing_filtered["questions"]} == {"no geo data"}
+    assert {option["addr"] for option in filtered["location_options"]} == {
+        LOCATION_NO_DATA_VALUE,
+        "浙江省杭州市",
+        "北京市",
+    }
 
 
 def test_phase2_x_real_ip_precedes_forwarded_for(tmp_path: Path) -> None:
