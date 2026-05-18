@@ -100,6 +100,9 @@ class LLMModerationPolicy:
     high_confidence_reject_threshold: float
     review_all_model_rejects: bool
     max_attempts: int
+    timeout_seconds: float
+    max_tokens: int
+    initial_backoff_seconds: float
 
     def api_key(self) -> str:
         env_key = os.environ.get(self.api_key_env, "") if self.api_key_env else ""
@@ -122,6 +125,11 @@ class LLMModerationConfig:
     high_confidence_reject_threshold: float = 0.85
     review_all_model_rejects: bool = True
     max_attempts: int = 2
+    timeout_seconds: float = 10.0
+    max_tokens: int = 256
+    initial_backoff_seconds: float = 1.0
+    raw_retention_enabled: bool = False
+    raw_retention_seconds: int = 0
     boxes: dict[str, LLMBoxConfig] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
 
@@ -152,6 +160,9 @@ class LLMModerationConfig:
             high_confidence_reject_threshold=self.high_confidence_reject_threshold,
             review_all_model_rejects=self.review_all_model_rejects,
             max_attempts=self.max_attempts,
+            timeout_seconds=self.timeout_seconds,
+            max_tokens=self.max_tokens,
+            initial_backoff_seconds=self.initial_backoff_seconds,
         )
 
     def public_status(self) -> dict[str, Any]:
@@ -166,6 +177,11 @@ class LLMModerationConfig:
             "high_confidence_reject_threshold": self.high_confidence_reject_threshold,
             "review_all_model_rejects": self.review_all_model_rejects,
             "max_attempts": self.max_attempts,
+            "timeout_seconds": self.timeout_seconds,
+            "max_tokens": self.max_tokens,
+            "initial_backoff_seconds": self.initial_backoff_seconds,
+            "raw_retention_enabled": self.raw_retention_enabled,
+            "raw_retention_seconds": self.raw_retention_seconds,
             "boxes": {
                 owner: {
                     "question_types": {
@@ -184,6 +200,9 @@ class LLMModerationConfig:
 def _parse_llm_moderation_config(raw: dict[str, Any]) -> LLMModerationConfig:
     provider = str(raw.get("provider") or "deepseek")
     api_key_env = str(raw.get("api_key_env") or ("DEEPSEEK_API_KEY" if provider == "deepseek" else ""))
+    raw_retention_seconds = raw.get("raw_retention_seconds")
+    if raw_retention_seconds is None and raw.get("raw_retention_days") is not None:
+        raw_retention_seconds = _as_int(raw.get("raw_retention_days"), default=0) * 86400
     boxes: dict[str, LLMBoxConfig] = {}
     boxes_raw = _as_map_by_name(raw.get("boxes") or raw.get("owners"))
     for owner, box_raw in boxes_raw.items():
@@ -209,6 +228,11 @@ def _parse_llm_moderation_config(raw: dict[str, Any]) -> LLMModerationConfig:
         ),
         review_all_model_rejects=_as_bool(raw.get("review_all_model_rejects"), default=True),
         max_attempts=max(1, _as_int(raw.get("max_attempts"), default=2)),
+        timeout_seconds=max(0.1, _as_float(raw.get("timeout_seconds"), default=10.0)),
+        max_tokens=max(1, _as_int(raw.get("max_tokens"), default=256)),
+        initial_backoff_seconds=max(0.0, _as_float(raw.get("initial_backoff_seconds"), default=1.0)),
+        raw_retention_enabled=_as_bool(raw.get("raw_retention_enabled"), default=False),
+        raw_retention_seconds=max(0, _as_int(raw_retention_seconds, default=0)),
         boxes=boxes,
         raw=dict(raw),
     )

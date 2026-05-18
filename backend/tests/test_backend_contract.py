@@ -1041,6 +1041,14 @@ def test_llm_moderation_config_requires_global_and_type_enablement(tmp_path: Pat
     assert loaded.llm_moderation.high_confidence_reject_threshold == 0.85
     assert loaded.llm_moderation.review_all_model_rejects is True
     assert loaded.llm_moderation.max_attempts == 2
+    assert loaded.llm_moderation.timeout_seconds == 10.0
+    assert loaded.llm_moderation.max_tokens == 256
+    assert loaded.llm_moderation.initial_backoff_seconds == 1.0
+    assert loaded.llm_moderation.raw_retention_enabled is False
+    assert loaded.llm_moderation.raw_retention_seconds == 0
+    assert enabled_policy.timeout_seconds == 10.0
+    assert enabled_policy.max_tokens == 256
+    assert enabled_policy.initial_backoff_seconds == 1.0
 
     monkeypatch.delenv("AQBOX_TEST_LLM_KEY")
     assert enabled_policy.api_key() == ""
@@ -1058,6 +1066,35 @@ def test_llm_moderation_config_requires_global_and_type_enablement(tmp_path: Pat
     write_config(config_path, payload)
     globally_disabled = load_settings(str(config_path))
     assert globally_disabled.llm_moderation.policy_for("owner", "type") is None
+
+
+def test_llm_moderation_config_parses_provider_and_retention_overrides(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    payload = config_payload(
+        tmp_path,
+        llm_filter={
+            "enabled": True,
+            "timeout_seconds": 3.5,
+            "max_tokens": 96,
+            "initial_backoff_seconds": 0.75,
+            "raw_retention_enabled": True,
+            "raw_retention_seconds": 172800,
+            "boxes": {"owner": {"question_types": {"type": {"enabled": True, "policy_prompt": "policy"}}}},
+        },
+    )
+    write_config(config_path, payload)
+
+    loaded = load_settings(str(config_path))
+    policy = loaded.llm_moderation.policy_for("owner", "type")
+    assert policy is not None
+    assert loaded.llm_moderation.timeout_seconds == 3.5
+    assert loaded.llm_moderation.max_tokens == 96
+    assert loaded.llm_moderation.initial_backoff_seconds == 0.75
+    assert loaded.llm_moderation.raw_retention_enabled is True
+    assert loaded.llm_moderation.raw_retention_seconds == 172800
+    assert policy.timeout_seconds == 3.5
+    assert policy.max_tokens == 96
+    assert policy.initial_backoff_seconds == 0.75
 
 
 def test_llm_policy_helper_uses_typed_enablement_semantics(tmp_path: Path) -> None:
@@ -1129,6 +1166,11 @@ def test_ops_config_redacts_llm_api_keys_from_env_and_config(tmp_path: Path, mon
     assert cfg.status_code == 200
     assert cfg.json()["llm_filter"]["api_key_configured"] is True
     assert cfg.json()["llm_filter"]["allow_config_api_key"] is False
+    assert cfg.json()["llm_filter"]["timeout_seconds"] == 10.0
+    assert cfg.json()["llm_filter"]["max_tokens"] == 256
+    assert cfg.json()["llm_filter"]["initial_backoff_seconds"] == 1.0
+    assert cfg.json()["llm_filter"]["raw_retention_enabled"] is False
+    assert cfg.json()["llm_filter"]["raw_retention_seconds"] == 0
     assert "env-secret-value" not in cfg.text
     assert "config-fallback-secret" not in cfg.text
 
