@@ -39,6 +39,7 @@ The tool only matches successful submit logs to a single nearby `question.asked_
 ## Notes
 
 - Legacy routes preserve `{"error": "..."}` envelopes rather than FastAPI's default 422 body.
+- SQLite schema changes use the lightweight in-process migration runner in `aqbox.db`; applied versions are recorded in `schema_migrations`.
 - Images are intentionally unsupported: profiles advertise `support_image: false`, reads return `images: []`, and new image submissions are rejected.
 - Optional event timestamps use `NULL` in SQLite for absence/not-yet-happened. Keep legacy zero/epoch sentinels at API serialization boundaries rather than storing them in the database.
 - Geolocation uses offline ip2region xdb files configured by path; do not commit xdb files.

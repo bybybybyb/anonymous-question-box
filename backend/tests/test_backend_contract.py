@@ -134,6 +134,20 @@ def test_sqlite_connection_uses_wal_and_busy_timeout(tmp_path: Path) -> None:
         db.conn.close()
 
 
+def test_schema_migrations_are_recorded_once(tmp_path: Path) -> None:
+    db = Database(str(tmp_path / "aqbox.sqlite3"))
+    db.bootstrap()
+    first = db.applied_migrations()
+    db.bootstrap()
+    second = db.applied_migrations()
+    assert first == [
+        "0001_phase1_core",
+        "0002_ip2region_geo",
+        "0003_moderation_scaffold",
+    ]
+    assert second == first
+
+
 def test_image_routes_removed_and_submit_images_rejected(tmp_path: Path) -> None:
     s = settings(tmp_path)
     with make_client(s) as client:
@@ -579,18 +593,6 @@ def test_ip2region_migration_drops_stale_wip_cache_rows(tmp_path: Path) -> None:
     s = settings(tmp_path)
     db = Database(s.db_path)
     db.bootstrap()
-    db.conn.execute(
-        """
-        CREATE TABLE ip_geo (
-          ip TEXT PRIMARY KEY,
-          province TEXT NOT NULL DEFAULT '',
-          city TEXT NOT NULL DEFAULT '',
-          region TEXT NOT NULL DEFAULT '',
-          addr TEXT NOT NULL DEFAULT '',
-          looked_up_at INTEGER NOT NULL
-        )
-        """
-    )
     db.conn.execute(
         "INSERT INTO ip_geo (ip, province, city, region, addr, looked_up_at) VALUES (?, ?, ?, ?, ?, ?)",
         ("8.8.8.8", "广东省", "广州市", "", "广东省广州市 电信", 1),

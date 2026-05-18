@@ -2,13 +2,22 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from .timeutil import rfc3339_from_epoch
+from .timeutil import now_epoch, rfc3339_from_epoch
 
 LOCATION_NO_DATA_VALUE = "__aqbox_no_location__"
 LOCATION_NO_DATA_LABEL = "无地区信息"
+
+SCHEMA_MIGRATIONS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  applied_at INTEGER NOT NULL
+);
+"""
 
 PHASE1_SCHEMA = """
 CREATE TABLE IF NOT EXISTS question (
@@ -87,12 +96,36 @@ class Database:
 
     def bootstrap(self) -> None:
         with self.lock:
-            self.conn.executescript(PHASE1_SCHEMA)
-            if self.geo_enabled:
-                self.migrate_geo()
-            if self.moderation_schema:
-                self.migrate_moderation()
+            self.conn.executescript(SCHEMA_MIGRATIONS_SCHEMA)
+            self._run_migrations()
             self.conn.commit()
+
+    def _run_migrations(self) -> None:
+        applied = {row["version"] for row in self.conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()}
+        for version, name, migration in self._migrations():
+            if version in applied:
+                continue
+            migration()
+            self.conn.execute(
+                "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)",
+                (version, name, now_epoch()),
+            )
+
+    def _migrations(self) -> tuple[tuple[str, str, Callable[[], None]], ...]:
+        return (
+            ("0001_phase1_core", "Phase 1 core question, visit, and image tables", self._apply_phase1_schema),
+            ("0002_ip2region_geo", "Offline ip2region geolocation schema", self.migrate_geo),
+            ("0003_moderation_scaffold", "Moderation metadata and audit scaffold", self.migrate_moderation),
+        )
+
+    def applied_migrations(self) -> list[str]:
+        with self.lock:
+            self.conn.executescript(SCHEMA_MIGRATIONS_SCHEMA)
+            rows = self.conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
+        return [str(row["version"]) for row in rows]
+
+    def _apply_phase1_schema(self) -> None:
+        self.conn.executescript(PHASE1_SCHEMA)
 
     def migrate_geo(self) -> None:
         with self.lock:
@@ -137,15 +170,16 @@ class Database:
             self.geo_enabled = enabled
 
     def migrate_moderation(self) -> None:
-        cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(question)").fetchall()}
-        for name, ddl in {
-            "moderation_source": "ALTER TABLE question ADD COLUMN moderation_source TEXT",
-            "moderation_reason": "ALTER TABLE question ADD COLUMN moderation_reason TEXT",
-            "moderated_at": "ALTER TABLE question ADD COLUMN moderated_at INTEGER",
-        }.items():
-            if name not in cols:
-                self.conn.execute(ddl)
-        self.conn.executescript(PHASE3_SCHEMA)
+        with self.lock:
+            cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(question)").fetchall()}
+            for name, ddl in {
+                "moderation_source": "ALTER TABLE question ADD COLUMN moderation_source TEXT",
+                "moderation_reason": "ALTER TABLE question ADD COLUMN moderation_reason TEXT",
+                "moderated_at": "ALTER TABLE question ADD COLUMN moderated_at INTEGER",
+            }.items():
+                if name not in cols:
+                    self.conn.execute(ddl)
+            self.conn.executescript(PHASE3_SCHEMA)
 
     def insert_question(self, question: dict[str, Any], *, deleted_at: int | None = None, ip: str | None = None) -> bool:
         cols = ["uuid", "owner", "question_type", "question", "word_count", "asked_at"]

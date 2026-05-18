@@ -34,6 +34,7 @@
 
 ## Data Semantics
 
+- SQLite schema changes use the lightweight in-process migration runner in `backend/aqbox/db.py`; applied versions are recorded in `schema_migrations`. Prefer adding a named idempotent migration over ad hoc startup DDL.
 - In SQLite, `NULL` means absent, unknown, or not-yet-happened. Use it for optional event timestamps such as `answered_at`, `deleted_at`, `marked_at`, `moderated_at`, `purge_after`, and `purged_at`.
 - Numeric `0` is reserved for real numeric zero values such as counts, totals, and legacy request enum defaults. Do not use `0` as a storage sentinel for optional timestamps.
 - Legacy API compatibility sentinels belong at the serialization boundary. For example, DB `NULL answered_at` is returned as `"1970-01-01T00:00:00Z"` because the frontend inherited that Go-era contract.
