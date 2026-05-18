@@ -178,6 +178,118 @@ The final `grill-with-docs` pass challenged the plan against existing code, docs
 - Accept clears the pending state row and stores an event only.
 - Answering a blocked question remains allowed and still does not approve it.
 
+### Slice 3 Detailed TODOs
+
+#### 3.1 Configuration And Enablement
+
+- Add typed config parsing for LLM moderation while keeping raw YAML backward-compatible:
+  - global provider settings: provider name, base URL, model, timeout, max tokens, confidence thresholds, max attempts, backoff, raw-retention settings;
+  - per owner/question-type opt-in and additive policy prompt;
+  - API key resolution from environment first, config fallback only for local/dev.
+- Keep missing policy disabled for that owner/type.
+- Add `/ops/config` redaction for any LLM API key material.
+- Ensure `llm_filter` remains restart-required or explicitly decide which fields are hot-reloadable before implementation.
+
+#### 3.2 Prompt Construction
+
+- Build prompt construction as a pure, testable function before wiring any HTTP calls.
+- Prompt layers:
+  - system base policy: site-wide privacy, doxxing, identity speculation, harassment, threats, spam, explicit sexual content, fan drama, other;
+  - output contract: explicitly require **json** output and include an example JSON object;
+  - per owner/question-type additive policy text;
+  - user content wrapped in delimiters, e.g. `<<<QUESTION>>> ... <<<END_QUESTION>>>`.
+- Do not send to the model:
+  - client IP, IP location, owner/admin token data, matched keyword text, full keyword list, or asker JWT/submission UUID unless a later design explicitly needs it.
+- Keep prompt versioned, e.g. `aqbox-moderation-v1`, and store prompt version in events.
+- Include a small prompt fixture/test suite with representative safe, doxxing, identity speculation, harassment, fan-drama, and spam examples.
+
+#### 3.3 Formatted Output Contract
+
+- Use DeepSeek/OpenAI-compatible JSON mode with `response_format: {"type": "json_object"}` when provider supports it.
+- Because DeepSeek JSON mode requires the prompt to include the word `json`, include that word in the system/output instructions and include an example JSON object.
+- Set `max_tokens` high enough for the full object so `finish_reason = "length"` does not truncate JSON under normal conditions.
+- Validate parsed output with a strict internal schema:
+  - `decision`: `accept | reject`
+  - `category`: fixed site-tuned enum
+  - `confidence`: float `0.0..1.0`
+  - `short_reason`: short safe owner-list reason; must not quote original question content
+  - `rationale`: detailed owner-facing explanation
+- Normalize or reject invalid outputs:
+  - empty content: provider error event and retry if attempts remain;
+  - invalid JSON: provider error event and retry if attempts remain;
+  - schema mismatch or unknown enum: invalid-response event and retry if attempts remain;
+  - `finish_reason = "length"`: invalid-response event and retry if attempts remain;
+  - `finish_reason = "content_filter"` or `insufficient_system_resource`: provider event and retry/fail according to attempts.
+- Do not trust model-provided reason text without length limits and display-safe escaping through normal Vue rendering.
+
+#### 3.4 Provider Interface And DeepSeek Adapter
+
+- Define a provider interface independent of DeepSeek naming:
+  - input: prompt/messages, model, timeout, response format flag, max tokens;
+  - output: parsed raw response envelope including content, finish reason, model, latency, token usage, provider error class.
+- Implement the DeepSeek adapter first:
+  - endpoint: `POST /chat/completions`;
+  - base URL default: `https://api.deepseek.com`;
+  - models default to `deepseek-v4-flash`, allow config override to `deepseek-v4-pro`;
+  - auth: `Authorization: Bearer ...`;
+  - `temperature` low and `stream: false`;
+  - disable provider retries in the HTTP client; retries belong to the DB-backed worker.
+- Keep HTTP timeout below the worker lock/attempt cadence.
+- Unit-test provider parsing with canned DeepSeek-style responses for stop, length, content_filter, empty content, 429/5xx, and invalid JSON.
+
+#### 3.5 Worker And State Machine
+
+- Add a moderation worker alongside the visit worker in FastAPI lifespan.
+- Worker loop:
+  - select due `pending` rows by `next_attempt_at`, `locked_until`, and attempt count;
+  - acquire a short DB-backed lock before calling provider;
+  - release/advance lock after success/failure;
+  - on shutdown, stop accepting new work and let in-flight provider calls finish or time out.
+- State transitions:
+  - LLM queued: create `pending` state/event during submit after keyword pass and LLM policy match.
+  - Accept: delete pending state row and append accepted event.
+  - High-confidence reject: update to `blocked/source=llm` and append event.
+  - Low-confidence reject: update to `blocked/source=llm_low_confidence/reason=needs_review` and append event.
+  - Attempts exhausted/provider failure: update to `blocked/source=llm_error/reason=never_evaluated` and append event.
+- Preserve keyword-first behavior: keyword block skips LLM entirely.
+- Prevent pending rows from appearing in normal/review/live/detail until resolved.
+
+#### 3.6 Persistence And Raw Retention
+
+- Store parsed decision fields on `question_moderation_event`.
+- Store current review display fields on `question_moderation_state`.
+- Raw prompt/request/response:
+  - default off;
+  - when enabled, store on event with `purge_after`;
+  - add/update purge helper to null raw event fields and set `purged_at`;
+  - never log raw question text at INFO.
+- Consider whether accepted events should keep `rationale`; default can store parsed decision metadata without owner-visible rationale because accepted rows have no state row.
+
+#### 3.7 Real DeepSeek API Test Path
+
+- Add a deliberately opt-in integration test or tool that calls the real DeepSeek API only when `DEEPSEEK_API_KEY` is set and an explicit flag is present.
+- Suggested command shape:
+  - `AQBOX_RUN_DEEPSEEK_INTEGRATION=1 DEEPSEEK_API_KEY=... uv run pytest backend/tests/test_deepseek_integration.py -q`
+  - or a backend tool `uv run python backend/tools/check_deepseek_moderation.py --text "..."`
+- Integration test should verify:
+  - auth/base URL/model config reaches DeepSeek;
+  - JSON mode returns parseable content for safe and unsafe fixtures;
+  - `short_reason` does not quote original text;
+  - latency and finish reason are recorded;
+  - no database write occurs unless the test is explicitly an end-to-end worker test against a temp DB.
+- Keep this test skipped by default in CI and local smoke.
+- Document expected costs/rate-limit behavior in the test/tool help text.
+
+#### 3.8 End-To-End Local Validation
+
+- Add backend tests with fake provider for deterministic worker behavior.
+- Add an end-to-end temp-DB test that:
+  - submits LLM-enabled safe text and waits for worker accept;
+  - submits LLM-enabled reject text and waits for review queue entry;
+  - forces provider failures and verifies `llm_error/never_evaluated`.
+- Run owner smoke after Slice 3 with LLM disabled to prove existing flows still work.
+- Optionally run a manual local preview with a real DeepSeek key and a non-production config before enabling any production config.
+
 ## LLM Output And Privacy
 
 - Model returns both:
