@@ -778,6 +778,88 @@ class Database:
                 self.conn.rollback()
                 raise
 
+    def list_pending_llm_moderation_pairs(self, *, now: int, limit: int) -> list[tuple[str, str]]:
+        with self.lock:
+            rows = self.conn.execute(
+                """
+                SELECT DISTINCT q.owner, q.question_type
+                FROM question_moderation_state ms
+                JOIN question q ON q.uuid = ms.uuid
+                WHERE ms.status = 'pending'
+                  AND q.deleted_at IS NULL
+                  AND (ms.locked_until IS NULL OR ms.locked_until <= ?)
+                ORDER BY q.owner, q.question_type
+                LIMIT ?
+                """,
+                (now, limit),
+            ).fetchall()
+        return [(row["owner"], row["question_type"]) for row in rows]
+
+    def claim_pending_llm_moderation_by_pairs(
+        self,
+        *,
+        now: int,
+        lock_owner: str,
+        lock_seconds: int,
+        limit: int,
+        pairs: list[tuple[str, str]],
+    ) -> list[dict[str, Any]]:
+        if not pairs:
+            return []
+        pair_filter = " OR ".join(["(q.owner = ? AND q.question_type = ?)"] * len(pairs))
+        params: list[Any] = []
+        for owner, qtype in pairs:
+            params.extend([owner, qtype])
+        params.extend([now, limit])
+        with self.lock:
+            try:
+                rows = self.conn.execute(
+                    f"""
+                    SELECT ms.uuid, q.owner, q.question_type, q.question, ms.attempt_count,
+                           ms.provider, ms.model, ms.prompt_version, ms.policy_hash, ms.config_hash
+                    FROM question_moderation_state ms
+                    JOIN question q ON q.uuid = ms.uuid
+                    WHERE ms.status = 'pending'
+                      AND q.deleted_at IS NULL
+                      AND ({pair_filter})
+                      AND (ms.locked_until IS NULL OR ms.locked_until <= ?)
+                    ORDER BY COALESCE(ms.next_attempt_at, ms.created_at), ms.created_at, ms.uuid
+                    LIMIT ?
+                    """,
+                    params,
+                ).fetchall()
+                claimed: list[dict[str, Any]] = []
+                for row in rows:
+                    cur = self.conn.execute(
+                        """
+                        UPDATE question_moderation_state
+                        SET lock_owner = ?, locked_until = ?, last_attempt_at = ?, updated_at = ?
+                        WHERE uuid = ? AND status = 'pending'
+                          AND (locked_until IS NULL OR locked_until <= ?)
+                        """,
+                        (lock_owner, now + lock_seconds, now, now, row["uuid"], now),
+                    )
+                    if cur.rowcount == 1:
+                        claimed.append(
+                            {
+                                "uuid": row["uuid"],
+                                "owner": row["owner"],
+                                "type": row["question_type"],
+                                "text": row["question"],
+                                "attempt_count": int(row["attempt_count"] or 0),
+                                "provider": row["provider"] or "",
+                                "model": row["model"] or "",
+                                "prompt_version": row["prompt_version"] or "",
+                                "policy_hash": row["policy_hash"] or "",
+                                "config_hash": row["config_hash"] or "",
+                            }
+                        )
+                self.conn.commit()
+                return claimed
+            except Exception:
+                self.conn.rollback()
+                raise
+
     def reschedule_llm_moderation_error(
         self,
         *,

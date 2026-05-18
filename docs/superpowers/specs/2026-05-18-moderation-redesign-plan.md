@@ -362,7 +362,12 @@ llm_filter:
   - `short_reason` does not quote original text;
   - latency and finish reason are recorded;
   - no database write occurs unless the test is explicitly an end-to-end worker test against a temp DB.
-- Keep this test skipped by default in CI and local smoke.
+- Keep real-provider tests skipped by default in CI and local smoke.
+- Browser smoke should cover the new moderation UI/API path deterministically via keyword moderation: review queue visibility, owner detail metadata, approve, and return to the normal list.
+- Browser smoke may additionally call real DeepSeek only behind `AQBOX_E2E_RUN_DEEPSEEK=1` and `DEEPSEEK_API_KEY`; when either is absent, report a skipped check rather than failing.
+- Suggested browser command shape:
+  - `cd frontend && AQBOX_E2E_CONFIG=../backend/config/config.local.yaml npm run e2e:smoke`
+  - `cd frontend && AQBOX_E2E_CONFIG=../backend/config/config.local.yaml DEEPSEEK_API_KEY=... npm run e2e:smoke:deepseek`
 - Use `pytest.skip` when either opt-in variable is absent; do not print raw prompt text, raw response text, or the API key.
 - Document expected costs/rate-limit behavior in the test/tool help text.
 
@@ -373,8 +378,8 @@ llm_filter:
   - submits LLM-enabled safe text and waits for worker accept;
   - submits LLM-enabled reject text and waits for review queue entry;
   - forces provider failures and verifies `llm_error/never_evaluated`.
-- Run owner smoke after Slice 3 with LLM disabled to prove existing flows still work.
-- Optionally run a manual local preview with a real DeepSeek key and a non-production config before enabling any production config.
+- Run owner smoke after Slice 3 with LLM disabled to prove existing flows still work and to cover keyword-backed review queue UI/API behavior.
+- Optionally run browser smoke with `AQBOX_E2E_RUN_DEEPSEEK=1` plus `DEEPSEEK_API_KEY` and a non-production config before enabling any production config.
 
 ## LLM Output And Privacy
 

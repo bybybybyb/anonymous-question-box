@@ -152,11 +152,12 @@ export default {
           this.ip = resp.data.ip || "";
           this.ip_addr = resp.data.ip_addr || "";
           this.ip_isp = resp.data.ip_isp || "";
-          this.moderation_status = resp.data.moderation_status || "";
-          this.moderation_source = resp.data.moderation_source || "";
-          this.moderation_category = resp.data.moderation_category || "";
-          this.moderation_reason = resp.data.moderation_reason || "";
-          this.moderated_at = resp.data.moderated_at || "";
+          const moderation = resp.data.moderation || {};
+          this.moderation_status = moderation.status || "";
+          this.moderation_source = moderation.source || "";
+          this.moderation_category = moderation.category || "";
+          this.moderation_reason = moderation.reason || "";
+          this.moderated_at = moderation.updated_at || "";
           if (this.answer_text.length === 0) {
             let localVal = localStorage.getItem(storagePrefix + this.uuid);
             if (localVal && localVal !== "") {

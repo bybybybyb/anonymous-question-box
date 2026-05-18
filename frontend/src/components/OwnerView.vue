@@ -132,91 +132,167 @@
               </ul>
             </div>
           </nav>
+          <div class="btn-group mt-3" role="group" aria-label="moderation list mode">
+            <button
+              type="button"
+              class="btn btn-sm"
+              :class="{
+                'btn-primary': activeListMode === 'normal',
+                'btn-outline-primary': activeListMode !== 'normal',
+              }"
+              v-on:click="switchListMode('normal')"
+            >
+              全部投稿
+            </button>
+            <button
+              type="button"
+              class="btn btn-sm"
+              :class="{
+                'btn-danger': activeListMode === 'review',
+                'btn-outline-danger': activeListMode !== 'review',
+              }"
+              v-on:click="switchListMode('review')"
+            >
+              审核队列
+              <span class="badge text-bg-light ms-1">{{ moderationCounts.blocked }}</span>
+            </button>
+          </div>
         </div>
-        <div class="card shadow-lg m-3" v-for="(q, i) in rows" :key="i">
-          <div class="card-header">
-            <div class="row">
-              <div class="col-12 col-md-2 d-none d-sm-table-cell">
-                字数： {{ q.word_count }}
-              </div>
-              <div class="col-12 col-md-5">
-                投稿时间： {{ formatTime(q.asked_at) }}
-              </div>
-              <div class="col-12 col-md-5" :style="q.visit_status_color">
-                回复时间： {{ formatTime(q.answered_at) }}
-              </div>
-              <div class="col-12 mt-1 small text-muted" v-if="q.ip">
-                IP：{{ q.ip }}
-                <span v-if="q.ip_addr || q.ip_isp"
-                  >（{{ [q.ip_addr, q.ip_isp].filter(Boolean).join(" / ") }}）</span
-                >
+        <div v-if="activeListMode === 'normal'">
+          <div class="card shadow-lg m-3" v-for="(q, i) in rows" :key="i">
+            <div class="card-header">
+              <div class="row">
+                <div class="col-12 col-md-2 d-none d-sm-table-cell">
+                  字数： {{ q.word_count }}
+                </div>
+                <div class="col-12 col-md-5">
+                  投稿时间： {{ formatTime(q.asked_at) }}
+                </div>
+                <div class="col-12 col-md-5" :style="q.visit_status_color">
+                  回复时间： {{ formatTime(q.answered_at) }}
+                </div>
+                <div class="col-12 mt-1 small text-muted" v-if="q.ip">
+                  IP：{{ q.ip }}
+                  <span v-if="q.ip_addr || q.ip_isp"
+                    >（{{ [q.ip_addr, q.ip_isp].filter(Boolean).join(" / ") }}）</span
+                  >
+                </div>
               </div>
             </div>
-          </div>
-          <div class="card-body">
-            <div class="row">
-              <div class="col-12 col-sm-9">
-                <p class="card-text">
-                  {{ digest(q.text) }}
-                </p>
-              </div>
-              <div class="col-12 col-sm-3">
-                <a
-                  class="btn btn-sm m-1"
-                  :class="{
-                    'btn-warning': q.marked,
-                    'btn-outline-warning': !q.marked,
-                  }"
-                  v-on:click="markQuestion(q)"
-                >
-                  {{ q.marked ? "取消标记" : "标记" }}
-                </a>
-                <a
-                  class="btn btn-sm btn-outline-danger m-1"
-                  v-on:click="openQuestion(q.uuid)"
-                  data-bs-toggle="modal"
-                  data-bs-target="#confirmDeleteModal"
-                >
-                  删除
-                </a>
-                <a
-                  class="btn btn-sm btn-outline-info m-1"
-                  v-on:click="openQuestion(q.uuid)"
-                  data-bs-toggle="modal"
-                  data-bs-target="#answerModal"
-                >
-                  打开
-                </a>
-              </div>
-              <div class="modal fade" id="confirmDeleteModal" tabindex="-1">
-                <div class="modal-dialog modal-dialog-centered modal-sm">
-                  <div class="modal-content">
-                    <div class="modal-header">
-                      <h5 class="modal-title">确认删除？</h5>
-                    </div>
-                    <div class="modal-body">
-                      <button
-                        type="button"
-                        class="btn btn-sm btn-danger mx-1"
-                        data-bs-dismiss="modal"
-                        v-on:click="deleteQuestion()"
-                      >
-                        确认
-                      </button>
-                      <button
-                        type="button"
-                        class="btn btn-sm btn-secondary mx-1"
-                        data-bs-dismiss="modal"
-                        v-on:click="closeQuestion()"
-                      >
-                        取消
-                      </button>
+            <div class="card-body">
+              <div class="row">
+                <div class="col-12 col-sm-9">
+                  <p class="card-text">
+                    {{ digest(q.text) }}
+                  </p>
+                </div>
+                <div class="col-12 col-sm-3">
+                  <a
+                    class="btn btn-sm m-1"
+                    :class="{
+                      'btn-warning': q.marked,
+                      'btn-outline-warning': !q.marked,
+                    }"
+                    v-on:click="markQuestion(q)"
+                  >
+                    {{ q.marked ? "取消标记" : "标记" }}
+                  </a>
+                  <a
+                    class="btn btn-sm btn-outline-danger m-1"
+                    v-on:click="openQuestion(q.uuid)"
+                    data-bs-toggle="modal"
+                    data-bs-target="#confirmDeleteModal"
+                  >
+                    删除
+                  </a>
+                  <a
+                    class="btn btn-sm btn-outline-info m-1"
+                    v-on:click="openQuestion(q.uuid)"
+                    data-bs-toggle="modal"
+                    data-bs-target="#answerModal"
+                  >
+                    打开
+                  </a>
+                </div>
+                <div class="modal fade" id="confirmDeleteModal" tabindex="-1">
+                  <div class="modal-dialog modal-dialog-centered modal-sm">
+                    <div class="modal-content">
+                      <div class="modal-header">
+                        <h5 class="modal-title">确认删除？</h5>
+                      </div>
+                      <div class="modal-body">
+                        <button
+                          type="button"
+                          class="btn btn-sm btn-danger mx-1"
+                          data-bs-dismiss="modal"
+                          v-on:click="deleteQuestion()"
+                        >
+                          确认
+                        </button>
+                        <button
+                          type="button"
+                          class="btn btn-sm btn-secondary mx-1"
+                          data-bs-dismiss="modal"
+                          v-on:click="closeQuestion()"
+                        >
+                          取消
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
+        </div>
+        <div class="table-responsive m-3" v-if="activeListMode === 'review'">
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th scope="col">投稿</th>
+                <th scope="col">来源</th>
+                <th scope="col">时间</th>
+                <th scope="col" class="text-end">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="q in rows" :key="q.uuid">
+                <td style="min-width: 280px">
+                  <div class="fw-semibold">{{ digest(q.text) }}</div>
+                  <div class="small text-muted" v-if="moderationMeta(q)">
+                    {{ moderationMeta(q) }}
+                  </div>
+                </td>
+                <td>
+                  <span class="badge text-bg-warning">
+                    {{ moderationStatusLabel(q) }}
+                  </span>
+                </td>
+                <td class="text-nowrap">{{ formatTime(q.asked_at) }}</td>
+                <td class="text-end text-nowrap">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-info m-1"
+                    v-on:click="openQuestion(q.uuid)"
+                    data-bs-toggle="modal"
+                    data-bs-target="#answerModal"
+                  >
+                    打开
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-success m-1"
+                    v-on:click="approveQuestion(q)"
+                  >
+                    通过
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="rows.length === 0">
+                <td class="text-center text-muted py-4" colspan="4">暂无待审核投稿</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
         <div class="container">
           <div class="row">
@@ -422,6 +498,9 @@ export default {
       const rows = resp.data.questions || [];
       this.total_count = resp.data.total;
       this.locationOptions = resp.data.location_options || [];
+      this.moderationCounts = {
+        blocked: resp.data.moderation_counts?.blocked || 0,
+      };
       this.rows = rows.map((row) => this.withVisitStatusColor(row));
     },
     withVisitStatusColor(row) {
@@ -462,6 +541,11 @@ export default {
         page: 1,
       };
     },
+    switchListMode(mode) {
+      if (!listModes[mode] || this.activeListMode === mode) return;
+      this.activeListMode = mode;
+      this.onQueryChange(true, false, false);
+    },
     markQuestion(q) {
       this.axios
         .put(
@@ -489,6 +573,26 @@ export default {
           } else {
             alert("提问箱好像坏掉了，直接ping管理员吧！");
             this.$router.push("/");
+          }
+        });
+    },
+    approveQuestion(q) {
+      this.axios
+        .put("/api/owner/questions/" + q.uuid + "/moderation/approve", null, {
+          headers: { Authorization: `Bearer ${this.$route.query.token}` },
+        })
+        .then(() => {
+          this.onQueryChange(false, false, false);
+        })
+        .catch((err) => {
+          console.log(err.response);
+          if (err.response.status === 401 || err.response.status === 403) {
+            alert(
+              "神秘代码坏掉咯，要是你知道真正的管理员是谁的话就赶紧ping他要个新的吧！"
+            );
+            this.$router.push("/");
+          } else {
+            alert("提问箱提问审核好像坏掉了，直接ping管理员吧！");
           }
         });
     },
@@ -525,6 +629,20 @@ export default {
     },
     visitStatusColor() {
       return;
+    },
+    moderationStatusLabel(q) {
+      const labels = {
+        blocked: "审核队列",
+        approved: "已通过",
+        pending: "待审核",
+      };
+      return labels[q.moderation?.status] || q.moderation?.status || "审核队列";
+    },
+    moderationMeta(q) {
+      const moderation = q.moderation || {};
+      return [moderation.source, moderation.category, moderation.reason]
+        .filter(Boolean)
+        .join(" / ");
     },
   },
   computed: {
@@ -609,6 +727,9 @@ export default {
       uuid: "",
       markedOnly: false,
       activeListMode: defaultListMode,
+      moderationCounts: {
+        blocked: 0,
+      },
       queryDebounceTimer: null,
     };
   },

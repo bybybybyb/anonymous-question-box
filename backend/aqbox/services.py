@@ -6,7 +6,7 @@ import json
 from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from fastapi import Request
@@ -194,6 +194,8 @@ class LLMModerationWorker:
             max_attempts=max_attempts,
             include_future=sweep_future,
         )
+        if settings.llm_moderation.enabled and len(rows) < self.batch_size:
+            rows.extend(self._claim_disabled_policy_rows(settings, now, self.batch_size - len(rows)))
         self.db.purge_due_raw_moderation_event_fields(now=now)
         self.last_successful_check_at = now
         for row in rows:
@@ -201,6 +203,20 @@ class LLMModerationWorker:
                 await self._process_claimed(row)
             except Exception:
                 self._handle_worker_exception(row, now_epoch())
+
+    def _claim_disabled_policy_rows(self, settings: Settings, now: int, limit: int) -> list[dict[str, Any]]:
+        pairs = self.db.list_pending_llm_moderation_pairs(now=now, limit=max(limit * 4, limit))
+        disabled_pairs = [(owner, qtype) for owner, qtype in pairs if llm_policy_for(settings, owner, qtype) is None]
+        return cast(
+            list[dict[str, Any]],
+            self.db.claim_pending_llm_moderation_by_pairs(
+                now=now,
+                lock_owner=self.lock_owner,
+                lock_seconds=self.lock_seconds,
+                limit=limit,
+                pairs=disabled_pairs,
+            ),
+        )
 
     def _handle_worker_exception(self, row: dict[str, Any], attempted_at: int) -> None:
         settings = self.settings_provider.current(force=True)

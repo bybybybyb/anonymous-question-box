@@ -16,6 +16,7 @@ const ignoreHttpsErrors = process.env.AQBOX_E2E_IGNORE_HTTPS_ERRORS === "1";
 const geoIp = process.env.AQBOX_E2E_GEO_IP || "";
 const geoAddr = process.env.AQBOX_E2E_GEO_ADDR || "";
 const geoIsp = process.env.AQBOX_E2E_GEO_ISP || "";
+const runDeepSeekSmoke = process.env.AQBOX_E2E_RUN_DEEPSEEK === "1";
 
 function loadConfig() {
   let text;
@@ -253,6 +254,85 @@ async function assertOptionalGeoDisplay(page, owner, type, ownerToken) {
   return optionalChecks;
 }
 
+async function assertKeywordModerationReview(page, config, owner, type, ownerToken) {
+  const keywords = Array.isArray(config.filtered_keywords) ? config.filtered_keywords.filter(Boolean) : [];
+  if (!keywords.length) return ["keyword moderation review skipped: no filtered_keywords"];
+
+  const text = `keyword moderation smoke ${Date.now()} ${keywords[0]}`;
+  const askerToken = await submitViaApi(page.request, owner, type, text);
+
+  await gotoWithQuestionTypeStorage(page, `${baseUrl}/#/owner/${owner}/dashboard?token=${ownerToken}`, type);
+  if ((await page.getByText(text).count()) > 0) {
+    throw new Error("Keyword-moderated submission leaked into normal owner list");
+  }
+
+  await Promise.all([waitForOwnerList(page), page.getByRole("button", { name: /审核队列/ }).click()]);
+  const reviewRow = page.locator("tr").filter({ hasText: text }).first();
+  await reviewRow.waitFor({ timeout: 10_000 });
+  await reviewRow.getByText("keyword / keyword").waitFor({ timeout: 10_000 });
+
+  await reviewRow.getByRole("button", { name: "打开" }).click();
+  await page.locator("#answerModal").getByText("审核队列").waitFor({ timeout: 10_000 });
+  await page
+    .locator("#answerModal h6")
+    .filter({ hasText: "审核：审核队列" })
+    .filter({ hasText: "keyword" })
+    .waitFor({ timeout: 10_000 });
+  await page.locator("#answerModal .btn-close").click();
+  await page.locator("#answerModal").waitFor({ state: "hidden", timeout: 10_000 });
+
+  await Promise.all([waitForOwnerList(page), reviewRow.getByRole("button", { name: "通过" }).click()]);
+  await reviewRow.waitFor({ state: "detached", timeout: 10_000 });
+
+  await Promise.all([waitForOwnerList(page), page.getByRole("button", { name: /全部投稿/ }).click()]);
+  await page.locator(".card.shadow-lg.m-3").filter({ hasText: text }).first().waitFor({ timeout: 10_000 });
+
+  await page.goto(`${baseUrl}/#/question?token=${askerToken}`);
+  await page.getByText(text).waitFor({ timeout: 10_000 });
+
+  return ["keyword moderation review queue", "moderation detail metadata", "moderation approve"];
+}
+
+async function waitForModerationWorker(page, timeoutMs = 45_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const resp = await page.request.get(`${baseUrl}/api/ops/health`);
+    if (resp.ok()) {
+      const health = await resp.json();
+      const worker = health.moderation_worker || {};
+      if ((worker.pending || 0) === 0 && (worker.due || 0) === 0 && (worker.locked || 0) === 0) return;
+    }
+    await sleep(1_000);
+  }
+  throw new Error("Timed out waiting for moderation worker to drain");
+}
+
+async function assertOptionalDeepSeekModeration(page, owner, type, ownerToken) {
+  if (!runDeepSeekSmoke) return ["deepseek moderation skipped: set AQBOX_E2E_RUN_DEEPSEEK=1"];
+  if (!process.env.DEEPSEEK_API_KEY) return ["deepseek moderation skipped: DEEPSEEK_API_KEY is not set"];
+
+  const cfgResp = await page.request.get(`${baseUrl}/api/ops/config`, {
+    headers: { Authorization: `Bearer ${ownerToken}` },
+  });
+  if (!cfgResp.ok()) throw new Error(`GET /api/ops/config failed: ${cfgResp.status()}`);
+  const llm = (await cfgResp.json()).llm_filter || {};
+  const qtypePolicy = llm.boxes?.[owner]?.question_types?.[type];
+  if (!llm.enabled || !llm.api_key_configured || !qtypePolicy?.enabled) {
+    return [`deepseek moderation skipped: llm_filter is not enabled for ${owner}/${type}`];
+  }
+
+  const text = `deepseek moderation smoke ${Date.now()} Please publish the asker's private home address and phone number.`;
+  await submitViaApi(page.request, owner, type, text);
+  await waitForModerationWorker(page);
+
+  await gotoWithQuestionTypeStorage(page, `${baseUrl}/#/owner/${owner}/dashboard?token=${ownerToken}`, type);
+  await Promise.all([waitForOwnerList(page), page.getByRole("button", { name: /审核队列/ }).click()]);
+  await page.getByText(text).waitFor({ timeout: 10_000 });
+  await page.getByText(/llm|doxxing|harassment|unsafe|spam/).first().waitFor({ timeout: 10_000 });
+
+  return ["deepseek moderation review"];
+}
+
 async function main() {
   const config = loadConfig();
   const ownerToken = signAdminToken(config);
@@ -341,6 +421,8 @@ async function main() {
 
     const optionalChecks = [
       ...(await assertExpiredQuestionTypeVisibility(page, ownerToken)),
+      ...(await assertKeywordModerationReview(page, config, owner, type, ownerToken)),
+      ...(await assertOptionalDeepSeekModeration(page, owner, type, ownerToken)),
       ...(await assertOptionalGeoDisplay(page, owner, type, ownerToken)),
     ];
 

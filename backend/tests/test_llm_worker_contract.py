@@ -682,6 +682,37 @@ def test_worker_sweeps_future_retry_when_llm_hot_reload_disables_policy(tmp_path
     }
 
 
+def test_worker_sweeps_future_retry_when_llm_hot_reload_disables_question_type_policy(tmp_path: Path) -> None:
+    s = llm_settings(tmp_path, max_attempts=3, initial_backoff_seconds=3600)
+    db = Database(s.db_path, moderation_schema=True)
+    provider = FakeLLMProvider(provider_response(error_class="timeout", finish_reason=None))
+    uuid = submitted_pending_uuid(db, s, "future retry")
+    asyncio.run(run_worker_once(db, s, provider))
+    before_disable = db.conn.execute(
+        "SELECT status, attempt_count, next_attempt_at FROM question_moderation_state WHERE uuid = ?",
+        (uuid,),
+    ).fetchone()
+    s.llm_filter["boxes"]["owner"]["question_types"]["type"]["enabled"] = False
+    s.__post_init__()
+
+    asyncio.run(run_worker_once(db, s, FakeLLMProvider()))
+
+    state = db.conn.execute(
+        "SELECT status, source, reason, attempt_count, last_error_class, next_attempt_at FROM question_moderation_state WHERE uuid = ?",
+        (uuid,),
+    ).fetchone()
+    assert before_disable["status"] == "pending"
+    assert before_disable["next_attempt_at"] is not None
+    assert dict(state) == {
+        "status": "blocked",
+        "source": "llm_error",
+        "reason": "never_evaluated",
+        "attempt_count": 1,
+        "last_error_class": "config_disabled",
+        "next_attempt_at": None,
+    }
+
+
 @pytest.mark.parametrize(
     "response_factory",
     [
