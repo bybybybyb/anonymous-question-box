@@ -716,17 +716,13 @@ class Database:
         lock_owner: str,
         lock_seconds: int,
         limit: int,
-        max_attempts: int | None = None,
     ) -> list[dict[str, Any]]:
-        attempt_filter = "" if max_attempts is None else "AND ms.attempt_count < ?"
         params: list[Any] = [now, now]
-        if max_attempts is not None:
-            params.append(max_attempts)
         params.append(limit)
         with self.lock:
             try:
                 rows = self.conn.execute(
-                    f"""
+                    """
                     SELECT ms.uuid, q.owner, q.question_type, q.question, ms.attempt_count,
                            ms.provider, ms.model, ms.prompt_version, ms.policy_hash, ms.config_hash
                     FROM question_moderation_state ms
@@ -735,7 +731,6 @@ class Database:
                       AND q.deleted_at IS NULL
                       AND (ms.next_attempt_at IS NULL OR ms.next_attempt_at <= ?)
                       AND (ms.locked_until IS NULL OR ms.locked_until <= ?)
-                      {attempt_filter}
                     ORDER BY COALESCE(ms.next_attempt_at, ms.created_at), ms.created_at, ms.uuid
                     LIMIT ?
                     """,
@@ -892,6 +887,7 @@ class Database:
         confidence: float | None,
         error_class: str,
         metadata: dict[str, Any],
+        increment_attempt: bool = True,
     ) -> bool:
         with self.lock:
             try:
@@ -902,7 +898,7 @@ class Database:
                         source = ?,
                         reason = ?,
                         category = ?,
-                        attempt_count = attempt_count + 1,
+                        attempt_count = attempt_count + ?,
                         next_attempt_at = NULL,
                         locked_until = NULL,
                         lock_owner = '',
@@ -927,6 +923,7 @@ class Database:
                         source,
                         reason,
                         category,
+                        1 if increment_attempt else 0,
                         error_class,
                         short_reason,
                         rationale,

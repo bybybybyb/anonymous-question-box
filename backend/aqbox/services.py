@@ -182,16 +182,12 @@ class LLMModerationWorker:
             await self.run_once()
 
     async def run_once(self) -> None:
-        settings = self.settings_provider.current()
         now = now_epoch()
-        llm_config = settings.llm_moderation
-        max_attempts = None if not llm_config.enabled else llm_config.max_attempts
         rows = self.db.claim_due_llm_moderation(
             now=now,
             lock_owner=self.lock_owner,
             lock_seconds=self.lock_seconds,
             limit=self.batch_size,
-            max_attempts=max_attempts,
         )
         self.last_successful_check_at = now
         for row in rows:
@@ -202,7 +198,10 @@ class LLMModerationWorker:
         policy = llm_policy_for(settings, row["owner"], row["type"])
         finalized_at = now_epoch()
         if policy is None:
-            self.recent_error_class = "config_disabled"
+            self._finalize_config_disabled(row, settings, finalized_at)
+            return
+        if int(row.get("attempt_count") or 0) >= settings.llm_moderation.max_attempts:
+            self.recent_error_class = "max_attempts_exhausted"
             self.db.finalize_llm_moderation_block(
                 uuid=row["uuid"],
                 lock_owner=self.lock_owner,
@@ -210,11 +209,12 @@ class LLMModerationWorker:
                 source="llm_error",
                 reason="never_evaluated",
                 category=None,
-                short_reason="LLM moderation disabled before evaluation",
-                rationale="The configured LLM policy was disabled while the submission was pending.",
+                short_reason="LLM moderation attempts were already exhausted",
+                rationale="The pending submission reached the configured maximum attempts before this worker run.",
                 confidence=None,
-                error_class="config_disabled",
+                error_class="max_attempts_exhausted",
                 metadata=_llm_metadata_from_row(row, settings),
+                increment_attempt=False,
             )
             return
 
@@ -225,8 +225,12 @@ class LLMModerationWorker:
         response = await self.provider.complete(request)
         metadata = _llm_metadata_from_response(prompt, request, policy, settings, response)
         attempted_at = now_epoch()
+        current_settings = self.settings_provider.current()
+        if llm_policy_for(current_settings, row["owner"], row["type"]) is None:
+            self._finalize_config_disabled(row, current_settings, attempted_at)
+            return
         if response.error_class is not None:
-            self._handle_failed_attempt(row, settings, attempted_at, str(response.error_class), metadata)
+            self._handle_failed_attempt(row, current_settings, attempted_at, str(response.error_class), metadata)
             return
         try:
             parsed = parse_llm_moderation_response(
@@ -235,7 +239,7 @@ class LLMModerationWorker:
                 original_text=row["text"],
             )
         except InvalidLLMModerationResponseError as exc:
-            self._handle_failed_attempt(row, settings, attempted_at, f"invalid_response_{exc.code}", metadata)
+            self._handle_failed_attempt(row, current_settings, attempted_at, f"invalid_response_{exc.code}", metadata)
             return
 
         if parsed.decision == "accept":
@@ -252,7 +256,7 @@ class LLMModerationWorker:
             )
             return
 
-        source, reason = _reject_framing(parsed, settings)
+        source, reason = _reject_framing(parsed, current_settings)
         self.db.finalize_llm_moderation_block(
             uuid=row["uuid"],
             lock_owner=self.lock_owner,
@@ -265,6 +269,23 @@ class LLMModerationWorker:
             confidence=parsed.confidence,
             error_class="",
             metadata={**metadata, "decision_json": _decision_json(parsed)},
+        )
+
+    def _finalize_config_disabled(self, row: dict[str, Any], settings: Settings, finalized_at: int) -> None:
+        self.recent_error_class = "config_disabled"
+        self.db.finalize_llm_moderation_block(
+            uuid=row["uuid"],
+            lock_owner=self.lock_owner,
+            finalized_at=finalized_at,
+            source="llm_error",
+            reason="never_evaluated",
+            category=None,
+            short_reason="LLM moderation disabled before evaluation",
+            rationale="The configured LLM policy was disabled while the submission was pending.",
+            confidence=None,
+            error_class="config_disabled",
+            metadata=_llm_metadata_from_row(row, settings),
+            increment_attempt=False,
         )
 
     def _handle_failed_attempt(
