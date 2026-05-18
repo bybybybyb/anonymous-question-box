@@ -6,6 +6,7 @@ from pathlib import Path
 from time import time
 
 import jwt
+import pytest
 import yaml
 from fastapi.testclient import TestClient
 
@@ -1066,6 +1067,92 @@ def test_llm_moderation_config_requires_global_and_type_enablement(tmp_path: Pat
     write_config(config_path, payload)
     globally_disabled = load_settings(str(config_path))
     assert globally_disabled.llm_moderation.policy_for("owner", "type") is None
+
+
+def test_direct_settings_llm_filter_derives_typed_config() -> None:
+    direct = Settings(
+        llm_filter={
+            "enabled": True,
+            "boxes": {"owner": {"question_types": {"type": {"enabled": True, "policy_prompt": "direct"}}}},
+        }
+    )
+
+    policy = llm_policy_for(direct, "owner", "type")
+    assert policy is not None
+    assert policy.policy_prompt == "direct"
+
+
+def test_llm_policy_repr_redacts_config_api_key_and_copies_only_when_allowed(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    payload = config_payload(
+        tmp_path,
+        llm_filter={
+            "enabled": True,
+            "api_key": "config-fallback-secret",
+            "boxes": {"owner": {"question_types": {"type": {"enabled": True, "policy_prompt": "policy"}}}},
+        },
+    )
+    write_config(config_path, payload)
+
+    policy = load_settings(str(config_path)).llm_moderation.policy_for("owner", "type")
+    assert policy is not None
+    assert policy.api_key() == ""
+    assert policy.api_key_value == ""
+    assert "config-fallback-secret" not in repr(policy)
+
+    payload["llm_filter"]["allow_config_api_key"] = True
+    write_config(config_path, payload)
+    allowed_policy = load_settings(str(config_path)).llm_moderation.policy_for("owner", "type")
+    assert allowed_policy is not None
+    assert allowed_policy.api_key() == "config-fallback-secret"
+    assert allowed_policy.api_key_value == "config-fallback-secret"
+    assert "config-fallback-secret" not in repr(allowed_policy)
+
+
+def test_llm_threshold_and_boolean_validation_rejects_invalid_values(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    base_filter = {
+        "enabled": True,
+        "boxes": {"owner": {"question_types": {"type": {"enabled": True, "policy_prompt": "policy"}}}},
+    }
+    for invalid_threshold in (-0.01, 1.01, float("nan")):
+        payload = config_payload(
+            tmp_path,
+            llm_filter={**base_filter, "high_confidence_reject_threshold": invalid_threshold},
+        )
+        write_config(config_path, payload)
+        with pytest.raises(ValueError, match="high_confidence_reject_threshold"):
+            load_settings(str(config_path))
+
+    payload = config_payload(tmp_path, llm_filter={**base_filter, "enabled": "ture"})
+    write_config(config_path, payload)
+    with pytest.raises(ValueError, match=r"llm_filter\.enabled"):
+        load_settings(str(config_path))
+
+
+def test_invalid_llm_threshold_hot_reload_keeps_last_good_config(tmp_path: Path) -> None:
+    payload = config_payload(
+        tmp_path,
+        llm_filter={
+            "enabled": True,
+            "high_confidence_reject_threshold": 0.8,
+            "boxes": {"owner": {"question_types": {"type": {"enabled": True, "policy_prompt": "policy"}}}},
+        },
+    )
+    client, config_path = config_client(tmp_path, payload)
+    with client:
+        old_admin = admin_token(settings(tmp_path))
+        assert client.app.state.settings_provider.current().llm_moderation.high_confidence_reject_threshold == 0.8
+
+        payload["llm_filter"]["high_confidence_reject_threshold"] = 1.2
+        write_config(config_path, payload)
+        cfg = client.get("/ops/config", headers=auth(old_admin))
+        current = client.app.state.settings_provider.current()
+
+    assert cfg.status_code == 200
+    assert cfg.json()["last_reload_error"]
+    assert "high_confidence_reject_threshold" in cfg.json()["last_reload_error"]
+    assert current.llm_moderation.high_confidence_reject_threshold == 0.8
 
 
 def test_llm_moderation_config_parses_provider_and_retention_overrides(tmp_path: Path) -> None:

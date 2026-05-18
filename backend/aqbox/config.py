@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -51,20 +52,33 @@ def _normalize_owner_profiles(raw_profiles: Any) -> dict[str, dict[str, Any]]:
     return profiles
 
 
-def _as_bool(value: Any, *, default: bool = False) -> bool:
+def _as_bool(value: Any, *, default: bool = False, field_name: str = "boolean") -> bool:
     if value is None:
         return default
     if isinstance(value, bool):
         return value
     if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes", "on"}
-    return bool(value)
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    if isinstance(value, int) and value in {0, 1}:
+        return bool(value)
+    raise ValueError(f"{field_name} must be a boolean")
 
 
 def _as_float(value: Any, *, default: float) -> float:
     if value is None or value == "":
         return default
     return float(value)
+
+
+def _as_probability(value: Any, *, default: float, field_name: str) -> float:
+    probability = _as_float(value, default=default)
+    if not math.isfinite(probability) or probability < 0.0 or probability > 1.0:
+        raise ValueError(f"{field_name} must be a finite number between 0 and 1")
+    return probability
 
 
 def _as_int(value: Any, *, default: int) -> int:
@@ -95,7 +109,7 @@ class LLMModerationPolicy:
     base_url: str
     model: str
     api_key_env: str
-    api_key_value: str
+    api_key_value: str = field(repr=False)
     allow_config_api_key: bool
     high_confidence_reject_threshold: float
     review_all_model_rejects: bool
@@ -120,7 +134,7 @@ class LLMModerationConfig:
     base_url: str = "https://api.deepseek.com"
     model: str = "deepseek-v4-flash"
     api_key_env: str = "DEEPSEEK_API_KEY"
-    api_key_value: str = ""
+    api_key_value: str = field(default="", repr=False)
     allow_config_api_key: bool = False
     high_confidence_reject_threshold: float = 0.85
     review_all_model_rejects: bool = True
@@ -155,7 +169,7 @@ class LLMModerationConfig:
             base_url=self.base_url,
             model=self.model,
             api_key_env=self.api_key_env,
-            api_key_value=self.api_key_value,
+            api_key_value=self.api_key_value if self.allow_config_api_key else "",
             allow_config_api_key=self.allow_config_api_key,
             high_confidence_reject_threshold=self.high_confidence_reject_threshold,
             review_all_model_rejects=self.review_all_model_rejects,
@@ -210,28 +224,36 @@ def _parse_llm_moderation_config(raw: dict[str, Any]) -> LLMModerationConfig:
         for qtype, qtype_raw in _as_map_by_name(box_raw.get("question_types")).items():
             policy_prompt = qtype_raw.get("policy_prompt", qtype_raw.get("prompt", ""))
             question_types[qtype] = LLMQuestionTypeConfig(
-                enabled=_as_bool(qtype_raw.get("enabled"), default=False),
+                enabled=_as_bool(
+                    qtype_raw.get("enabled"),
+                    default=False,
+                    field_name=f"llm_filter boxes.{owner}.question_types.{qtype}.enabled",
+                ),
                 policy_prompt="" if policy_prompt is None else str(policy_prompt),
                 raw=dict(qtype_raw),
             )
         boxes[owner] = LLMBoxConfig(question_types=question_types, raw=dict(box_raw))
     return LLMModerationConfig(
-        enabled=_as_bool(raw.get("enabled"), default=False),
+        enabled=_as_bool(raw.get("enabled"), default=False, field_name="llm_filter.enabled"),
         provider=provider,
         base_url=str(raw.get("base_url") or raw.get("api_base_url") or "https://api.deepseek.com"),
         model=str(raw.get("model") or "deepseek-v4-flash"),
         api_key_env=api_key_env,
         api_key_value=str(raw.get("api_key") or ""),
-        allow_config_api_key=_as_bool(raw.get("allow_config_api_key"), default=False),
-        high_confidence_reject_threshold=_as_float(
-            raw.get("high_confidence_reject_threshold", raw.get("confidence_threshold")), default=0.85
+        allow_config_api_key=_as_bool(raw.get("allow_config_api_key"), default=False, field_name="llm_filter.allow_config_api_key"),
+        high_confidence_reject_threshold=_as_probability(
+            raw.get("high_confidence_reject_threshold", raw.get("confidence_threshold")),
+            default=0.85,
+            field_name="llm_filter.high_confidence_reject_threshold",
         ),
-        review_all_model_rejects=_as_bool(raw.get("review_all_model_rejects"), default=True),
+        review_all_model_rejects=_as_bool(
+            raw.get("review_all_model_rejects"), default=True, field_name="llm_filter.review_all_model_rejects"
+        ),
         max_attempts=max(1, _as_int(raw.get("max_attempts"), default=2)),
         timeout_seconds=max(0.1, _as_float(raw.get("timeout_seconds"), default=10.0)),
         max_tokens=max(1, _as_int(raw.get("max_tokens"), default=256)),
         initial_backoff_seconds=max(0.0, _as_float(raw.get("initial_backoff_seconds"), default=1.0)),
-        raw_retention_enabled=_as_bool(raw.get("raw_retention_enabled"), default=False),
+        raw_retention_enabled=_as_bool(raw.get("raw_retention_enabled"), default=False, field_name="llm_filter.raw_retention_enabled"),
         raw_retention_seconds=max(0, _as_int(raw_retention_seconds, default=0)),
         boxes=boxes,
         raw=dict(raw),
@@ -261,6 +283,11 @@ class Settings:
     ip2region_cache_policy: str = "vectorIndex"
     llm_filter: dict[str, Any] = field(default_factory=dict)
     llm_moderation: LLMModerationConfig = field(default_factory=LLMModerationConfig)
+
+    def __post_init__(self) -> None:
+        self.llm_filter = dict(self.llm_filter or {})
+        if self.llm_filter:
+            self.llm_moderation = _parse_llm_moderation_config(self.llm_filter)
 
     def public_profiles(self) -> dict[str, Any]:
         """Return public profile config with image upload forcibly disabled for Python v2."""
@@ -319,5 +346,4 @@ def load_settings(config_path: str | None = None) -> Settings:
         ip2region_ipv6_xdb_path=str(raw.get("ip2region_ipv6_xdb_path", "")),
         ip2region_cache_policy=ip2region_cache_policy,
         llm_filter=llm_filter,
-        llm_moderation=_parse_llm_moderation_config(llm_filter),
     )
