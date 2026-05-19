@@ -56,7 +56,7 @@
                     <option value="365">1年内</option>
                   </select>
                 </li>
-                <li class="nav-item m-1 owner-filter-control" v-if="locationOptions.length > 0">
+                <li class="nav-item m-1 owner-filter-control">
                   <select
                     class="form-select"
                     aria-label="location select"
@@ -64,7 +64,7 @@
                     v-on:change="onQueryChange(true)"
                     v-model="queryParams['ip_addr']"
                   >
-                    <option value="">全部地区</option>
+                    <option value="">所有地区</option>
                     <option
                       v-for="option in locationOptions"
                       v-bind:key="option.addr"
@@ -663,8 +663,21 @@ export default {
     },
     moderationReviewSummary(q) {
       const moderation = q.moderation || {};
-      if (this.isChineseText(moderation.short_reason)) return moderation.short_reason;
-      return this.moderationChineseFallback(moderation);
+      const reason = this.isChineseText(moderation.short_reason)
+        ? moderation.short_reason
+        : this.moderationChineseFallback(moderation);
+      const confidence = this.moderationConfidenceText(moderation);
+      return confidence ? `${reason}（${confidence}）` : reason;
+    },
+    moderationConfidenceText(moderation) {
+      const rawConfidence = moderation.confidence;
+      if (rawConfidence === null || rawConfidence === undefined || rawConfidence === "") {
+        return "";
+      }
+      const confidence = Number(rawConfidence);
+      if (!Number.isFinite(confidence)) return "";
+      const percentage = confidence <= 1 ? confidence * 100 : confidence;
+      return `置信度 ${Math.round(percentage)}%`;
     },
     moderationChineseFallback(moderation) {
       const reasonLabels = {
