@@ -68,7 +68,6 @@ def test_llm_prompt_includes_domain_contract_terms_and_safe_fixture_layers(submi
         "owner console",
         "question type",
         "review queue",
-        "moderation category",
     ]:
         assert term in prompt_text
     for policy_term in [
@@ -92,7 +91,6 @@ def test_llm_prompt_includes_domain_contract_terms_and_safe_fixture_layers(submi
         json.dumps(
             {
                 "decision": "reject",
-                "moderation_category": "harassment",
                 "confidence": 0.92,
                 "short_reason": "疑似骚扰或攻击内容",
                 "rationale": "该投稿包含针对他人的攻击性表达，需要进入审核队列。",
@@ -179,7 +177,6 @@ def test_parse_llm_moderation_response_accepts_strict_stop_json_object() -> None
         content=json.dumps(
             {
                 "decision": "reject",
-                "moderation_category": "doxxing",
                 "confidence": 0.91,
                 "short_reason": "Doxxing or private identifying details",
                 "rationale": "The submission asks the owner to expose private identifying details.",
@@ -189,10 +186,27 @@ def test_parse_llm_moderation_response_accepts_strict_stop_json_object() -> None
     )
 
     assert parsed.decision == "reject"
-    assert parsed.moderation_category == "doxxing"
     assert parsed.confidence == pytest.approx(0.91)
     assert parsed.short_reason == "Doxxing or private identifying details"
     assert parsed.rationale.startswith("The submission asks")
+
+
+def test_parse_llm_moderation_response_rejects_legacy_moderation_category_field() -> None:
+    with pytest.raises(InvalidLLMModerationResponseError) as exc:
+        parse_llm_moderation_response(
+            finish_reason="stop",
+            content=json.dumps(
+                {
+                    "decision": "reject",
+                    "moderation_category": "harassment",
+                    "confidence": 0.91,
+                    "short_reason": "Harassing submission",
+                    "rationale": "The submission targets a person with abusive language.",
+                }
+            ),
+        )
+
+    assert exc.value.code == "extra_field"
 
 
 @pytest.mark.parametrize(
@@ -212,7 +226,6 @@ def test_parse_llm_moderation_response_rejects_non_stop_finish_reasons(finish_re
             content=json.dumps(
                 {
                     "decision": "accept",
-                    "moderation_category": "safe",
                     "confidence": 0.99,
                     "short_reason": "Safe submission",
                     "rationale": "No moderation concern was found.",
@@ -232,17 +245,13 @@ def test_parse_llm_moderation_response_rejects_non_stop_finish_reasons(finish_re
         ("[]", "non_json_object"),
         ("{}", "missing_field"),
         (
-            (
-                '{"decision":"accept","decision":"reject","moderation_category":"safe","confidence":0.7,'
-                '"short_reason":"Safe submission","rationale":"No issue."}'
-            ),
+            ('{"decision":"accept","decision":"reject","confidence":0.7,"short_reason":"Safe submission","rationale":"No issue."}'),
             "invalid_json",
         ),
         (
             json.dumps(
                 {
                     "decision": "accept",
-                    "moderation_category": "safe",
                     "confidence": 0.7,
                     "short_reason": "Safe submission",
                     "rationale": "No issue.",
@@ -255,7 +264,6 @@ def test_parse_llm_moderation_response_rejects_non_stop_finish_reasons(finish_re
             json.dumps(
                 {
                     "decision": "maybe",
-                    "moderation_category": "safe",
                     "confidence": 0.7,
                     "short_reason": "Safe submission",
                     "rationale": "No issue.",
@@ -267,7 +275,6 @@ def test_parse_llm_moderation_response_rejects_non_stop_finish_reasons(finish_re
             json.dumps(
                 {
                     "decision": [],
-                    "moderation_category": "safe",
                     "confidence": 0.7,
                     "short_reason": "Safe submission",
                     "rationale": "No issue.",
@@ -279,7 +286,6 @@ def test_parse_llm_moderation_response_rejects_non_stop_finish_reasons(finish_re
             json.dumps(
                 {
                     "decision": None,
-                    "moderation_category": "safe",
                     "confidence": 0.7,
                     "short_reason": "Safe submission",
                     "rationale": "No issue.",
@@ -288,26 +294,13 @@ def test_parse_llm_moderation_response_rejects_non_stop_finish_reasons(finish_re
             "schema_mismatch",
         ),
         (
-            json.dumps(
-                {
-                    "decision": "reject",
-                    "moderation_category": "not_site_tuned",
-                    "confidence": 0.7,
-                    "short_reason": "Unknown category",
-                    "rationale": "No issue.",
-                }
-            ),
-            "unknown_moderation_category",
-        ),
-        (
-            '{"decision":"reject","moderation_category":"spam","confidence":NaN,"short_reason":"Spam","rationale":"Promotional content."}',
+            '{"decision":"reject","confidence":NaN,"short_reason":"Spam","rationale":"Promotional content."}',
             "invalid_json",
         ),
         (
             json.dumps(
                 {
                     "decision": "reject",
-                    "moderation_category": "spam",
                     "confidence": True,
                     "short_reason": "Spam",
                     "rationale": "Promotional content.",
@@ -319,7 +312,6 @@ def test_parse_llm_moderation_response_rejects_non_stop_finish_reasons(finish_re
             json.dumps(
                 {
                     "decision": "reject",
-                    "moderation_category": "spam",
                     "confidence": 1.01,
                     "short_reason": "Spam",
                     "rationale": "Promotional content.",
@@ -331,7 +323,6 @@ def test_parse_llm_moderation_response_rejects_non_stop_finish_reasons(finish_re
             json.dumps(
                 {
                     "decision": "reject",
-                    "moderation_category": "spam",
                     "confidence": 0.8,
                     "short_reason": "x" * (LLM_MODERATION_SHORT_REASON_MAX_LENGTH + 1),
                     "rationale": "Promotional content.",
@@ -343,7 +334,6 @@ def test_parse_llm_moderation_response_rejects_non_stop_finish_reasons(finish_re
             json.dumps(
                 {
                     "decision": "reject",
-                    "moderation_category": "spam",
                     "confidence": 0.8,
                     "short_reason": "one two three four five six seven eight nine ten eleven twelve thirteen",
                     "rationale": "Promotional content.",
@@ -355,7 +345,6 @@ def test_parse_llm_moderation_response_rejects_non_stop_finish_reasons(finish_re
             json.dumps(
                 {
                     "decision": "reject",
-                    "moderation_category": "spam",
                     "confidence": 0.8,
                     "short_reason": "Spam",
                     "rationale": "x" * (LLM_MODERATION_RATIONALE_MAX_LENGTH + 1),
@@ -370,32 +359,6 @@ def test_parse_llm_moderation_response_rejects_invalid_output(content: str, expe
         parse_llm_moderation_response(finish_reason="stop", content=content)
 
     assert exc.value.code == expected_code
-
-
-@pytest.mark.parametrize(
-    ("decision", "moderation_category"),
-    [
-        ("accept", "doxxing"),
-        ("accept", "threats"),
-        ("reject", "safe"),
-    ],
-)
-def test_parse_llm_moderation_response_rejects_inconsistent_decision_category(decision: str, moderation_category: str) -> None:
-    with pytest.raises(InvalidLLMModerationResponseError) as exc:
-        parse_llm_moderation_response(
-            finish_reason="stop",
-            content=json.dumps(
-                {
-                    "decision": decision,
-                    "moderation_category": moderation_category,
-                    "confidence": 0.9,
-                    "short_reason": "Category conflicts with decision",
-                    "rationale": "The decision and moderation category are inconsistent.",
-                }
-            ),
-        )
-
-    assert exc.value.code == "inconsistent_decision_category"
 
 
 @pytest.mark.parametrize(
@@ -416,7 +379,6 @@ def test_parse_llm_moderation_response_rejects_sensitive_short_reason_quotes(sho
             content=json.dumps(
                 {
                     "decision": "reject",
-                    "moderation_category": "doxxing",
                     "confidence": 0.93,
                     "short_reason": short_reason,
                     "rationale": "The submission asks for private identifying details.",
@@ -444,7 +406,6 @@ def test_parse_llm_moderation_response_rejects_sensitive_rationale_quotes(ration
             content=json.dumps(
                 {
                     "decision": "reject",
-                    "moderation_category": "doxxing",
                     "confidence": 0.93,
                     "short_reason": "Private identifying details",
                     "rationale": rationale,
@@ -462,7 +423,6 @@ def test_parse_llm_moderation_response_allows_exact_length_boundaries() -> None:
         content=json.dumps(
             {
                 "decision": "reject",
-                "moderation_category": "spam",
                 "confidence": 1.0,
                 "short_reason": "x" * LLM_MODERATION_SHORT_REASON_MAX_LENGTH,
                 "rationale": "y" * LLM_MODERATION_RATIONALE_MAX_LENGTH,
@@ -482,7 +442,6 @@ def test_parse_llm_moderation_response_rejects_short_reason_that_quotes_original
             content=json.dumps(
                 {
                     "decision": "reject",
-                    "moderation_category": "doxxing",
                     "confidence": 0.93,
                     "short_reason": f"Quotes original: {original_text}",
                     "rationale": "The submission asks for private contact details.",

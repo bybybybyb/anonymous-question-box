@@ -14,28 +14,12 @@ LLM_MODERATION_SHORT_REASON_MAX_LENGTH = 120
 LLM_MODERATION_SHORT_REASON_MAX_WORDS = 12
 LLM_MODERATION_RATIONALE_MAX_LENGTH = 800
 
-LLM_MODERATION_CATEGORIES = frozenset(
-    {
-        "safe",
-        "privacy",
-        "doxxing",
-        "identity_speculation",
-        "harassment",
-        "threats",
-        "spam",
-        "explicit_sexual_content",
-        "fan_drama",
-        "other",
-    }
-)
-_LLM_RESPONSE_FIELDS = frozenset({"decision", "moderation_category", "confidence", "short_reason", "rationale"})
+_LLM_RESPONSE_FIELDS = frozenset({"decision", "confidence", "short_reason", "rationale"})
 _SYSTEM_POLICY = (
     "You moderate AQBox owner console submissions before they enter the review queue. "
-    "Apply site-wide privacy rules and classify the moderation category using only these categories: "
-    "safe, privacy, doxxing, identity_speculation, harassment, threats, spam, explicit_sexual_content, "
-    "fan_drama, other. Treat doxxing, identity speculation, harassment, threats, spam, explicit sexual content, "
-    "fan drama, and other policy abuse as reasons to reject. Use project terms consistently: submission, asker, "
-    "owner console, question type, review queue, and moderation category."
+    "Apply site-wide privacy rules. Treat doxxing, identity speculation, harassment, threats, spam, "
+    "explicit sexual content, fan drama, and other policy abuse as reasons to reject. Use project terms "
+    "consistently: submission, asker, owner console, question type, and review queue."
 )
 _DEFAULT_ADDITIVE_POLICY = "No additional owner/question-type policy."
 _SAFE_FINISH_REASON_RE = re.compile(r"[a-z0-9_]{1,64}")
@@ -66,7 +50,6 @@ class LLMModerationPrompt:
 @dataclass(frozen=True, slots=True)
 class ParsedLLMModerationResponse:
     decision: Literal["accept", "reject"]
-    moderation_category: str
     confidence: float
     short_reason: str
     rationale: str
@@ -101,16 +84,15 @@ def build_llm_moderation_prompt(policy: LLMModerationPolicy, submission_text: st
     example_output = json.dumps(
         {
             "decision": "reject",
-            "moderation_category": "harassment",
             "confidence": 0.92,
             "short_reason": "疑似骚扰或攻击内容",
             "rationale": "该投稿包含针对他人的攻击性表达，需要进入审核队列。",
         }
     )
     output_contract = (
-        "Return json only, as one strict JSON object with exactly these fields: decision, moderation_category, "
-        "confidence, short_reason, rationale. decision must be accept or reject. confidence must be a number from "
-        "0.0 to 1.0. short_reason is a safe owner-list reason, must be 12 or fewer whitespace-separated words, "
+        "Return json only, as one strict JSON object with exactly these fields: decision, confidence, "
+        "short_reason, rationale. decision must be accept or reject. confidence must be a number from 0.0 to 1.0. "
+        "short_reason is a safe owner-list reason, must be 12 or fewer whitespace-separated words, "
         "and must not quote the submission. rationale is a safe owner-detail explanation and must not quote the "
         "submission or repeat private/sensitive tokens from it. short_reason and rationale must be written in "
         "Simplified Chinese for the owner console. Example JSON object: "
@@ -168,16 +150,6 @@ def parse_llm_moderation_response(
         raise InvalidLLMModerationResponseError("schema_mismatch", "LLM response decision must be a string")
     if decision not in {"accept", "reject"}:
         raise InvalidLLMModerationResponseError("invalid_decision", "LLM response decision must be accept or reject")
-    moderation_category = parsed["moderation_category"]
-    if not isinstance(moderation_category, str):
-        raise InvalidLLMModerationResponseError("schema_mismatch", "LLM response moderation_category must be a string")
-    if moderation_category not in LLM_MODERATION_CATEGORIES:
-        raise InvalidLLMModerationResponseError("unknown_moderation_category", "LLM response moderation_category is not supported")
-    if (decision == "accept") != (moderation_category == "safe"):
-        raise InvalidLLMModerationResponseError(
-            "inconsistent_decision_category", "LLM response decision and moderation_category were inconsistent"
-        )
-
     confidence_raw = parsed["confidence"]
     if isinstance(confidence_raw, bool) or not isinstance(confidence_raw, int | float):
         raise InvalidLLMModerationResponseError("invalid_confidence", "LLM response confidence must be numeric")
@@ -202,7 +174,6 @@ def parse_llm_moderation_response(
 
     return ParsedLLMModerationResponse(
         decision=cast("Literal['accept', 'reject']", decision),
-        moderation_category=moderation_category,
         confidence=confidence,
         short_reason=short_reason,
         rationale=rationale,

@@ -152,7 +152,6 @@ function seedBlockedReviewFixture(config, owner, type, label) {
     word_count: 62,
     source: "llm",
     reason: "policy_block",
-    category: "privacy",
     short_reason: shortReasonByLabel[label] || "需要人工复核",
     rationale: rationaleByLabel[label] || "该投稿需要进入审核队列。",
     confidence: 0.98,
@@ -189,7 +188,6 @@ values = {
     "status": "blocked",
     "source": payload["source"],
     "reason": payload["reason"],
-    "category": payload["category"],
     "created_at": payload["asked_at"],
     "updated_at": payload["asked_at"],
     "short_reason": payload["short_reason"],
@@ -248,7 +246,7 @@ function moderationSafeLocatorText(question) {
   const moderation = question.moderation || {};
   return (
     moderation.short_reason ||
-    [moderation.source, moderation.category, moderation.reason].filter(Boolean).join(" / ")
+    [moderation.source, moderation.reason].filter(Boolean).join(" / ")
   );
 }
 

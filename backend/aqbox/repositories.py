@@ -32,10 +32,9 @@ class SubmissionRepository:
         *,
         source: str,
         reason: str,
-        category: str | None = None,
         ip: str | None = None,
     ) -> bool:
-        return self.db.insert_blocked_question(question, source=source, reason=reason, category=category, ip=ip)
+        return self.db.insert_blocked_question(question, source=source, reason=reason, ip=ip)
 
     def insert_pending(
         self,

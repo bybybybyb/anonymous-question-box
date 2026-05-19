@@ -667,28 +667,12 @@ export default {
       return this.moderationChineseFallback(moderation);
     },
     moderationChineseFallback(moderation) {
-      const categoryLabels = {
-        privacy: "疑似隐私风险",
-        doxxing: "疑似人肉或隐私泄露",
-        identity_speculation: "疑似身份猜测",
-        harassment: "疑似骚扰或攻击内容",
-        threats: "疑似威胁内容",
-        spam: "疑似垃圾内容",
-        explicit_sexual_content: "疑似露骨内容",
-        fan_drama: "疑似粉圈争议引导",
-        other: "需要人工复核",
-        safe: "未发现明显风险",
-      };
       const reasonLabels = {
         model_reject: "需要人工复核",
         policy_block: "触发审核策略",
         manual: "人工审核",
       };
-      return (
-        categoryLabels[moderation.category] ||
-        reasonLabels[moderation.reason] ||
-        "需要人工复核"
-      );
+      return reasonLabels[moderation.reason] || "需要人工复核";
     },
     isChineseText(text) {
       return /[\u3400-\u9fff]/.test(text || "");

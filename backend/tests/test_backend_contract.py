@@ -83,18 +83,18 @@ def insert_llm_blocked_state(
     db.conn.execute(
         """
         INSERT INTO question_moderation_state (
-          uuid, status, source, reason, category, short_reason, rationale, created_at, updated_at
+          uuid, status, source, reason, short_reason, rationale, created_at, updated_at
         )
-        VALUES (?, 'blocked', 'llm', 'model_reject', 'harassment', ?, ?, ?, ?)
+        VALUES (?, 'blocked', 'llm', 'model_reject', ?, ?, ?, ?)
         """,
         (uuid, short_reason, rationale, created_at, created_at),
     )
     db.conn.execute(
         """
         INSERT INTO question_moderation_event (
-          uuid, event_type, status, source, reason, category, short_reason, rationale, created_at
+          uuid, event_type, status, source, reason, short_reason, rationale, created_at
         )
-        VALUES (?, 'blocked', 'blocked', 'llm', 'model_reject', 'harassment', ?, ?, ?)
+        VALUES (?, 'blocked', 'blocked', 'llm', 'model_reject', ?, ?, ?)
         """,
         (uuid, short_reason, rationale, created_at),
     )
@@ -191,10 +191,124 @@ def test_schema_migrations_are_recorded_once(tmp_path: Path) -> None:
         "0004_moderation_state_events",
         "0005_llm_moderation_worker_fields",
         "0006_deletion_provenance",
+        "0007_drop_moderation_category",
     ]
     assert second == first
     assert db.conn.execute("SELECT COUNT(*) FROM question_moderation_state").fetchone()[0] == 0
     assert db.conn.execute("SELECT COUNT(*) FROM question_moderation_event").fetchone()[0] == 0
+    state_columns = {row["name"] for row in db.conn.execute("PRAGMA table_info(question_moderation_state)").fetchall()}
+    event_columns = {row["name"] for row in db.conn.execute("PRAGMA table_info(question_moderation_event)").fetchall()}
+    assert "category" not in state_columns
+    assert "category" not in event_columns
+
+
+def test_migration_0007_removes_moderation_category_columns_and_preserves_data(tmp_path: Path) -> None:
+    db = Database(str(tmp_path / "aqbox.sqlite3"), moderation_schema=True)
+    db.conn.executescript(
+        """
+        CREATE TABLE schema_migrations (
+          version TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          applied_at INTEGER NOT NULL
+        );
+        INSERT INTO schema_migrations (version, name, applied_at) VALUES
+          ('0001_phase1_core', 'Phase 1 core question, visit, and image tables', 1),
+          ('0002_ip2region_geo', 'Offline ip2region geolocation schema', 1),
+          ('0003_moderation_scaffold', 'Moderation metadata and audit scaffold', 1),
+          ('0004_moderation_state_events', 'Moderation state projection and event history', 1),
+          ('0005_llm_moderation_worker_fields', 'LLM moderation worker queue and decision metadata', 1),
+          ('0006_deletion_provenance', 'Question deletion provenance metadata', 1);
+        CREATE TABLE question_moderation_state (
+          uuid TEXT PRIMARY KEY,
+          status TEXT NOT NULL CHECK (status IN ('pending', 'blocked', 'approved')),
+          source TEXT NOT NULL DEFAULT '',
+          reason TEXT NOT NULL DEFAULT '',
+          category TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          attempt_count INTEGER NOT NULL DEFAULT 0,
+          short_reason TEXT NOT NULL DEFAULT '',
+          rationale TEXT NOT NULL DEFAULT '',
+          confidence REAL
+        );
+        CREATE TABLE question_moderation_event (
+          id INTEGER PRIMARY KEY,
+          uuid TEXT NOT NULL,
+          event_type TEXT NOT NULL,
+          status TEXT NOT NULL,
+          source TEXT NOT NULL DEFAULT '',
+          reason TEXT NOT NULL DEFAULT '',
+          category TEXT,
+          actor TEXT NOT NULL DEFAULT '',
+          created_at INTEGER NOT NULL,
+          short_reason TEXT NOT NULL DEFAULT '',
+          rationale TEXT NOT NULL DEFAULT '',
+          confidence REAL
+        );
+        INSERT INTO question_moderation_state (
+          uuid, status, source, reason, category, created_at, updated_at, attempt_count,
+          short_reason, rationale, confidence
+        ) VALUES (
+          'q1', 'blocked', 'llm', 'model_reject', 'harassment', 100, 101, 2,
+          'Harassing submission', 'The submission is abusive.', 0.91
+        );
+        INSERT INTO question_moderation_event (
+          uuid, event_type, status, source, reason, category, actor, created_at,
+          short_reason, rationale, confidence
+        ) VALUES (
+          'q1', 'blocked', 'blocked', 'llm', 'model_reject', 'harassment', 'owner', 102,
+          'Harassing submission', 'The submission is abusive.', 0.91
+        );
+        """
+    )
+    db.conn.commit()
+
+    db.bootstrap()
+
+    state_columns = {row["name"] for row in db.conn.execute("PRAGMA table_info(question_moderation_state)").fetchall()}
+    event_columns = {row["name"] for row in db.conn.execute("PRAGMA table_info(question_moderation_event)").fetchall()}
+    state_indexes = {row["name"] for row in db.conn.execute("PRAGMA index_list(question_moderation_state)").fetchall()}
+    event_indexes = {row["name"] for row in db.conn.execute("PRAGMA index_list(question_moderation_event)").fetchall()}
+    state = db.conn.execute(
+        "SELECT uuid, status, source, reason, attempt_count, short_reason, rationale, confidence FROM question_moderation_state"
+    ).fetchone()
+    event = db.conn.execute(
+        "SELECT uuid, event_type, status, source, reason, actor, short_reason, rationale, confidence FROM question_moderation_event"
+    ).fetchone()
+
+    assert db.applied_migrations()[-1] == "0007_drop_moderation_category"
+    assert "category" not in state_columns
+    assert "category" not in event_columns
+    assert {
+        "idx_question_moderation_state_status",
+        "idx_question_moderation_state_llm_due",
+        "idx_question_moderation_state_lock_owner",
+    } <= state_indexes
+    assert {
+        "idx_question_moderation_event_uuid",
+        "idx_question_moderation_event_purge_after",
+    } <= event_indexes
+    assert dict(state) == {
+        "uuid": "q1",
+        "status": "blocked",
+        "source": "llm",
+        "reason": "model_reject",
+        "attempt_count": 2,
+        "short_reason": "Harassing submission",
+        "rationale": "The submission is abusive.",
+        "confidence": 0.91,
+    }
+    assert dict(event) == {
+        "uuid": "q1",
+        "event_type": "blocked",
+        "status": "blocked",
+        "source": "llm",
+        "reason": "model_reject",
+        "actor": "owner",
+        "short_reason": "Harassing submission",
+        "rationale": "The submission is abusive.",
+        "confidence": 0.91,
+    }
 
 
 def test_image_routes_removed_and_submit_images_rejected(tmp_path: Path) -> None:
@@ -263,7 +377,7 @@ def test_keyword_block_stealth_deletes_without_moderation_state_and_respects_vis
     uuid = submit.json()["uuid"]
     question_row = db.conn.execute("SELECT asked_at, deleted_at, deletion_source FROM question WHERE uuid = ?", (uuid,)).fetchone()
     state_row = db.conn.execute(
-        "SELECT status, source, reason, category FROM question_moderation_state WHERE uuid = ?",
+        "SELECT status, source, reason FROM question_moderation_state WHERE uuid = ?",
         (uuid,),
     ).fetchone()
     event_rows = db.conn.execute(
@@ -328,7 +442,7 @@ def test_owner_blocked_payload_exposes_safe_moderation_metadata(tmp_path: Path) 
     detail_moderation = detail.json()["moderation"]
     assert review_moderation["status"] == "blocked"
     assert review_moderation["source"] == "llm"
-    assert review_moderation["category"] == "harassment"
+    assert "category" not in review_moderation
     assert review_moderation["reason"] == "model_reject"
     assert review_moderation["short_reason"] == "Harassing submission"
     assert review_moderation["rationale"] == "The submission targets a person with abusive language."
@@ -443,9 +557,9 @@ def test_approve_race_does_not_emit_duplicate_approval_event(tmp_path: Path) -> 
                 original_conn.execute(
                     """
                     INSERT INTO question_moderation_event (
-                      uuid, event_type, status, source, reason, category, actor, created_at
+                      uuid, event_type, status, source, reason, actor, created_at
                     )
-                    VALUES (?, 'approved', 'approved', 'llm', 'model_reject', 'harassment', 'other-owner', ?)
+                    VALUES (?, 'approved', 'approved', 'llm', 'model_reject', 'other-owner', ?)
                     """,
                     (uuid, 111),
                 )

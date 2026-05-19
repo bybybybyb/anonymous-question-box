@@ -46,7 +46,6 @@ def llm_settings(
 def provider_response(
     *,
     decision: str = "accept",
-    category: str = "safe",
     confidence: float = 0.99,
     short_reason: str = "Safe submission",
     rationale: str = "No concern.",
@@ -59,7 +58,6 @@ def provider_response(
         content = json.dumps(
             {
                 "decision": decision,
-                "moderation_category": category,
                 "confidence": confidence,
                 "short_reason": short_reason,
                 "rationale": rationale,
@@ -170,7 +168,7 @@ def test_llm_worker_migration_0005_is_idempotent_and_adds_queue_fields(tmp_path:
     event_columns = {row["name"] for row in db.conn.execute("PRAGMA table_info(question_moderation_event)").fetchall()}
 
     assert "0005_llm_moderation_worker_fields" in first
-    assert first[-1] == "0006_deletion_provenance"
+    assert first[-1] == "0007_drop_moderation_category"
     assert db.applied_migrations() == first
     assert {
         "attempt_count",
@@ -292,7 +290,6 @@ def test_worker_rejects_to_review_queue_with_threshold_and_review_all_framing(
     provider = FakeLLMProvider(
         provider_response(
             decision="reject",
-            category="harassment",
             confidence=confidence,
             short_reason="Harassing submission",
             rationale="The submission is abusive.",
@@ -303,14 +300,13 @@ def test_worker_rejects_to_review_queue_with_threshold_and_review_all_framing(
     asyncio.run(run_worker_once(db, s, provider))
 
     state = db.conn.execute(
-        "SELECT status, source, reason, category, confidence, short_reason FROM question_moderation_state WHERE uuid = ?",
+        "SELECT status, source, reason, confidence, short_reason FROM question_moderation_state WHERE uuid = ?",
         (uuid,),
     ).fetchone()
     assert dict(state) == {
         "status": "blocked",
         "source": expected_source,
         "reason": expected_reason,
-        "category": "harassment",
         "confidence": confidence,
         "short_reason": "Harassing submission",
     }
@@ -751,7 +747,6 @@ def test_worker_sweeps_future_retry_when_llm_hot_reload_disables_question_type_p
         lambda: provider_response(),
         lambda: provider_response(
             decision="reject",
-            category="harassment",
             confidence=0.99,
             short_reason="Harassing submission",
             rationale="The submission is abusive.",
