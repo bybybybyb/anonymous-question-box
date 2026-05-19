@@ -14,6 +14,7 @@ import QuestionNew from "./components/QuestionNew.vue";
 import QuestionView from "./components/QuestionView.vue";
 import AnswerView from "./components/AnswerView.vue";
 import LiveView from "./components/LiveView.vue";
+import LiveProjectorView from "./components/LiveProjectorView.vue";
 import Main from "./components/Main.vue";
 
 const routes = [
@@ -28,6 +29,12 @@ const routes = [
     name: "live",
     path: "/owner/:owner/live",
     component: LiveView,
+    props: true,
+  },
+  {
+    name: "live-projector",
+    path: "/owner/:owner/live/projector",
+    component: LiveProjectorView,
     props: true,
   },
   { name: "question", path: "/question", component: QuestionView, props: true },
@@ -51,7 +58,33 @@ const router = createRouter({
   routes,
 });
 
+function mountApp(profileProvider = null) {
+  const app = createApp(App);
+  app.config.globalProperties.$scrollToTop = () => window.scrollTo(0, 0);
+  app.use(VueAxios, axios);
+  app.use(router);
+  app.use(VueViewer);
+  if (profileProvider) {
+    app.mixin(profileProvider);
+  }
+  app.mount("#app");
+}
+
+function isInitialProjectorRoute() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return /^#\/owner\/[^/?#]+\/live\/projector(?:[?#].*)?$/.test(
+    window.location.hash
+  );
+}
+
 (async () => {
+  if (isInitialProjectorRoute()) {
+    mountApp();
+    return;
+  }
+
   await axios
     .get("/api/profiles")
     .then((resp) => {
@@ -66,13 +99,7 @@ const router = createRouter({
           };
         },
       };
-      const app = createApp(App);
-      app.config.globalProperties.$scrollToTop = () => window.scrollTo(0, 0);
-      app.use(VueAxios, axios);
-      app.use(router);
-      app.use(VueViewer);
-      app.mixin(profileProvider);
-      app.mount("#app");
+      mountApp(profileProvider);
     })
     .catch((err) => {
       console.log(err.response);
