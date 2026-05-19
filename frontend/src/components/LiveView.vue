@@ -57,7 +57,7 @@
               </ul>
             </div>
           </nav>
-          <div class="container mt-4">
+          <div class="container-fluid mt-4">
             <nav
               class="my-2 navbar navbar-expand-lg navbar-light"
               :style="navbarStyling"
