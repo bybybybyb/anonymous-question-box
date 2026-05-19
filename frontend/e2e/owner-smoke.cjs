@@ -18,6 +18,7 @@ const geoIp = process.env.AQBOX_E2E_GEO_IP || "";
 const geoAddr = process.env.AQBOX_E2E_GEO_ADDR || "";
 const geoIsp = process.env.AQBOX_E2E_GEO_ISP || "";
 const runDeepSeekSmoke = process.env.AQBOX_E2E_RUN_DEEPSEEK === "1";
+const liveProjectorScreenshotDir = "/tmp/aqbox-live-projector-screenshots";
 
 function loadConfig() {
   let text;
@@ -362,6 +363,32 @@ async function assertAllRegionsLocationDefault(page, surface) {
   if (selectedLocation !== "") {
     throw new Error(`${surface} location filter defaulted to a concrete location: ${selectedLocation}`);
   }
+}
+
+async function projectedTextLocator(projectorPage, text) {
+  return projectorPage.locator(".live-projector-text p").filter({ hasText: text }).first();
+}
+
+async function projectedTextMetrics(projectorText) {
+  return projectorText.evaluate((element) => ({
+    className: element.className,
+    fontSize: Number.parseFloat(getComputedStyle(element).fontSize),
+  }));
+}
+
+async function waitForProjectedFont(projectorText, predicate, label) {
+  const deadline = Date.now() + 10_000;
+  let lastMetrics;
+  while (Date.now() < deadline) {
+    lastMetrics = await projectedTextMetrics(projectorText);
+    if (predicate(lastMetrics)) return lastMetrics;
+    await sleep(100);
+  }
+  throw new Error(`${label} did not update projector font: ${JSON.stringify(lastMetrics)}`);
+}
+
+async function ensureLiveProjectorScreenshotDir() {
+  fs.mkdirSync(liveProjectorScreenshotDir, { recursive: true });
 }
 
 async function selectQuestionType(page, type) {
@@ -758,8 +785,67 @@ async function main() {
     await gotoWithQuestionTypeStorage(page, `${baseUrl}/#/owner/${owner}/live?token=${ownerToken}`, type);
     await assertAllRegionsLocationDefault(page, "Live view");
     await page.getByText(liveText).waitFor({ timeout: 10_000 });
+    await ensureLiveProjectorScreenshotDir();
+    await page.screenshot({
+      path: path.join(liveProjectorScreenshotDir, "live-dashboard-full-width.png"),
+      fullPage: true,
+    });
+
+    const [projectorPage] = await Promise.all([
+      page.waitForEvent("popup"),
+      page.getByRole("button", { name: "打开投屏窗口" }).click(),
+    ]);
+    await projectorPage.waitForLoadState("domcontentloaded");
     await page.locator(".card.shadow-sm.my-2").filter({ hasText: liveText }).first().getByText("← 投屏").click();
-    await page.locator("#textProjectArea").getByText(liveText).waitFor({ timeout: 10_000 });
+
+    const oldProjectArea = page.locator("#textProjectArea");
+    if ((await oldProjectArea.count()) > 0 && (await oldProjectArea.getByText(liveText).count()) > 0) {
+      throw new Error("Live projection rendered in legacy #textProjectArea instead of projector popup");
+    }
+
+    const projectorText = await projectedTextLocator(projectorPage, liveText);
+    await projectorText.waitFor({ timeout: 10_000 });
+    const staleProjectorPage = await context.newPage();
+    await staleProjectorPage.goto(`${baseUrl}/#/owner/${owner}/live/projector`);
+    const staleProjectorText = await projectedTextLocator(staleProjectorPage, liveText);
+    if ((await staleProjectorText.count()) > 0) {
+      throw new Error("Direct projector route displayed stale projection without a session");
+    }
+    await staleProjectorPage.close();
+    await projectorPage.screenshot({
+      path: path.join(liveProjectorScreenshotDir, "projector-clean-after-projection.png"),
+      fullPage: true,
+    });
+
+    await page.getByRole("button", { name: "重置" }).click();
+    const resetMetrics = await waitForProjectedFont(
+      projectorText,
+      (metrics) => metrics.className.split(/\s+/).includes("fs-5"),
+      "Reset"
+    );
+    await page.getByRole("button", { name: "放大" }).click();
+    await waitForProjectedFont(
+      projectorText,
+      (metrics) => metrics.fontSize > resetMetrics.fontSize,
+      "Enlarge"
+    );
+    await page.getByRole("button", { name: "重置" }).click();
+    await waitForProjectedFont(
+      projectorText,
+      (metrics) =>
+        metrics.className.split(/\s+/).includes("fs-5") &&
+        Math.abs(metrics.fontSize - resetMetrics.fontSize) < 0.5,
+      "Second reset"
+    );
+
+    await page.getByRole("button", { name: "清空投屏" }).click();
+    await projectorText.waitFor({ state: "detached", timeout: 10_000 });
+    const projectionStateAfterClear = await page.evaluate(() =>
+      localStorage.getItem("aqbox_live_projection_state")
+    );
+    if (projectionStateAfterClear !== null) {
+      throw new Error("Clear projection did not remove localStorage projection state");
+    }
 
     await page.goto(`${baseUrl}/#/question?token=${liveToken}`);
     await page.getByText("直播中回应").waitFor({ timeout: 10_000 });

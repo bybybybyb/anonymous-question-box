@@ -2,107 +2,61 @@
   <div>
     <Header :hideHomepageBtn="true"></Header>
     <div class="container-fluid">
-      <div class="row flex-nowrap">
-        <div class="col">
-          <div
-            ref="imageProjectArea"
-            id="imageProjectArea"
-            class="my-4 mx-5 shadow"
-            style="
-              max-width: 45vw;
-              max-height: 70vh;
-              overflow: hidden;
-              resize: both;
-            "
-            :style="{
-              height: projectAreaSize.displayed.imageHeight,
-              width: projectAreaSize.displayed.imageWidth,
-            }"
-          >
-            <viewer
-              :images="images"
-              :options="{
-                inline: true,
-                button: false,
-                fullscreen: false,
-                backdrop: false,
-                title: false,
-                navbar: false,
-                zoomRatio: 0.5,
-              }"
-            >
-              <img
-                v-for="img in images"
-                :key="img.order"
-                :src="img.url"
-                class="img-fluid visually-hidden"
-              />
-            </viewer>
-          </div>
-          <div
-            ref="textProjectArea"
-            id="textProjectArea"
-            class="card shadow my-4 mx-5 border border-dark"
-            style="
-              max-width: 45vw;
-              max-height: 70vh;
-              overflow: auto;
-              resize: both;
-            "
-            :style="{
-              height: projectAreaSize.displayed.textHeight,
-              width: projectAreaSize.displayed.textWidth,
-            }"
-          >
-            <div class="card-body overflow-auto">
-              <p
-                v-for="(sentence, i) in formatText(projected_text)"
-                v-bind:key="i"
-                :class="fsClass"
-                class="text-start fw-bold"
-              >
-                <strong>{{ sentence }}</strong>
-              </p>
-            </div>
-          </div>
-          <nav class="mx-4">
+      <div class="row">
+        <div class="col-12">
+          <nav class="projection-toolbar sticky-top py-2">
             <div class="container-fluid">
-              <ul class="nav justify-content-start">
-                <li class="nav-item mx-1 my-1">文字大小调节</li>
-                <li class="nav-item mx-1">
+              <ul class="nav align-items-center">
+                <li class="nav-item mx-1 my-1">
                   <button
                     type="button"
-                    class="btn btn-sm btn-primary col-sm-12"
+                    class="btn btn-sm btn-primary"
+                    v-on:click="openProjectorWindow()"
+                  >
+                    打开投屏窗口
+                  </button>
+                </li>
+                <li class="nav-item mx-1 my-1">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary"
                     :disabled="shrinkBtnDisabled"
                     v-on:click="onFontResizeClick(false)"
                   >
                     缩小
                   </button>
                 </li>
-                <li class="nav-item mx-1">
+                <li class="nav-item mx-1 my-1">
                   <button
                     type="button"
                     :disabled="enlargeBtnDisabled"
-                    class="btn btn-sm btn-primary col-sm-12"
+                    class="btn btn-sm btn-primary"
                     v-on:click="onFontResizeClick(true)"
                   >
                     放大
                   </button>
                 </li>
-                <li class="nav-item mx-1">
+                <li class="nav-item mx-1 my-1">
                   <button
                     type="button"
-                    class="btn btn-sm btn-primary col-sm-12"
+                    class="btn btn-sm btn-primary"
                     v-on:click="onFontSizeResetClick()"
                   >
                     重置
                   </button>
                 </li>
+                <li class="nav-item mx-1 my-1">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-danger"
+                    v-on:click="clearProjection()"
+                  >
+                    清空投屏
+                  </button>
+                </li>
               </ul>
             </div>
           </nav>
-        </div>
-        <div class="col" style="max-width: 48.5vw">
           <div class="container mt-4">
             <nav
               class="my-2 navbar navbar-expand-lg navbar-light"
@@ -115,7 +69,7 @@
                       class="form-select"
                       aria-label="Default select example"
                       id="question_type"
-                      v-on:change="onQueryChange(true, true, true)"
+                      v-on:change="onQueryChange(true, true)"
                       v-model="queryParams['type']"
                     >
                       <option
@@ -245,10 +199,10 @@
               </div>
             </nav>
           </div>
-          <div class="container overflow-auto" style="max-height: 80vh">
+          <div class="container-fluid overflow-auto" style="max-height: 80vh">
             <div class="card shadow-sm my-2" v-for="(q, i) in rows" :key="i">
               <div class="card-body">
-                <div class="container">
+                <div class="container-fluid">
                   <div class="row">
                     <div class="col-12 col-sm-3">
                       <div class="list-group">
@@ -381,7 +335,15 @@
 import Header from "./Header.vue";
 import Pagination from "v-pagination-3";
 import ImageDisplay from "./ImageDisplay.vue";
+import {
+  DEFAULT_FONT_SIZE_IDX,
+  FONT_SIZES,
+  clearProjectionState,
+  readProjectionState,
+  writeProjectionState,
+} from "../liveProjectionState";
 const storagePrefix = "ownerView_";
+const projectionSessionStoragePrefix = "liveProjectionSession_";
 // Location options are per owner/type and can be empty for historical rows, so never persist them across boxes.
 const transientQueryParamKeys = new Set(["ip_addr"]);
 const orderDirection = [
@@ -391,10 +353,15 @@ const orderDirection = [
   { by: "word_count", reversed: false },
 ];
 
-const fontSizes = ["fs-6", "fs-5", "fs-4", "fs-3", "fs-2", "fs-1"];
-const defaultFontSizeIdx = 1;
 const queryDebounceMs = 200;
-var currentFontSizeIdx = defaultFontSizeIdx;
+var currentFontSizeIdx = DEFAULT_FONT_SIZE_IDX;
+
+function createProjectionSessionId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 export default {
   name: "LiveView",
@@ -407,20 +374,51 @@ export default {
     owner: String,
   },
   methods: {
-    applyProjectAreaSize() {
-      this.projectAreaSize.displayed.imageHeight =
-        this.projectAreaSize.saved.imageHeight;
-      this.projectAreaSize.displayed.imageWidth =
-        this.projectAreaSize.saved.imageWidth;
-      this.projectAreaSize.displayed.textHeight =
-        this.projectAreaSize.saved.textHeight;
-      this.projectAreaSize.displayed.textWidth =
-        this.projectAreaSize.saved.textWidth;
+    writeCurrentProjection(text, images) {
+      writeProjectionState({
+        owner: this.owner,
+        sessionId: this.projectionSessionId,
+        text,
+        images,
+        fontSizeIdx: currentFontSizeIdx,
+        updatedAt: new Date().toISOString(),
+      });
+    },
+    syncProjectionFontSize() {
+      const existingState = readProjectionState();
+      if (
+        existingState?.owner !== this.owner ||
+        existingState.sessionId !== this.projectionSessionId
+      ) {
+        return;
+      }
+
+      writeProjectionState({
+        ...existingState,
+        fontSizeIdx: currentFontSizeIdx,
+        updatedAt: new Date().toISOString(),
+      });
+    },
+    openProjectorWindow() {
+      const route = this.$router.resolve({
+        name: "live-projector",
+        params: { owner: this.owner },
+        query: { session: this.projectionSessionId },
+      });
+      const projectorWindow = window.open(
+        route.href,
+        "aqbox-live-projector",
+        "popup=yes,width=600,height=400,location=no,toolbar=no,menubar=no,status=no"
+      );
+      if (!projectorWindow) {
+        alert("投屏窗口被浏览器拦截了，请允许此网站弹出窗口后重试。");
+      }
+    },
+    clearProjection() {
+      clearProjectionState();
     },
     projectQuestion(uuid, text, images, answered_at) {
-      this.projected_text = text;
-      this.images = images;
-      this.applyProjectAreaSize();
+      this.writeCurrentProjection(text, images);
       // automatically answer the question if it was not answered before
       let time = Date.parse(answered_at);
       const autoReply = `已于 ${new Date().toLocaleString("zh-CN", {
@@ -449,11 +447,11 @@ export default {
           });
       }
     },
-    onQueryChange(resetPage, needRetry = false, init = false, debounce = true) {
+    onQueryChange(resetPage, needRetry = false, debounce = true) {
       if (debounce) {
         clearTimeout(this.queryDebounceTimer);
         this.queryDebounceTimer = setTimeout(
-          () => this.onQueryChange(resetPage, needRetry, init, false),
+          () => this.onQueryChange(resetPage, needRetry, false),
           queryDebounceMs
         );
         return;
@@ -487,26 +485,6 @@ export default {
           this.rows = resp.data.questions;
           this.total_count = resp.data.total;
           this.locationOptions = resp.data.location_options || [];
-          this.withImages =
-            this.ownerProfiles[this.owner].question_types[
-              this.queryParams["type"]
-            ].support_image;
-          if (init) {
-            this.projected_text = "";
-            this.images = [];
-            if (this.withImages) {
-              this.projectAreaSize.saved.imageHeight = "350px";
-              this.projectAreaSize.saved.imageWidth = "600px";
-              this.projectAreaSize.saved.textHeight = "200px";
-              this.projectAreaSize.saved.textWidth = "600px";
-            } else {
-              this.projectAreaSize.saved.imageHeight = "0px";
-              this.projectAreaSize.saved.imageWidth = "0px";
-              this.projectAreaSize.saved.textHeight = "400px";
-              this.projectAreaSize.saved.textWidth = "600px";
-            }
-            this.applyProjectAreaSize();
-          }
         })
         .catch((err) => {
           console.log(err.response);
@@ -526,7 +504,7 @@ export default {
                 page_size: 5,
                 page: 1,
               };
-              this.onQueryChange(false, false, false, false);
+              this.onQueryChange(false, false, false);
             } else {
               alert("提问箱好像坏掉了，直接ping管理员吧！");
               this.$router.push("/");
@@ -558,7 +536,7 @@ export default {
           }
         )
         .then(() => {
-          this.onQueryChange(true, false, false, false);
+          this.onQueryChange(true, false, false);
         })
         .catch((err) => {
           console.log(err.response);
@@ -582,7 +560,7 @@ export default {
         })
         .then(() => {
           this.cancelDelete();
-          this.onQueryChange(false, false, false, false);
+          this.onQueryChange(false, false, false);
         })
         .catch((err) => {
           console.log(err);
@@ -606,27 +584,23 @@ export default {
     },
     onFontResizeClick(enlarge) {
       if (enlarge) {
-        if (currentFontSizeIdx < fontSizes.length - 1) {
-          this.fsClass = fontSizes[++currentFontSizeIdx];
+        if (currentFontSizeIdx < FONT_SIZES.length - 1) {
+          currentFontSizeIdx += 1;
         }
       } else {
         if (currentFontSizeIdx > 0) {
-          this.fsClass = fontSizes[--currentFontSizeIdx];
+          currentFontSizeIdx -= 1;
         }
       }
       this.shrinkBtnDisabled = currentFontSizeIdx <= 0;
-      this.enlargeBtnDisabled = currentFontSizeIdx >= fontSizes.length - 1;
-      console.log(
-        currentFontSizeIdx,
-        this.shrinkBtnDisabled,
-        this.enlargeBtnDisabled
-      );
+      this.enlargeBtnDisabled = currentFontSizeIdx >= FONT_SIZES.length - 1;
+      this.syncProjectionFontSize();
     },
     onFontSizeResetClick() {
-      currentFontSizeIdx = defaultFontSizeIdx;
-      this.fsClass = fontSizes[currentFontSizeIdx];
-      this.shrinkBtnDisabled = false;
-      this.enlargeBtnDisabled = false;
+      currentFontSizeIdx = DEFAULT_FONT_SIZE_IDX;
+      this.shrinkBtnDisabled = currentFontSizeIdx <= 0;
+      this.enlargeBtnDisabled = currentFontSizeIdx >= FONT_SIZES.length - 1;
+      this.syncProjectionFontSize();
     },
   },
   computed: {
@@ -654,6 +628,33 @@ export default {
     },
   },
   beforeMount() {
+    const projectionSessionStorageKey =
+      projectionSessionStoragePrefix + this.owner;
+    this.projectionSessionId =
+      sessionStorage.getItem(projectionSessionStorageKey) ||
+      createProjectionSessionId();
+    sessionStorage.setItem(
+      projectionSessionStorageKey,
+      this.projectionSessionId
+    );
+
+    currentFontSizeIdx = DEFAULT_FONT_SIZE_IDX;
+    this.shrinkBtnDisabled = currentFontSizeIdx <= 0;
+    this.enlargeBtnDisabled = currentFontSizeIdx >= FONT_SIZES.length - 1;
+
+    const existingState = readProjectionState();
+    if (
+      existingState?.owner === this.owner &&
+      existingState.sessionId === this.projectionSessionId &&
+      Number.isInteger(existingState.fontSizeIdx)
+    ) {
+      currentFontSizeIdx = Math.min(
+        Math.max(existingState.fontSizeIdx, 0),
+        FONT_SIZES.length - 1
+      );
+      this.shrinkBtnDisabled = currentFontSizeIdx <= 0;
+      this.enlargeBtnDisabled = currentFontSizeIdx >= FONT_SIZES.length - 1;
+    }
     this.navbarStyling = {
       "background-color": this.ownerProfiles[this.owner].colors.primary_color,
     };
@@ -671,29 +672,7 @@ export default {
         }
       }
     }
-    this.onQueryChange(true, true, true, false);
-  },
-  async mounted() {
-    const ob = new ResizeObserver((entries) => {
-      for (let entry of entries) {
-        const cr = entry.contentRect;
-        switch (entry.target.id) {
-          case "imageProjectArea":
-            this.projectAreaSize.saved.imageHeight = `${Math.round(
-              cr.height
-            )}px`;
-            this.projectAreaSize.saved.imageWidth = `${Math.round(cr.width)}px`;
-            break;
-          case "textProjectArea":
-            // +2 抵消 line height
-            this.projectAreaSize.saved.textHeight = `${cr.height + 2}px`;
-            this.projectAreaSize.saved.textWidth = `${cr.width + 2}px`;
-        }
-      }
-    });
-
-    ob.observe(this.$refs.textProjectArea);
-    ob.observe(this.$refs.imageProjectArea);
+    this.onQueryChange(true, true, false);
   },
   beforeUnmount() {
     clearTimeout(this.queryDebounceTimer);
@@ -709,33 +688,15 @@ export default {
         page_size: 5,
         page: 1,
       },
-      withImages: false,
       toDelete: "",
       rows: [],
       locationOptions: [],
       total_count: 0,
       queryDebounceTimer: null,
       navbarStyling: {},
-      images: [],
-      projected_text: "",
-      fsClass: fontSizes[defaultFontSizeIdx],
+      projectionSessionId: "",
       enlargeBtnDisabled: false,
       shrinkBtnDisabled: false,
-      projectAreaSize: {
-        displayed: {
-          textHeight: "",
-          textWidth: "",
-          imageHeight: "",
-          imageWidth: "",
-        },
-        saved: {
-          textHeight: "",
-          textWidth: "",
-          imageHeight: "",
-          imageWidth: "",
-        },
-        selector: 0,
-      },
       markedOnly: false,
     };
   },
@@ -750,5 +711,11 @@ export default {
 
 #site-header {
   max-height: 5vh;
+}
+
+.projection-toolbar {
+  z-index: 1020;
+  background: var(--bs-body-bg);
+  border-bottom: 1px solid var(--bs-border-color);
 }
 </style>
