@@ -188,7 +188,6 @@ export default {
       this.rawRevealWarningOpen = false;
       this.moderation_status = "";
       this.moderation_source = "";
-      this.moderation_category = "";
       this.moderation_reason = "";
       this.moderation_short_reason = "";
       this.moderation_rationale = "";
@@ -219,7 +218,6 @@ export default {
           const moderation = resp.data.moderation || {};
           this.moderation_status = moderation.status || "";
           this.moderation_source = moderation.source || "";
-          this.moderation_category = moderation.category || "";
           this.moderation_reason = moderation.reason || "";
           this.moderation_short_reason = moderation.short_reason || "";
           this.moderation_rationale = moderation.rationale || "";
@@ -296,28 +294,12 @@ export default {
       return this.moderationChineseFallback;
     },
     moderationChineseFallback() {
-      const categoryLabels = {
-        privacy: "模型判断该投稿可能涉及隐私风险，需要进入审核队列。",
-        doxxing: "模型判断该投稿可能涉及人肉或隐私泄露，需要进入审核队列。",
-        identity_speculation: "模型判断该投稿可能涉及身份猜测，需要进入审核队列。",
-        harassment: "模型判断该投稿可能包含骚扰或攻击内容，需要进入审核队列。",
-        threats: "模型判断该投稿可能包含威胁内容，需要进入审核队列。",
-        spam: "模型判断该投稿可能是垃圾内容，需要进入审核队列。",
-        explicit_sexual_content: "模型判断该投稿可能包含露骨内容，需要进入审核队列。",
-        fan_drama: "模型判断该投稿可能引导粉圈争议，需要进入审核队列。",
-        other: "模型判断该投稿需要人工复核。",
-        safe: "未发现明显风险。",
-      };
       const reasonLabels = {
         model_reject: "模型判断该投稿需要人工复核。",
         policy_block: "该投稿触发审核策略，需要进入审核队列。",
         manual: "该投稿由人工标记进入审核队列。",
       };
-      return (
-        categoryLabels[this.moderation_category] ||
-        reasonLabels[this.moderation_reason] ||
-        "审核信息暂缺"
-      );
+      return reasonLabels[this.moderation_reason] || "审核信息暂缺";
     },
     formatText() {
       return (text) => {
@@ -344,7 +326,6 @@ export default {
       ip_isp: "",
       moderation_status: "",
       moderation_source: "",
-      moderation_category: "",
       moderation_reason: "",
       moderation_short_reason: "",
       moderation_rationale: "",

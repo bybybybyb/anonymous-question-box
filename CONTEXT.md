@@ -42,6 +42,18 @@ _Avoid_: hard delete, ban
 A non-deleted submission hidden from normal owner/live views because it is waiting for owner review in moderation state. Used for LLM/manual reviewable submissions, not keyword filtering. Owner APIs redact the raw submission text for blocked rows until an explicit raw reveal request.
 _Avoid_: soft-delete
 
+**Moderation source**:
+The mechanism that created or changed a submission's moderation state.
+_Avoid_: deletion source, content category
+
+**Deletion source**:
+The mechanism that hid a submission by setting `deleted_at`.
+_Avoid_: moderation source, content category
+
+**Display reason**:
+A safe owner-facing explanation for why a submission is in review or why automatic moderation could not complete.
+_Avoid_: raw model output, moderation category
+
 **Review queue**:
 The owner console list of non-deleted moderation-blocked submissions. Rows show safe moderation reasons by default and hide raw submission text until explicit reveal.
 _Avoid_: deleted list, public rejection queue

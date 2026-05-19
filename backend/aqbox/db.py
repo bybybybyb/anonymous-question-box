@@ -85,7 +85,6 @@ CREATE TABLE IF NOT EXISTS question_moderation_state (
   status TEXT NOT NULL CHECK (status IN ('pending', 'blocked', 'approved')),
   source TEXT NOT NULL DEFAULT '',
   reason TEXT NOT NULL DEFAULT '',
-  category TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   FOREIGN KEY (uuid) REFERENCES question(uuid)
@@ -98,7 +97,6 @@ CREATE TABLE IF NOT EXISTS question_moderation_event (
   status TEXT NOT NULL,
   source TEXT NOT NULL DEFAULT '',
   reason TEXT NOT NULL DEFAULT '',
-  category TEXT,
   actor TEXT NOT NULL DEFAULT '',
   provider TEXT NOT NULL DEFAULT '',
   model TEXT NOT NULL DEFAULT '',
@@ -164,6 +162,7 @@ class Database:
             ("0004_moderation_state_events", "Moderation state projection and event history", self.migrate_moderation_state_events),
             ("0005_llm_moderation_worker_fields", "LLM moderation worker queue and decision metadata", self.migrate_llm_worker_fields),
             ("0006_deletion_provenance", "Question deletion provenance metadata", self.migrate_deletion_provenance),
+            ("0007_drop_moderation_category", "Drop legacy moderation category storage", self.migrate_drop_moderation_category),
         )
 
     def applied_migrations(self) -> list[str]:
@@ -299,6 +298,174 @@ class Database:
                     self.conn.execute(ddl)
             self.conn.execute("CREATE INDEX IF NOT EXISTS idx_question_deletion_source ON question(deletion_source)")
 
+    def migrate_drop_moderation_category(self) -> None:
+        """Remove legacy moderation category columns from state and event storage."""
+        with self.lock:
+            self._rebuild_moderation_state_without_category()
+            self._rebuild_moderation_event_without_category()
+            self.conn.executescript(
+                """
+                CREATE INDEX IF NOT EXISTS idx_question_moderation_state_status
+                ON question_moderation_state(status);
+                CREATE INDEX IF NOT EXISTS idx_question_moderation_state_llm_due
+                ON question_moderation_state(status, next_attempt_at, locked_until, attempt_count);
+                CREATE INDEX IF NOT EXISTS idx_question_moderation_state_lock_owner
+                ON question_moderation_state(lock_owner);
+                CREATE INDEX IF NOT EXISTS idx_question_moderation_event_uuid
+                ON question_moderation_event(uuid);
+                CREATE INDEX IF NOT EXISTS idx_question_moderation_event_purge_after
+                ON question_moderation_event(purge_after);
+                """
+            )
+
+    def _rebuild_moderation_state_without_category(self) -> None:
+        cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(question_moderation_state)").fetchall()}
+        if "category" not in cols:
+            return
+        preserved = [
+            "uuid",
+            "status",
+            "source",
+            "reason",
+            "created_at",
+            "updated_at",
+            "attempt_count",
+            "next_attempt_at",
+            "locked_until",
+            "lock_owner",
+            "last_error_class",
+            "last_attempt_at",
+            "short_reason",
+            "rationale",
+            "confidence",
+            "provider",
+            "model",
+            "prompt_version",
+            "policy_hash",
+            "config_hash",
+            "finish_reason",
+            "prompt_tokens",
+            "completion_tokens",
+            "total_tokens",
+            "latency_ms",
+        ]
+        insert_cols = [name for name in preserved if name in cols]
+        self.conn.executescript(
+            """
+            ALTER TABLE question_moderation_state RENAME TO question_moderation_state__with_category;
+            CREATE TABLE question_moderation_state (
+              uuid TEXT PRIMARY KEY,
+              status TEXT NOT NULL CHECK (status IN ('pending', 'blocked', 'approved')),
+              source TEXT NOT NULL DEFAULT '',
+              reason TEXT NOT NULL DEFAULT '',
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              attempt_count INTEGER NOT NULL DEFAULT 0,
+              next_attempt_at INTEGER,
+              locked_until INTEGER,
+              lock_owner TEXT NOT NULL DEFAULT '',
+              last_error_class TEXT NOT NULL DEFAULT '',
+              last_attempt_at INTEGER,
+              short_reason TEXT NOT NULL DEFAULT '',
+              rationale TEXT NOT NULL DEFAULT '',
+              confidence REAL,
+              provider TEXT NOT NULL DEFAULT '',
+              model TEXT NOT NULL DEFAULT '',
+              prompt_version TEXT NOT NULL DEFAULT '',
+              policy_hash TEXT NOT NULL DEFAULT '',
+              config_hash TEXT NOT NULL DEFAULT '',
+              finish_reason TEXT NOT NULL DEFAULT '',
+              prompt_tokens INTEGER,
+              completion_tokens INTEGER,
+              total_tokens INTEGER,
+              latency_ms INTEGER,
+              FOREIGN KEY (uuid) REFERENCES question(uuid)
+            );
+            """
+        )
+        column_list = ", ".join(insert_cols)
+        self.conn.execute(
+            f"INSERT INTO question_moderation_state ({column_list}) SELECT {column_list} FROM question_moderation_state__with_category"
+        )
+        self.conn.execute("DROP TABLE question_moderation_state__with_category")
+
+    def _rebuild_moderation_event_without_category(self) -> None:
+        cols = {row["name"] for row in self.conn.execute("PRAGMA table_info(question_moderation_event)").fetchall()}
+        if "category" not in cols:
+            return
+        preserved = [
+            "id",
+            "uuid",
+            "event_type",
+            "status",
+            "source",
+            "reason",
+            "actor",
+            "provider",
+            "model",
+            "prompt_version",
+            "decision_json",
+            "raw_prompt",
+            "raw_request",
+            "raw_response",
+            "latency_ms",
+            "error_class",
+            "created_at",
+            "purge_after",
+            "purged_at",
+            "short_reason",
+            "rationale",
+            "confidence",
+            "finish_reason",
+            "prompt_tokens",
+            "completion_tokens",
+            "total_tokens",
+            "policy_hash",
+            "config_hash",
+        ]
+        insert_cols = [name for name in preserved if name in cols]
+        self.conn.executescript(
+            """
+            ALTER TABLE question_moderation_event RENAME TO question_moderation_event__with_category;
+            CREATE TABLE question_moderation_event (
+              id INTEGER PRIMARY KEY,
+              uuid TEXT NOT NULL,
+              event_type TEXT NOT NULL,
+              status TEXT NOT NULL,
+              source TEXT NOT NULL DEFAULT '',
+              reason TEXT NOT NULL DEFAULT '',
+              actor TEXT NOT NULL DEFAULT '',
+              provider TEXT NOT NULL DEFAULT '',
+              model TEXT NOT NULL DEFAULT '',
+              prompt_version TEXT NOT NULL DEFAULT '',
+              decision_json TEXT NOT NULL DEFAULT '',
+              raw_prompt TEXT,
+              raw_request TEXT,
+              raw_response TEXT,
+              latency_ms INTEGER,
+              error_class TEXT NOT NULL DEFAULT '',
+              created_at INTEGER NOT NULL,
+              purge_after INTEGER,
+              purged_at INTEGER,
+              short_reason TEXT NOT NULL DEFAULT '',
+              rationale TEXT NOT NULL DEFAULT '',
+              confidence REAL,
+              finish_reason TEXT NOT NULL DEFAULT '',
+              prompt_tokens INTEGER,
+              completion_tokens INTEGER,
+              total_tokens INTEGER,
+              policy_hash TEXT NOT NULL DEFAULT '',
+              config_hash TEXT NOT NULL DEFAULT '',
+              FOREIGN KEY (uuid) REFERENCES question(uuid)
+            );
+            """
+        )
+        column_list = ", ".join(insert_cols)
+        self.conn.execute(
+            f"INSERT INTO question_moderation_event ({column_list}) SELECT {column_list} FROM question_moderation_event__with_category"
+        )
+        self.conn.execute("DROP TABLE question_moderation_event__with_category")
+
     def _insert_question_locked(
         self,
         question: dict[str, Any],
@@ -360,7 +527,6 @@ class Database:
         *,
         source: str,
         reason: str,
-        category: str | None = None,
         ip: str | None = None,
     ) -> bool:
         created_at = int(question["asked_at"])
@@ -373,11 +539,11 @@ class Database:
                 self.conn.execute(
                     """
                     INSERT INTO question_moderation_state (
-                      uuid, status, source, reason, category, created_at, updated_at
+                      uuid, status, source, reason, created_at, updated_at
                     )
-                    VALUES (?, 'blocked', ?, ?, ?, ?, ?)
+                    VALUES (?, 'blocked', ?, ?, ?, ?)
                     """,
-                    (question["uuid"], source, reason, category, created_at, created_at),
+                    (question["uuid"], source, reason, created_at, created_at),
                 )
                 self._insert_moderation_event_locked(
                     question["uuid"],
@@ -385,7 +551,6 @@ class Database:
                     status="blocked",
                     source=source,
                     reason=reason,
-                    category=category,
                     created_at=created_at,
                 )
                 self.conn.commit()
@@ -428,7 +593,6 @@ class Database:
                     status="pending",
                     source="llm",
                     reason="queued",
-                    category=None,
                     created_at=created_at,
                     provider=provider,
                     model=model,
@@ -450,7 +614,6 @@ class Database:
         status: str,
         source: str,
         reason: str,
-        category: str | None,
         created_at: int,
         actor: str = "",
         provider: str = "",
@@ -476,12 +639,12 @@ class Database:
         self.conn.execute(
             """
             INSERT INTO question_moderation_event (
-              uuid, event_type, status, source, reason, category, actor,
+              uuid, event_type, status, source, reason, actor,
               provider, model, prompt_version, decision_json, latency_ms, error_class,
               short_reason, rationale, confidence, finish_reason, prompt_tokens, completion_tokens, total_tokens,
               policy_hash, config_hash, raw_prompt, raw_request, raw_response, created_at, purge_after
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 uuid,
@@ -489,7 +652,6 @@ class Database:
                 status,
                 source,
                 reason,
-                category,
                 actor,
                 provider,
                 model,
@@ -529,7 +691,7 @@ class Database:
         visit_join = " LEFT JOIN visit v ON v.uuid = q.uuid" if with_visit else ""
         moderation_select = (
             ", ms.status AS moderation_status, ms.source AS moderation_source, "
-            "ms.reason AS moderation_reason, ms.category AS moderation_category, "
+            "ms.reason AS moderation_reason, "
             "ms.short_reason AS moderation_short_reason, ms.rationale AS moderation_rationale, "
             "ms.confidence AS moderation_confidence, ms.provider AS moderation_provider, ms.model AS moderation_model, "
             "ms.prompt_version AS moderation_prompt_version, ms.last_error_class AS moderation_last_error_class, "
@@ -623,7 +785,7 @@ class Database:
         geo_select = ", q.ip, ig.addr AS ip_addr, ig.isp AS ip_isp" if include_geo and self.geo_enabled else ""
         moderation_select = (
             ", ms.status AS moderation_status, ms.source AS moderation_source, "
-            "ms.reason AS moderation_reason, ms.category AS moderation_category, "
+            "ms.reason AS moderation_reason, "
             "ms.short_reason AS moderation_short_reason, ms.rationale AS moderation_rationale, "
             "ms.confidence AS moderation_confidence, ms.provider AS moderation_provider, ms.model AS moderation_model, "
             "ms.prompt_version AS moderation_prompt_version, ms.last_error_class AS moderation_last_error_class, "
@@ -975,7 +1137,6 @@ class Database:
                         status="pending",
                         source="llm_error",
                         reason="retry",
-                        category=None,
                         created_at=attempted_at,
                         error_class=error_class,
                         **_event_metadata(metadata),
@@ -1015,7 +1176,6 @@ class Database:
                         status="approved",
                         source="llm",
                         reason="model_accept",
-                        category="safe",
                         created_at=finalized_at,
                         short_reason=str(metadata.get("short_reason") or ""),
                         rationale=str(metadata.get("rationale") or ""),
@@ -1036,7 +1196,6 @@ class Database:
         finalized_at: int,
         source: str,
         reason: str,
-        category: str | None,
         short_reason: str,
         rationale: str,
         confidence: float | None,
@@ -1052,7 +1211,6 @@ class Database:
                     SET status = 'blocked',
                         source = ?,
                         reason = ?,
-                        category = ?,
                         attempt_count = attempt_count + ?,
                         next_attempt_at = NULL,
                         locked_until = NULL,
@@ -1082,7 +1240,6 @@ class Database:
                     (
                         source,
                         reason,
-                        category,
                         1 if increment_attempt else 0,
                         error_class,
                         short_reason,
@@ -1110,7 +1267,6 @@ class Database:
                         status="blocked",
                         source=source,
                         reason=reason,
-                        category=category,
                         created_at=finalized_at,
                         short_reason=short_reason,
                         rationale=rationale,
@@ -1183,7 +1339,7 @@ class Database:
             try:
                 state = self.conn.execute(
                     """
-                    SELECT status, source, reason, category
+                    SELECT status, source, reason
                     FROM question_moderation_state
                     WHERE uuid = ?
                     """,
@@ -1207,7 +1363,6 @@ class Database:
                         status=str(state["status"]),
                         source=str(state["source"] or ""),
                         reason=str(state["reason"] or ""),
-                        category=state["category"],
                         created_at=deleted_at,
                     )
                 self.conn.commit()
@@ -1240,7 +1395,7 @@ class Database:
             try:
                 row = self.conn.execute(
                     """
-                    SELECT q.deleted_at, ms.status, ms.source, ms.reason, ms.category
+                    SELECT q.deleted_at, ms.status, ms.source, ms.reason
                     FROM question q
                     LEFT JOIN question_moderation_state ms ON ms.uuid = q.uuid
                     WHERE q.uuid = ?
@@ -1267,7 +1422,7 @@ class Database:
                 if cur.rowcount != 1:
                     current = self.conn.execute(
                         """
-                        SELECT q.deleted_at, ms.status, ms.source, ms.reason, ms.category
+                        SELECT q.deleted_at, ms.status, ms.source, ms.reason
                         FROM question q
                         LEFT JOIN question_moderation_state ms ON ms.uuid = q.uuid
                         WHERE q.uuid = ?
@@ -1282,7 +1437,6 @@ class Database:
                     status="approved",
                     source=str(row["source"] or ""),
                     reason=str(row["reason"] or ""),
-                    category=row["category"],
                     created_at=approved_at,
                 )
                 self.conn.commit()
@@ -1380,7 +1534,6 @@ class Database:
                 "status": row["moderation_status"],
                 "source": row["moderation_source"] or "",
                 "reason": row["moderation_reason"] or "",
-                "category": row["moderation_category"],
                 "short_reason": row["moderation_short_reason"] or "",
                 "rationale": row["moderation_rationale"] or "",
                 "confidence": row["moderation_confidence"],

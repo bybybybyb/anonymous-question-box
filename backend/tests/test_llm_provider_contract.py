@@ -44,9 +44,7 @@ def make_policy(
 
 def deepseek_success_response(
     *,
-    content: str = (
-        '{"decision":"accept","moderation_category":"safe","confidence":0.99,"short_reason":"Safe submission","rationale":"No concern."}'
-    ),
+    content: str = '{"decision":"accept","confidence":0.99,"short_reason":"Safe submission","rationale":"No concern."}',
     finish_reason: str = "stop",
     model: str = "deepseek-v4-flash",
 ) -> dict[str, object]:
