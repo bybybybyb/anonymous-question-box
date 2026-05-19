@@ -155,7 +155,7 @@
                       <option value="365">1年内</option>
                     </select>
                   </li>
-                  <li class="nav-item mx-1 my-1" v-if="locationOptions.length > 0">
+                  <li class="nav-item mx-1 my-1">
                     <select
                       class="form-select"
                       aria-label="location select"
@@ -163,7 +163,7 @@
                       v-on:change="onQueryChange(true)"
                       v-model="queryParams['ip_addr']"
                     >
-                      <option value="">全部地区</option>
+                      <option value="">所有地区</option>
                       <option
                         v-for="option in locationOptions"
                         v-bind:key="option.addr"

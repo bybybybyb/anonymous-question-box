@@ -348,6 +348,20 @@ async function gotoOwnerWithStaleLocationStorage(page, url, type) {
   if (body.ip_addr !== "") {
     throw new Error(`Owner console defaulted to stale location filter: ${body.ip_addr}`);
   }
+  await assertAllRegionsLocationDefault(page, "Owner console");
+}
+
+async function assertAllRegionsLocationDefault(page, surface) {
+  const locationFilter = page.locator("#location_addr");
+  await locationFilter.waitFor({ timeout: 10_000 });
+  const defaultLocationLabel = await locationFilter.locator("option[value='']").textContent();
+  if ((defaultLocationLabel || "").trim() !== "所有地区") {
+    throw new Error(`${surface} location filter default option mismatch: ${defaultLocationLabel}`);
+  }
+  const selectedLocation = await locationFilter.inputValue();
+  if (selectedLocation !== "") {
+    throw new Error(`${surface} location filter defaulted to a concrete location: ${selectedLocation}`);
+  }
 }
 
 async function selectQuestionType(page, type) {
@@ -476,6 +490,7 @@ async function assertKeywordModerationReview(page, config, owner, type, ownerTok
   }
 
   await Promise.all([waitForOwnerList(page), page.getByRole("button", { name: /审核队列/ }).click()]);
+  await assertAllRegionsLocationDefault(page, "Empty review queue");
   if ((await page.getByText(text).count()) > 0) {
     throw new Error("Keyword-moderated submission leaked into review owner list");
   }
@@ -483,7 +498,7 @@ async function assertKeywordModerationReview(page, config, owner, type, ownerTok
   await page.goto(`${baseUrl}/#/question?token=${askerToken}`);
   await page.getByText(text).waitFor({ timeout: 10_000 });
 
-  return ["keyword moderation hidden from owner", "keyword moderation visible to asker"];
+  return ["keyword moderation hidden from owner", "empty review queue all regions", "keyword moderation visible to asker"];
 }
 
 async function assertSeededModerationReview(page, config, owner, type, ownerToken) {
@@ -494,10 +509,13 @@ async function assertSeededModerationReview(page, config, owner, type, ownerToke
 
   await gotoWithQuestionTypeStorage(page, `${baseUrl}/#/owner/${owner}/dashboard?token=${ownerToken}`, type);
   await Promise.all([waitForOwnerList(page), page.getByRole("button", { name: /审核队列/ }).click()]);
+  await assertAllRegionsLocationDefault(page, "Review queue");
 
   const approveCard = reviewCard(approveFixture);
   await approveCard.waitFor({ timeout: 10_000 });
-  await approveCard.getByText(approveFixture.short_reason, { exact: true }).waitFor({ timeout: 10_000 });
+  await approveCard
+    .getByText(`${approveFixture.short_reason}（置信度 98%）`, { exact: true })
+    .waitFor({ timeout: 10_000 });
   if ((await approveCard.getByText(approveFixture.text).count()) > 0) {
     throw new Error("Review queue displayed raw submission text");
   }
@@ -738,6 +756,7 @@ async function main() {
     const liveText = `live auto ${Date.now()}`;
     const liveToken = await submitViaApi(page.request, owner, type, liveText);
     await gotoWithQuestionTypeStorage(page, `${baseUrl}/#/owner/${owner}/live?token=${ownerToken}`, type);
+    await assertAllRegionsLocationDefault(page, "Live view");
     await page.getByText(liveText).waitFor({ timeout: 10_000 });
     await page.locator(".card.shadow-sm.my-2").filter({ hasText: liveText }).first().getByText("← 投屏").click();
     await page.locator("#textProjectArea").getByText(liveText).waitFor({ timeout: 10_000 });
