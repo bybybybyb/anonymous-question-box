@@ -1392,12 +1392,12 @@ def test_llm_moderation_config_requires_global_and_type_enablement(tmp_path: Pat
     assert loaded.llm_moderation.review_all_model_rejects is True
     assert loaded.llm_moderation.max_attempts == 2
     assert loaded.llm_moderation.timeout_seconds == 10.0
-    assert loaded.llm_moderation.max_tokens == 256
+    assert loaded.llm_moderation.max_tokens == 10240
     assert loaded.llm_moderation.initial_backoff_seconds == 1.0
     assert loaded.llm_moderation.raw_retention_enabled is False
     assert loaded.llm_moderation.raw_retention_seconds == 0
     assert enabled_policy.timeout_seconds == 10.0
-    assert enabled_policy.max_tokens == 256
+    assert enabled_policy.max_tokens == 10240
     assert enabled_policy.initial_backoff_seconds == 1.0
 
     monkeypatch.delenv("AQBOX_TEST_LLM_KEY")
@@ -1611,7 +1611,7 @@ def test_ops_config_redacts_llm_api_keys_from_env_and_config(tmp_path: Path, mon
     assert cfg.status_code == 200
     assert cfg.json()["llm_filter"]["api_key_configured"] is True
     assert cfg.json()["llm_filter"]["timeout_seconds"] == 10.0
-    assert cfg.json()["llm_filter"]["max_tokens"] == 256
+    assert cfg.json()["llm_filter"]["max_tokens"] == 10240
     assert cfg.json()["llm_filter"]["initial_backoff_seconds"] == 1.0
     assert cfg.json()["llm_filter"]["raw_retention_enabled"] is False
     assert cfg.json()["llm_filter"]["raw_retention_seconds"] == 0
