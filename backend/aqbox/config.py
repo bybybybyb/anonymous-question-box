@@ -136,7 +136,7 @@ class LLMModerationConfig:
     review_all_model_rejects: bool = True
     max_attempts: int = 2
     timeout_seconds: float = 10.0
-    max_tokens: int = 256
+    max_tokens: int = 10240
     initial_backoff_seconds: float = 1.0
     raw_retention_enabled: bool = False
     raw_retention_seconds: int = 0
@@ -242,7 +242,7 @@ def _parse_llm_moderation_config(raw: dict[str, Any]) -> LLMModerationConfig:
         ),
         max_attempts=max(1, _as_int(raw.get("max_attempts"), default=2)),
         timeout_seconds=max(0.1, _as_float(raw.get("timeout_seconds"), default=10.0)),
-        max_tokens=max(1, _as_int(raw.get("max_tokens"), default=256)),
+        max_tokens=max(1, _as_int(raw.get("max_tokens"), default=10240)),
         initial_backoff_seconds=max(0.0, _as_float(raw.get("initial_backoff_seconds"), default=1.0)),
         raw_retention_enabled=_as_bool(raw.get("raw_retention_enabled"), default=False, field_name="llm_filter.raw_retention_enabled"),
         raw_retention_seconds=max(0, _as_int(raw_retention_seconds, default=0)),
