@@ -317,6 +317,31 @@ async function waitForOwnerList(page) {
   );
 }
 
+async function markWithoutReloadingOwnerList(page, card) {
+  let ownerListRequestCount = 0;
+  const countOwnerListRequest = (request) => {
+    if (request.url().includes("/api/owner/questions") && request.method() === "POST") {
+      ownerListRequestCount += 1;
+    }
+  };
+  page.on("request", countOwnerListRequest);
+  try {
+    await Promise.all([
+      page.waitForResponse(
+        (resp) => resp.url().includes("/mark") && resp.request().method() === "PUT",
+        { timeout: 10_000 }
+      ),
+      card.getByText("标记", { exact: true }).first().click(),
+    ]);
+    await card.getByText("取消标记", { exact: true }).first().waitFor({ timeout: 10_000 });
+    if (ownerListRequestCount !== 0) {
+      throw new Error(`Marking a question reloaded the owner list ${ownerListRequestCount} time(s)`);
+    }
+  } finally {
+    page.off("request", countOwnerListRequest);
+  }
+}
+
 async function gotoWithClearedStorage(page, url) {
   await page.goto(baseUrl);
   await page.evaluate(() => localStorage.clear());
@@ -757,7 +782,7 @@ async function main() {
     await page.getByText(unique).waitFor({ timeout: 10_000 });
 
     const card = page.locator(".card.shadow-lg.m-3").filter({ hasText: unique }).first();
-    await Promise.all([waitForOwnerList(page), card.getByText("标记", { exact: true }).first().click()]);
+    await markWithoutReloadingOwnerList(page, card);
     await Promise.all([waitForOwnerList(page), page.getByText("只显示已标记").click()]);
     await page.getByText(unique).waitFor({ timeout: 10_000 });
     await Promise.all([waitForOwnerList(page), page.getByText("显示全部").click()]);
@@ -785,6 +810,8 @@ async function main() {
     await gotoWithQuestionTypeStorage(page, `${baseUrl}/#/owner/${owner}/live?token=${ownerToken}`, type);
     await assertAllRegionsLocationDefault(page, "Live view");
     await page.getByText(liveText).waitFor({ timeout: 10_000 });
+    const liveCard = page.locator(".card.shadow-sm.my-2").filter({ hasText: liveText }).first();
+    await markWithoutReloadingOwnerList(page, liveCard);
     await ensureLiveProjectorScreenshotDir();
     await page.screenshot({
       path: path.join(liveProjectorScreenshotDir, "live-dashboard-full-width.png"),
