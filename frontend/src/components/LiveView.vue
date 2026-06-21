@@ -523,20 +523,25 @@ export default {
       }
     },
     markQuestion(q) {
+      const mark = !q.marked;
       this.axios
         .put(
           "/api/owner/questions/" + q.uuid + "/mark",
           {
             owner: q.owner,
             type: q.type,
-            mark: !q.marked,
+            mark,
           },
           {
             headers: { Authorization: `Bearer ${this.$route.query.token}` },
           }
         )
         .then(() => {
-          this.onQueryChange(true, false, false);
+          q.marked = mark;
+          if (this.markedOnly && !mark) {
+            this.rows = this.rows.filter((row) => row.uuid !== q.uuid);
+            this.total_count = Math.max(0, this.total_count - 1);
+          }
         })
         .catch((err) => {
           console.log(err.response);
