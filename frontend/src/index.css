@@ -65,6 +65,42 @@ body {
   background-size: 500px 500px;
 }
 
+.body-theme-preset-striped-light {
+  background-image: linear-gradient(
+    135deg,
+    #f8f9fa 25%,
+    #e9ecef 25%,
+    #e9ecef 50%,
+    #f8f9fa 50%,
+    #f8f9fa 75%,
+    #e9ecef 75%,
+    #e9ecef 100%
+  );
+  background-size: 90px 90px;
+}
+
+.body-theme-preset-striped-dark {
+  background-image: linear-gradient(
+    135deg,
+    #212529 25%,
+    #343a40 25%,
+    #343a40 50%,
+    #212529 50%,
+    #212529 75%,
+    #343a40 75%,
+    #343a40 100%
+  );
+  background-size: 90px 90px;
+}
+
+.body-theme-preset-plain-light {
+  background-color: #f8f9fa;
+}
+
+.body-theme-preset-plain-dark {
+  background-color: #212529;
+}
+
 p {
   min-height: 1rem;
 }

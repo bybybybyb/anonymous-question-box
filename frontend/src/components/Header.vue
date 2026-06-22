@@ -2,12 +2,12 @@
   <nav class="navbar navbar-expand-md navbar-dark bg-dark" id="site-header">
     <div class="container-fluid">
       <span class="navbar-brand m-1 mb-0 h1">
-        <img src="../assets/marshmallow_light.svg" alt="" height="20" />
+        <img v-if="site.header_logo_url" :src="site.header_logo_url" alt="" height="20" />
         <router-link
           class="m-1"
           to="/"
           style="text-decoration: none; color: inherit"
-          >MeUmy的棉花糖</router-link
+          >{{ site.header_title }}</router-link
         >
       </span>
       <ul class="navbar-nav mb-2 mb-lg-0">
@@ -32,6 +32,7 @@
         <li class="nav-item m-1">
           <button
             class="btn btn-sm btn-outline-light"
+            :class="{ 'd-none': !adminContactLink }"
             v-on:click="contactAdmin"
           >
             联系管理员
@@ -43,6 +44,8 @@
 </template>
 
 <script>
+import { siteMetadata } from "../siteConfig.mjs";
+
 export default {
   name: "Header",
   props: {
@@ -57,12 +60,20 @@ export default {
       this.$router.go(-1);
     },
     contactAdmin() {
-      window.open(this.websiteMetadata.admin.link);
+      if (this.adminContactLink) {
+        window.open(this.adminContactLink);
+      }
     },
   },
-  beforeCreate() {
-    if (this.withHomepageBtn) {
-    }
+  created() {
+    this.site = this.siteMetadata || siteMetadata(this.websiteMetadata || {});
+    this.adminContactLink = this.websiteMetadata?.admin?.link || "";
+  },
+  data() {
+    return {
+      site: siteMetadata(),
+      adminContactLink: "",
+    };
   },
 };
 </script>

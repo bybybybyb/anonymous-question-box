@@ -342,6 +342,12 @@ import {
   readProjectionState,
   writeProjectionState,
 } from "../liveProjectionState";
+import {
+  applyBodyTheme,
+  clearBodyTheme,
+  ownerTheme,
+  questionTypeEntries,
+} from "../siteConfig.mjs";
 const storagePrefix = "ownerView_";
 const projectionSessionStoragePrefix = "liveProjectionSession_";
 // Location options are per owner/type and can be empty for historical rows, so never persist them across boxes.
@@ -496,7 +502,9 @@ export default {
           } else {
             if (needRetry) {
               this.queryParams = {
-                type: "normal",
+                type:
+                  questionTypeEntries(this.ownerProfiles[this.owner])[0]?.name ||
+                  "",
                 order_params_index: 0,
                 reply_status: 0,
                 day_limit: 7,
@@ -633,6 +641,9 @@ export default {
     },
   },
   beforeMount() {
+    this.bodyThemeHandle = applyBodyTheme(
+      ownerTheme(this.ownerProfiles[this.owner])
+    );
     const projectionSessionStorageKey =
       projectionSessionStoragePrefix + this.owner;
     this.projectionSessionId =
@@ -677,15 +688,20 @@ export default {
         }
       }
     }
+    const questionTypes = questionTypeEntries(this.ownerProfiles[this.owner]);
+    if (!questionTypes.some((entry) => entry.name === this.queryParams.type)) {
+      this.queryParams.type = questionTypes[0]?.name || "";
+    }
     this.onQueryChange(true, true, false);
   },
   beforeUnmount() {
     clearTimeout(this.queryDebounceTimer);
+    clearBodyTheme(this.bodyThemeHandle);
   },
   data() {
     return {
       queryParams: {
-        type: "normal",
+        type: "",
         order_params_index: 0,
         reply_status: 0,
         day_limit: 7,
@@ -703,6 +719,7 @@ export default {
       enlargeBtnDisabled: false,
       shrinkBtnDisabled: false,
       markedOnly: false,
+      bodyThemeHandle: null,
     };
   },
 };

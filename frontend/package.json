@@ -4,6 +4,7 @@
   "scripts": {
     "dev": "vite --port 80",
     "build": "vite build",
+    "test": "node --test test/*.test.mjs",
     "e2e:smoke": "node e2e/owner-smoke.cjs",
     "e2e:smoke:deepseek": "AQBOX_E2E_RUN_DEEPSEEK=1 node e2e/owner-smoke.cjs",
     "lint": "eslint ."

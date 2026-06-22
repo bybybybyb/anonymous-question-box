@@ -7,10 +7,15 @@
           <div class="card shadow-lg my-3 p-3">
             <div class="card-body m-3">
               <div class="row">
-                <img src="../assets/marshmallow.svg" alt="" height="200" />
+                <img
+                  v-if="site.hero_image_url"
+                  :src="site.hero_image_url"
+                  alt=""
+                  class="homepage-hero-image"
+                />
               </div>
               <div class="row">
-                <h1>MeUmy的棉花糖</h1>
+                <h1>{{ site.hero_title }}</h1>
               </div>
               <div class="row">
                 <ul class="list-unstyled">
@@ -24,24 +29,21 @@
           <div class="card shadow-lg my-3 p-3">
             <div class="card-body m-1">
               <div class="row">
-                <!-- TODO: refactor here to automatically add buttons by profiles -->
-                <div class="col-12 col-md-6" v-if="ownerProfiles.merry">
+                <div
+                  class="col-12 col-md-6"
+                  v-for="entry in ownerList"
+                  :key="entry.slug"
+                >
                   <button
-                    class="btn shadow btn-outline-info my-2"
-                    :style="setBtnColor('merry')"
-                    v-on:click="newQuestion('merry')"
+                    class="btn shadow btn-outline-info my-2 owner-entry-button"
+                    :style="setBtnColor(entry.owner)"
+                    v-on:click="newQuestion(entry.slug)"
                   >
-                    咩栗和蜗牛姐姐的棉花糖
+                    {{ ownerButtonText(entry.owner, entry.slug) }}
                   </button>
                 </div>
-                <div class="col-12 col-md-6" v-if="ownerProfiles.umy">
-                  <button
-                    class="btn shadow btn-outline-danger my-2"
-                    :style="setBtnColor('umy')"
-                    v-on:click="newQuestion('umy')"
-                  >
-                    呜米一家人的棉花糖
-                  </button>
+                <div class="col-12" v-if="ownerList.length === 0">
+                  暂无可用提问箱。
                 </div>
               </div>
             </div>
@@ -54,6 +56,7 @@
 
 <script>
 import Header from "./Header.vue";
+import { ownerButtonLabel, ownerEntries, siteMetadata } from "../siteConfig.mjs";
 let printed = false;
 export default {
   name: "Main",
@@ -61,9 +64,12 @@ export default {
   methods: {
     setBtnColor(owner) {
       return {
-        color: this.ownerProfiles[owner].colors.primary_color,
-        "border-color": this.ownerProfiles[owner].colors.primary_color,
+        color: owner.colors.primary_color,
+        "border-color": owner.colors.primary_color,
       };
+    },
+    ownerButtonText(owner, fallback) {
+      return ownerButtonLabel(owner, fallback);
     },
     newQuestion(owner) {
       this.$router.push({
@@ -74,6 +80,8 @@ export default {
   },
   created() {
     this.introductions = this.websiteMetadata.introductions;
+    this.site = this.siteMetadata || siteMetadata(this.websiteMetadata);
+    this.ownerList = ownerEntries(this.ownerProfiles);
     if (!printed) {
       for (let i in this.websiteMetadata.console_prints) {
         console.log(this.websiteMetadata.console_prints[i]);
@@ -81,8 +89,24 @@ export default {
       printed = true;
     }
   },
-  data: {
-    introductions: [],
+  data() {
+    return {
+      introductions: [],
+      ownerList: [],
+      site: siteMetadata(),
+    };
   },
 };
 </script>
+
+<style scoped>
+.homepage-hero-image {
+  height: 200px;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.owner-entry-button {
+  min-width: 80%;
+}
+</style>

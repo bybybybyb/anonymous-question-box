@@ -412,6 +412,12 @@ import Pagination from "v-pagination-3";
 import AnswerView from "./AnswerView.vue";
 import ImageDisplay from "./ImageDisplay.vue";
 import { Modal } from "bootstrap";
+import {
+  applyBodyTheme,
+  clearBodyTheme,
+  ownerTheme,
+  questionTypeEntries,
+} from "../siteConfig.mjs";
 const storagePrefix = "ownerView_";
 const storagePrefixAnswerView = "AnswerView_draft_";
 // Location options are per owner/type and can be empty for historical rows, so never persist them across boxes.
@@ -550,7 +556,7 @@ export default {
     },
     defaultQueryParams() {
       return {
-        type: "normal",
+        type: questionTypeEntries(this.ownerProfiles[this.owner])[0]?.name || "",
         order_params_index: 0,
         reply_status: 0,
         day_limit: 7,
@@ -727,9 +733,8 @@ export default {
   },
   beforeMount() {
     // change back the body background
-    document.body.classList.remove("bg-light");
-    document.body.classList.add(
-      "body-background-texture-" + this.owner + "-light"
+    this.bodyThemeHandle = applyBodyTheme(
+      ownerTheme(this.ownerProfiles[this.owner])
     );
     this.navbarStyling = {
       "background-color": this.ownerProfiles[this.owner].colors.primary_color,
@@ -748,20 +753,21 @@ export default {
         }
       }
     }
+    const questionTypes = questionTypeEntries(this.ownerProfiles[this.owner]);
+    if (!questionTypes.some((entry) => entry.name === this.queryParams.type)) {
+      this.queryParams.type = questionTypes[0]?.name || "";
+    }
     this.onQueryChange(true, true, false);
   },
   beforeUnmount() {
     clearTimeout(this.queryDebounceTimer);
     // change back the body background
-    document.body.classList.remove(
-      "body-background-texture-" + this.owner + "-light"
-    );
-    document.body.classList.add("bg-light");
+    clearBodyTheme(this.bodyThemeHandle);
   },
   data() {
     return {
       queryParams: {
-        type: "normal",
+        type: "",
         order_params_index: 0,
         reply_status: 0,
         day_limit: 30,
@@ -783,6 +789,7 @@ export default {
         blocked: 0,
       },
       queryDebounceTimer: null,
+      bodyThemeHandle: null,
     };
   },
 };

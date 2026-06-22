@@ -1,0 +1,67 @@
+# Copy this file to backend/config/config.docker.yaml or another ignored path,
+# then set AQBOX_CONFIG_FILE to that path before running docker compose.
+host: 0.0.0.0
+port: 3768
+db_path: /data/aqbox.sqlite3
+db_max_connections: 1
+
+# Change both secrets before exposing the service.
+jwt_secret_key: change-me-to-a-long-random-secret
+magic_spell: change-me-owner-password
+
+filtered_keywords: []
+geo_enabled: false
+trusted_proxy_cidrs:
+  - 127.0.0.1/32
+  - ::1/128
+  # Docker bridge/private networks used by the nginx frontend container.
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 192.168.0.0/16
+
+# To enable offline geo lookup, mount xdb files under aqbox-ops/ip2region and set:
+# geo_enabled: true
+# ip2region_ipv4_xdb_path: /ip2region/ip2region_v4.xdb
+# ip2region_ipv6_xdb_path: /ip2region/ip2region_v6.xdb
+# ip2region_cache_policy: vectorIndex
+
+owner_profiles:
+  owner:
+    name: owner
+    colors:
+      primary_color: "#111111"
+      secondary_color: "#eeeeee"
+    question_types:
+      normal:
+        name: normal
+        description: Normal
+        rune_limit: 500
+        theme:
+          name: default
+          preset: striped-light
+          # Or supply deployment-specific assets:
+          # background_image: /assets/custom/question-background.png
+          # background_color: "#f8f9fa"
+          # background_position: center center
+          # background_repeat: repeat
+          # background_size: 480px 480px
+          # variant: light
+        support_image: false
+
+metadata:
+  site:
+    title: Anonymous Question Box
+    header_title: Anonymous Question Box
+    hero_title: Anonymous Question Box
+    # Put deployment-specific files in aqbox-ops/assets and reference them here as:
+    # logo_url: /assets/custom/logo.svg
+    # header_logo_url: /assets/custom/logo-light.svg
+    # hero_image_url: /assets/custom/hero.svg
+    # favicon_url: /assets/custom/favicon.png
+  introductions:
+    - Anonymous Question Box
+  console_prints: []
+  admin: {}
+
+llm_filter:
+  enabled: false
