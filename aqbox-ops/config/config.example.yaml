@@ -1,5 +1,5 @@
 # Copy this file to backend/config/config.docker.yaml or another ignored path,
-# then set AQBOX_CONFIG_FILE to that path before running docker compose.
+# then set AQBOX_CONFIG_DIR to its directory and AQBOX_CONFIG_NAME to its filename.
 host: 0.0.0.0
 port: 3768
 db_path: /data/aqbox.sqlite3

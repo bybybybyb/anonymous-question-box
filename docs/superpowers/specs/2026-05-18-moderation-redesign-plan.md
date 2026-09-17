@@ -241,7 +241,7 @@ Rejected alternative:
 llm_filter:
   enabled: true
   provider: deepseek
-  model: deepseek-v4-flash
+  model: deepseek-flash
   api_key_env: DEEPSEEK_API_KEY
   high_confidence_reject_threshold: 0.85
   review_all_model_rejects: true
@@ -301,17 +301,25 @@ llm_filter:
   - output: parsed raw response envelope including content, finish reason, model, latency, token usage, provider error class.
 - Implement provider calls with `httpx.AsyncClient`; do not introduce the OpenAI SDK for this slice.
 - Classify provider errors as:
-  - `config_auth`: missing key, bad key, model/base URL configuration failures;
+  - `config_missing_api_key`: no API key configured;
+  - `config_api_key_rejected`: provider 401;
+  - `config_permission`: provider 403;
+  - `config_endpoint`: provider 404 (wrong base URL or path);
+  - `provider_request_rejected`: any other provider 4xx (400/405/406/415/422 and
+    unenumerated codes) — covers a retired/unknown model name as well as a malformed
+    body; the provider's own message (logged by the worker) carries which;
   - `rate_limited`: provider 429;
   - `timeout`: request timeout;
   - `network`: DNS/connectivity/TLS failures;
   - `server`: provider 5xx;
-  - `invalid_response`: malformed, truncated, empty, or schema-invalid responses;
-  - `quota_exceeded`: local circuit/cost cap exhaustion if added in this slice.
+  - `invalid_response`: an unusable response body — malformed, truncated, empty, or
+    schema-invalid, including unmapped statuses;
+  - `quota_exceeded`: provider 402, i.e. the provider account is out of credit (a local
+    circuit/cost cap was not added).
 - Implement the DeepSeek adapter first:
   - endpoint: `POST /chat/completions`;
   - base URL default: `https://api.deepseek.com`;
-  - models default to `deepseek-v4-flash`, allow config override to `deepseek-v4-pro`;
+  - models default to `deepseek-flash`, allow config override to `deepseek-v4-pro`;
   - auth: `Authorization: Bearer ...`;
   - `temperature` low and `stream: false`;
   - disable provider retries in the HTTP client; retries belong to the DB-backed worker.

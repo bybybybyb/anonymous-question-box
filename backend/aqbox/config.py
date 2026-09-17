@@ -10,6 +10,9 @@ from typing import Any, cast
 import yaml
 
 IP2REGION_CACHE_POLICIES = {"file", "vectorIndex", "content"}
+# `llm_filter.timeout_seconds` is hot-reloadable and bounds a single provider call, so an
+# oversized value stalls the moderation queue. Reject it loudly rather than clamp it.
+MAX_LLM_TIMEOUT_SECONDS = 600.0
 
 
 def _as_map_by_name(value: Any) -> dict[str, dict[str, Any]]:
@@ -131,13 +134,13 @@ class LLMModerationConfig:
     enabled: bool = False
     provider: str = "deepseek"
     base_url: str = "https://api.deepseek.com"
-    model: str = "deepseek-v4-flash"
+    model: str = "deepseek-flash"
     api_key_env: str = "DEEPSEEK_API_KEY"
     api_key_value: str = field(default="", repr=False)
     high_confidence_reject_threshold: float = 0.85
     review_all_model_rejects: bool = True
     max_attempts: int = 2
-    timeout_seconds: float = 10.0
+    timeout_seconds: float = 60.0
     max_tokens: int = 10240
     initial_backoff_seconds: float = 1.0
     raw_retention_enabled: bool = False
@@ -227,11 +230,23 @@ def _parse_llm_moderation_config(raw: dict[str, Any]) -> LLMModerationConfig:
                 raw=dict(qtype_raw),
             )
         boxes[owner] = LLMBoxConfig(question_types=question_types, raw=dict(box_raw))
+    timeout_seconds = _as_float(raw.get("timeout_seconds"), default=60.0)
+    # Checked here rather than in `_as_float` so the message can name the field: `nan`
+    # compares False against every bound, so it would slip past the ceiling below and
+    # `max(0.1, nan)` would silently clamp it to 0.1s (every call times out).
+    if not math.isfinite(timeout_seconds):
+        raise ValueError(f"llm_filter.timeout_seconds must be a finite number, got {timeout_seconds!r}")
+    if timeout_seconds > MAX_LLM_TIMEOUT_SECONDS:
+        raise ValueError(
+            f"llm_filter.timeout_seconds {timeout_seconds!r} exceeds the maximum "
+            f"{MAX_LLM_TIMEOUT_SECONDS!r}; the field is hot-reloadable, so an oversized value "
+            "would stall the moderation queue for as long as it is set"
+        )
     return LLMModerationConfig(
         enabled=_as_bool(raw.get("enabled"), default=False, field_name="llm_filter.enabled"),
         provider=provider,
         base_url=str(raw.get("base_url") or raw.get("api_base_url") or "https://api.deepseek.com"),
-        model=str(raw.get("model") or "deepseek-v4-flash"),
+        model=str(raw.get("model") or "deepseek-flash"),
         api_key_env=api_key_env,
         api_key_value=str(raw.get("api_key") or ""),
         high_confidence_reject_threshold=_as_probability(
@@ -243,7 +258,7 @@ def _parse_llm_moderation_config(raw: dict[str, Any]) -> LLMModerationConfig:
             raw.get("review_all_model_rejects"), default=True, field_name="llm_filter.review_all_model_rejects"
         ),
         max_attempts=max(1, _as_int(raw.get("max_attempts"), default=2)),
-        timeout_seconds=max(0.1, _as_float(raw.get("timeout_seconds"), default=10.0)),
+        timeout_seconds=max(0.1, timeout_seconds),
         max_tokens=max(1, _as_int(raw.get("max_tokens"), default=10240)),
         initial_backoff_seconds=max(0.0, _as_float(raw.get("initial_backoff_seconds"), default=1.0)),
         raw_retention_enabled=_as_bool(raw.get("raw_retention_enabled"), default=False, field_name="llm_filter.raw_retention_enabled"),
