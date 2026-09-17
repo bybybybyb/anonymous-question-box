@@ -283,6 +283,11 @@ class LLMModerationWorker:
             self._handle_failed_attempt(row, current_settings, attempted_at, f"invalid_response_{exc.code}", metadata)
             return
 
+        # A usable decision means the provider call and parse both succeeded. Clear the
+        # sticky failure indicator so /ops/health stops reporting an error that a later
+        # success has already recovered from.
+        self.recent_error_class = None
+
         if parsed.decision == "accept":
             self.db.finalize_llm_moderation_accept(
                 uuid=row["uuid"],

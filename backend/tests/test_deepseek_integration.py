@@ -17,14 +17,17 @@ def make_policy() -> LLMModerationPolicy:
         policy_prompt="Reject doxxing, private identifying details, harassment, threats, spam, and unsafe fan drama.",
         provider="deepseek",
         base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-        model=os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash"),
+        model=os.environ.get("DEEPSEEK_MODEL", "deepseek-flash"),
         api_key_env="DEEPSEEK_API_KEY",
         api_key_value="",
         high_confidence_reject_threshold=0.85,
         review_all_model_rejects=True,
         max_attempts=1,
         timeout_seconds=10.0,
-        max_tokens=256,
+        # DeepSeek flash is a reasoning model: chain-of-thought is billed against
+        # max_tokens before the final JSON content. A small cap truncates the reply
+        # with finish_reason="length" instead of "stop". Leave headroom, as production does.
+        max_tokens=4096,
         initial_backoff_seconds=0.0,
     )
 

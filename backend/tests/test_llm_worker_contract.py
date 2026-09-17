@@ -352,6 +352,31 @@ def test_worker_provider_error_and_invalid_response_exhaust_to_llm_error_review(
     }
 
 
+def test_worker_clears_recent_error_class_after_successful_decision(tmp_path: Path) -> None:
+    s = llm_settings(tmp_path, max_attempts=3)
+    db = Database(s.db_path, moderation_schema=True)
+    provider = FakeLLMProvider(
+        provider_response(error_class="timeout", finish_reason=None),
+        provider_response(decision="accept"),
+    )
+    uuid = submitted_pending_uuid(db, s, "retry recovers", provider=provider)
+    worker = LLMModerationWorker(db, SettingsProvider(settings=s), provider=provider, poll_interval_seconds=0.01)
+
+    asyncio.run(worker.run_once())
+    assert worker.recent_error_class == "timeout"
+
+    db.conn.execute(
+        "UPDATE question_moderation_state SET next_attempt_at = NULL WHERE uuid = ?",
+        (uuid,),
+    )
+    db.conn.commit()
+
+    asyncio.run(worker.run_once())
+
+    assert worker.recent_error_class is None
+    assert db.conn.execute("SELECT status FROM question_moderation_state WHERE uuid = ?", (uuid,)).fetchone() is None
+
+
 def test_worker_retry_backoff_is_exponential_with_cap(tmp_path: Path) -> None:
     s = llm_settings(tmp_path, max_attempts=3, initial_backoff_seconds=10)
     db = Database(s.db_path, moderation_schema=True)

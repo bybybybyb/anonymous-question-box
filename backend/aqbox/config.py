@@ -129,13 +129,13 @@ class LLMModerationConfig:
     enabled: bool = False
     provider: str = "deepseek"
     base_url: str = "https://api.deepseek.com"
-    model: str = "deepseek-v4-flash"
+    model: str = "deepseek-flash"
     api_key_env: str = "DEEPSEEK_API_KEY"
     api_key_value: str = field(default="", repr=False)
     high_confidence_reject_threshold: float = 0.85
     review_all_model_rejects: bool = True
     max_attempts: int = 2
-    timeout_seconds: float = 10.0
+    timeout_seconds: float = 60.0
     max_tokens: int = 10240
     initial_backoff_seconds: float = 1.0
     raw_retention_enabled: bool = False
@@ -229,7 +229,7 @@ def _parse_llm_moderation_config(raw: dict[str, Any]) -> LLMModerationConfig:
         enabled=_as_bool(raw.get("enabled"), default=False, field_name="llm_filter.enabled"),
         provider=provider,
         base_url=str(raw.get("base_url") or raw.get("api_base_url") or "https://api.deepseek.com"),
-        model=str(raw.get("model") or "deepseek-v4-flash"),
+        model=str(raw.get("model") or "deepseek-flash"),
         api_key_env=api_key_env,
         api_key_value=str(raw.get("api_key") or ""),
         high_confidence_reject_threshold=_as_probability(
@@ -241,7 +241,7 @@ def _parse_llm_moderation_config(raw: dict[str, Any]) -> LLMModerationConfig:
             raw.get("review_all_model_rejects"), default=True, field_name="llm_filter.review_all_model_rejects"
         ),
         max_attempts=max(1, _as_int(raw.get("max_attempts"), default=2)),
-        timeout_seconds=max(0.1, _as_float(raw.get("timeout_seconds"), default=10.0)),
+        timeout_seconds=max(0.1, _as_float(raw.get("timeout_seconds"), default=60.0)),
         max_tokens=max(1, _as_int(raw.get("max_tokens"), default=10240)),
         initial_backoff_seconds=max(0.0, _as_float(raw.get("initial_backoff_seconds"), default=1.0)),
         raw_retention_enabled=_as_bool(raw.get("raw_retention_enabled"), default=False, field_name="llm_filter.raw_retention_enabled"),

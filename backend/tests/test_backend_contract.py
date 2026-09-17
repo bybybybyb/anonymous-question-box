@@ -1387,16 +1387,16 @@ def test_llm_moderation_config_requires_global_and_type_enablement(tmp_path: Pat
     assert enabled_policy.api_key() == "env-secret"
     assert loaded.llm_moderation.provider == "deepseek"
     assert loaded.llm_moderation.base_url == "https://api.deepseek.com"
-    assert loaded.llm_moderation.model == "deepseek-v4-flash"
+    assert loaded.llm_moderation.model == "deepseek-flash"
     assert loaded.llm_moderation.high_confidence_reject_threshold == 0.85
     assert loaded.llm_moderation.review_all_model_rejects is True
     assert loaded.llm_moderation.max_attempts == 2
-    assert loaded.llm_moderation.timeout_seconds == 10.0
+    assert loaded.llm_moderation.timeout_seconds == 60.0
     assert loaded.llm_moderation.max_tokens == 10240
     assert loaded.llm_moderation.initial_backoff_seconds == 1.0
     assert loaded.llm_moderation.raw_retention_enabled is False
     assert loaded.llm_moderation.raw_retention_seconds == 0
-    assert enabled_policy.timeout_seconds == 10.0
+    assert enabled_policy.timeout_seconds == 60.0
     assert enabled_policy.max_tokens == 10240
     assert enabled_policy.initial_backoff_seconds == 1.0
 
@@ -1610,7 +1610,7 @@ def test_ops_config_redacts_llm_api_keys_from_env_and_config(tmp_path: Path, mon
 
     assert cfg.status_code == 200
     assert cfg.json()["llm_filter"]["api_key_configured"] is True
-    assert cfg.json()["llm_filter"]["timeout_seconds"] == 10.0
+    assert cfg.json()["llm_filter"]["timeout_seconds"] == 60.0
     assert cfg.json()["llm_filter"]["max_tokens"] == 10240
     assert cfg.json()["llm_filter"]["initial_backoff_seconds"] == 1.0
     assert cfg.json()["llm_filter"]["raw_retention_enabled"] is False
