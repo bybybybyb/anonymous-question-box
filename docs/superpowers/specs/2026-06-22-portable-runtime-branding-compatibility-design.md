@@ -50,7 +50,10 @@ do not leak or erase unrelated body styling.
 ## Frontend Behavior
 
 - Site title, header title, hero title, logo, hero image, and favicon come from
-  Site metadata with generic fallbacks.
+  Site metadata. The bundled branding fallbacks are used only when
+  `metadata.site` is absent entirely; when a `metadata.site` object is present,
+  every asset field it omits resolves to `""` (all-or-nothing), so a partial
+  `site:` block renders no logo, hero image, or favicon.
 - The homepage renders every configured Owner and uses display/button-label
   fallbacks.
 - Submission pages choose the first currently active Question type rather than

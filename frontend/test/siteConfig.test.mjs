@@ -9,6 +9,7 @@ import {
   ownerTheme,
   siteMetadata,
   themeClass,
+  themeVariant,
 } from "../src/siteConfig.mjs";
 
 function fakeBody(initialClasses = []) {
@@ -152,6 +153,22 @@ test("theme class preserves legacy MeUmy aliases", () => {
 
 test("theme class rejects arbitrary class injection", () => {
   assert.equal(themeClass({ background_class: "position-fixed" }), "");
+});
+
+test("theme variant follows the resolved class, including legacy dark aliases", () => {
+  assert.equal(themeVariant({ background_class: "texture-umy-dark" }), "dark");
+  assert.equal(themeVariant({ background_class: "texture-merry-dark" }), "dark");
+  assert.equal(themeVariant({ background_class: "texture-umy-light" }), "light");
+  assert.equal(themeVariant({ background_class: "striped-merry" }), "light");
+});
+
+test("theme variant prefers an explicit variant or mode over the preset", () => {
+  assert.equal(themeVariant({ variant: "dark" }), "dark");
+  assert.equal(themeVariant({ mode: "dark", preset: "plain-light" }), "dark");
+  assert.equal(themeVariant({ variant: "light", background_class: "texture-umy-dark" }), "light");
+  assert.equal(themeVariant({ preset: "plain-dark" }), "dark");
+  assert.equal(themeVariant({ preset: "striped-light" }), "light");
+  assert.equal(themeVariant({}), "light");
 });
 
 test("owner theme preserves implicit legacy MeUmy textures", () => {
