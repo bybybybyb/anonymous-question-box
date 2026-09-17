@@ -149,6 +149,14 @@ class VisitService:
             raise
 
 
+def _truncate_for_log(value: str | None, limit: int = 200) -> str:
+    """Keep provider error text bounded in logs; it is never submission content."""
+    if not value:
+        return ""
+    text = str(value)
+    return text if len(text) <= limit else text[:limit] + "..."
+
+
 class LLMModerationWorker:
     """Processes pending LLM moderation rows without holding SQLite locks across provider I/O."""
 
@@ -160,6 +168,7 @@ class LLMModerationWorker:
         provider: LLMProvider,
         poll_interval_seconds: float = 0.5,
         lock_seconds: int = 30,
+        lock_margin_seconds: int = 30,
         batch_size: int = 5,
     ):
         self.db = db
@@ -167,6 +176,7 @@ class LLMModerationWorker:
         self.provider = provider
         self.poll_interval_seconds = max(poll_interval_seconds, 0.01)
         self.lock_seconds = max(lock_seconds, 1)
+        self.lock_margin_seconds = max(lock_margin_seconds, 0)
         self.batch_size = max(batch_size, 1)
         self.lock_owner = f"llm-worker-{uuid4()}"
         self._stop = asyncio.Event()
@@ -175,6 +185,21 @@ class LLMModerationWorker:
 
     def stop(self) -> None:
         self._stop.set()
+
+    def _claim_lock_seconds(self, settings: Settings) -> int:
+        """Keep the claim lease longer than the provider timeout.
+
+        The lock duration and the provider HTTP timeout are independent settings, so
+        raising one without the other lets a call outlive its own lease. The row then
+        becomes claimable while it is still in flight and a second claimer can re-run
+        the same paid request.
+        """
+        if not settings.llm_moderation.enabled:
+            return self.lock_seconds
+        return max(
+            self.lock_seconds,
+            int(settings.llm_moderation.timeout_seconds) + self.lock_margin_seconds,
+        )
 
     async def run(self) -> None:
         while not self._stop.is_set():
@@ -192,7 +217,7 @@ class LLMModerationWorker:
         rows = self.db.claim_due_llm_moderation(
             now=now,
             lock_owner=self.lock_owner,
-            lock_seconds=self.lock_seconds,
+            lock_seconds=self._claim_lock_seconds(settings),
             limit=self.batch_size,
             max_attempts=max_attempts,
             include_future=sweep_future,
@@ -216,7 +241,7 @@ class LLMModerationWorker:
             self.db.claim_pending_llm_moderation_by_pairs(
                 now=now,
                 lock_owner=self.lock_owner,
-                lock_seconds=self.lock_seconds,
+                lock_seconds=self._claim_lock_seconds(settings),
                 limit=limit,
                 pairs=disabled_pairs,
             ),
@@ -271,6 +296,14 @@ class LLMModerationWorker:
             self._finalize_config_disabled(row, current_settings, attempted_at)
             return
         if response.error_class is not None:
+            logger.warning(
+                "LLM moderation provider failure for %s: class=%s http_status=%s model=%s message=%s",
+                row["uuid"],
+                response.error_class,
+                response.http_status,
+                response.model,
+                _truncate_for_log(response.provider_error_message),
+            )
             self._handle_failed_attempt(row, current_settings, attempted_at, str(response.error_class), metadata)
             return
         try:
@@ -283,13 +316,8 @@ class LLMModerationWorker:
             self._handle_failed_attempt(row, current_settings, attempted_at, f"invalid_response_{exc.code}", metadata)
             return
 
-        # A usable decision means the provider call and parse both succeeded. Clear the
-        # sticky failure indicator so /ops/health stops reporting an error that a later
-        # success has already recovered from.
-        self.recent_error_class = None
-
         if parsed.decision == "accept":
-            self.db.finalize_llm_moderation_accept(
+            applied = self.db.finalize_llm_moderation_accept(
                 uuid=row["uuid"],
                 lock_owner=self.lock_owner,
                 finalized_at=attempted_at,
@@ -300,21 +328,37 @@ class LLMModerationWorker:
                     "rationale": parsed.rationale,
                 },
             )
+        else:
+            source, reason = _reject_framing(parsed, current_settings)
+            applied = self.db.finalize_llm_moderation_block(
+                uuid=row["uuid"],
+                lock_owner=self.lock_owner,
+                finalized_at=attempted_at,
+                source=source,
+                reason=reason,
+                short_reason=parsed.short_reason,
+                rationale=parsed.rationale,
+                confidence=parsed.confidence,
+                error_class="",
+                metadata={**metadata, "decision_json": _decision_json(parsed)},
+            )
+
+        if not applied:
+            # A parsed decision that was not persisted is a live problem (usually a
+            # claim that another owner took over), not a recovered one. Keep the
+            # indicator set and say so, instead of reporting health as clean while the
+            # row stays pending and no event row was written.
+            self.recent_error_class = "finalize_conflict"
+            logger.error(
+                "LLM moderation %s decision for %s was not persisted (lock_owner=%s)",
+                parsed.decision,
+                row["uuid"],
+                self.lock_owner,
+            )
             return
 
-        source, reason = _reject_framing(parsed, current_settings)
-        self.db.finalize_llm_moderation_block(
-            uuid=row["uuid"],
-            lock_owner=self.lock_owner,
-            finalized_at=attempted_at,
-            source=source,
-            reason=reason,
-            short_reason=parsed.short_reason,
-            rationale=parsed.rationale,
-            confidence=parsed.confidence,
-            error_class="",
-            metadata={**metadata, "decision_json": _decision_json(parsed)},
-        )
+        # Only a successfully applied decision proves the pipeline has recovered.
+        self.recent_error_class = None
 
     def _finalize_config_disabled(self, row: dict[str, Any], settings: Settings, finalized_at: int) -> None:
         self.recent_error_class = "config_disabled"

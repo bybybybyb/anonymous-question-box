@@ -11,7 +11,7 @@ import yaml
 from fastapi.testclient import TestClient
 
 from aqbox.app import create_app
-from aqbox.config import Settings, load_settings
+from aqbox.config import LLMModerationConfig, Settings, load_settings
 from aqbox.db import LOCATION_NO_DATA_LABEL, LOCATION_NO_DATA_VALUE, Database
 from aqbox.geo import lookup_and_store, parse_region
 from aqbox.moderation import llm_policy_for
@@ -1422,6 +1422,12 @@ def test_direct_settings_llm_filter_derives_typed_config() -> None:
     policy = llm_policy_for(direct, "owner", "type")
     assert policy is not None
     assert policy.policy_prompt == "direct"
+    # These defaults exist twice (the dataclass fields and the YAML parse fallbacks
+    # in config.py), so assert the dataclass side directly to stop them drifting.
+    assert LLMModerationConfig().model == "deepseek-flash"
+    assert LLMModerationConfig().timeout_seconds == 60.0
+    assert policy.model == "deepseek-flash"
+    assert policy.timeout_seconds == 60.0
 
 
 def test_llm_policy_uses_config_api_key_fallback_and_redacts_repr(tmp_path: Path) -> None:
