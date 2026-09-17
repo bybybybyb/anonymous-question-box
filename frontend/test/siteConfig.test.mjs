@@ -7,6 +7,7 @@ import {
   clearBodyTheme,
   ownerButtonLabel,
   ownerTheme,
+  questionTypeEntries,
   siteMetadata,
   themeClass,
   themeVariant,
@@ -194,6 +195,18 @@ test("theme class rejects arbitrary class injection", () => {
 
   assert.equal(warnings.length, 1);
   assert.match(warnings[0], /position-fixed/);
+});
+
+test("question type entries treat the map key as the identifier", () => {
+  const entries = questionTypeEntries({
+    question_types: {
+      normal: { name: "renamed", description: "Normal" },
+    },
+  });
+
+  assert.equal(entries[0].name, "normal");
+  assert.equal(entries[0].questionType.name, "normal");
+  assert.equal(entries[0].questionType.description, "Normal");
 });
 
 test("theme variant derives from the resolved preset class", () => {

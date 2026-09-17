@@ -41,7 +41,9 @@ def _normalize_owner_profiles(raw_profiles: Any) -> dict[str, dict[str, Any]]:
         owner["colors"].setdefault("secondary_color", "")
         qtypes = _as_map_by_name(owner.get("question_types"))
         for qtype_name, qtype in qtypes.items():
-            qtype.setdefault("name", qtype_name)
+            # The map key is the identifier used in routes and `question_types[key]`
+            # lookups, so it must win over a configured `name`.
+            qtype["name"] = qtype_name
             qtype.setdefault("description", "")
             qtype.setdefault("rune_limit", 0)
             qtype.setdefault("theme", {})

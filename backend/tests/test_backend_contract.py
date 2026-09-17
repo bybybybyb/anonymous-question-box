@@ -158,6 +158,19 @@ def test_profiles_force_support_image_false(tmp_path: Path) -> None:
     assert qtype["support_image"] is False
 
 
+def test_question_type_name_always_matches_its_map_key(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    payload = config_payload(tmp_path)
+    payload["owner_profiles"]["owner"]["question_types"]["type"]["name"] = "renamed"
+    write_config(config_path, payload)
+
+    loaded = load_settings(str(config_path))
+
+    # Routes and `question_types[key]` lookups use the key, so a configured `name`
+    # must not be able to disagree with it.
+    assert loaded.owner_profiles["owner"]["question_types"]["type"]["name"] == "type"
+
+
 def test_profiles_preserve_site_metadata(tmp_path: Path) -> None:
     payload = config_payload(tmp_path)
     payload["metadata"]["site"] = {

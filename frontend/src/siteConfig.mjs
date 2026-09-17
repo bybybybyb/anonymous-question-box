@@ -66,6 +66,9 @@ export function siteMetadata(metadata = {}) {
     title: site.title || DEFAULT_SITE.title,
     header_title: site.header_title || site.title || DEFAULT_SITE.header_title,
     hero_title: site.hero_title || site.title || DEFAULT_SITE.hero_title,
+    // Kept even though no component reads it directly: the spread above passes config
+    // keys straight through, so this line is what replaces an operator-supplied
+    // `logo_url` with a validated one. It also seeds the header/hero fallbacks below.
     logo_url: cleanUrl(site.logo_url, "metadata.site.logo_url"),
     header_logo_url: cleanUrl(site.header_logo_url || site.logo_url, "metadata.site.header_logo_url"),
     hero_image_url: cleanUrl(site.hero_image_url || site.logo_url, "metadata.site.hero_image_url"),
@@ -98,7 +101,9 @@ export function questionTypeEntries(owner = {}) {
     name,
     questionType: {
       ...questionType,
-      name: questionType.name || name,
+      // The map key is the identifier used in routes and `question_types[key]`
+      // lookups, so it wins over any configured `name`.
+      name,
     },
   }));
 }
