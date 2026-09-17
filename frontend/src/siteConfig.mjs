@@ -68,10 +68,17 @@ export function siteMetadata(metadata = {}) {
     hero_title: site.hero_title || site.title || DEFAULT_SITE.hero_title,
     // Kept even though no component reads it directly: the spread above passes config
     // keys straight through, so this line is what replaces an operator-supplied
-    // `logo_url` with a validated one. It also seeds the header/hero fallbacks below.
+    // `logo_url` with a validated one. The header/hero fields below re-validate
+    // `site.logo_url` themselves rather than reading this value.
     logo_url: cleanUrl(site.logo_url, "metadata.site.logo_url"),
-    header_logo_url: cleanUrl(site.header_logo_url || site.logo_url, "metadata.site.header_logo_url"),
-    hero_image_url: cleanUrl(site.hero_image_url || site.logo_url, "metadata.site.hero_image_url"),
+    // Validate first, then fall back: an explicit-but-invalid value must not win over a
+    // valid `logo_url` and leave the field empty.
+    header_logo_url:
+      cleanUrl(site.header_logo_url, "metadata.site.header_logo_url") ||
+      cleanUrl(site.logo_url, "metadata.site.logo_url"),
+    hero_image_url:
+      cleanUrl(site.hero_image_url, "metadata.site.hero_image_url") ||
+      cleanUrl(site.logo_url, "metadata.site.logo_url"),
     favicon_url: cleanUrl(site.favicon_url, "metadata.site.favicon_url"),
   };
 }

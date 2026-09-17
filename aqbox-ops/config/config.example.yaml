@@ -32,8 +32,10 @@ owner_profiles:
       primary_color: "#111111"
       secondary_color: "#eeeeee"
     question_types:
+      # Dict form: the key (`normal`) is the identifier used by routes and lookups, and
+      # `name` is derived from it — it does not need to be set. (List form requires an
+      # explicit `name`, which becomes the key.)
       normal:
-        name: normal
         description: Normal
         rune_limit: 500
         theme:

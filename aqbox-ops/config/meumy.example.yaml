@@ -84,8 +84,9 @@ owner_profiles:
       background_size: 500px 500px
       variant: light
     question_types:
+      # Dict form: the key (`normal`) is the identifier used by routes and lookups, and
+      # `name` is derived from it — it does not need to be set.
       normal:
-        name: normal
         description: 咩栗和蜗牛姐姐
         rune_limit: 500
         theme:
@@ -110,8 +111,8 @@ owner_profiles:
       background_size: 500px 500px
       variant: light
     question_types:
+      # Dict form: the key is the identifier; `name` is derived from it.
       normal:
-        name: normal
         description: 呜米一家人
         rune_limit: 500
         theme:
