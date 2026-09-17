@@ -1,5 +1,18 @@
 # Portable Runtime Branding Compatibility Design
 
+> **Superseded:** The core frontend bundle is now branding-neutral. This
+> document's "Compatibility Contract" — that legacy `theme.background_class`
+> values (`striped-merry`, `striped-umy`, `texture-merry-dark`,
+> `texture-merry-light`, `texture-umy-dark`, `texture-umy-light`) remain
+> supported, and that MeUmy assets stay compiled into the frontend bundle as
+> fallbacks — no longer holds. Those presets and bundled assets were removed
+> from the core; unsupported theme tokens now apply no background and log a
+> console warning. Deployment branding is supplied as configuration plus
+> assets under `aqbox-ops/`. Do not re-add the removed aliases or assets to
+> the frontend bundle. Current guidance lives in
+> `docs/adr/0006-runtime-site-config-and-assets.md` and
+> `aqbox-ops/config/meumy.example.yaml`.
+
 ## Goal
 
 Make AQBox portable across deployments without requiring a frontend rebuild for
@@ -50,10 +63,11 @@ do not leak or erase unrelated body styling.
 ## Frontend Behavior
 
 - Site title, header title, hero title, logo, hero image, and favicon come from
-  Site metadata. The bundled branding fallbacks are used only when
-  `metadata.site` is absent entirely; when a `metadata.site` object is present,
-  every asset field it omits resolves to `""` (all-or-nothing), so a partial
-  `site:` block renders no logo, hero image, or favicon.
+  Site metadata. There are no bundled branding assets: an asset field that
+  `metadata.site` omits resolves to `""`, and with no `metadata.site` at all every
+  asset field resolves to `""` too. A partial `site:` block therefore renders no
+  logo, hero image, or favicon. The neutral placeholder title and favicon live in
+  `frontend/index.html`, not in the bundle.
 - The homepage renders every configured Owner and uses display/button-label
   fallbacks.
 - Submission pages choose the first currently active Question type rather than
