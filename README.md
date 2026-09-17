@@ -53,6 +53,7 @@ The Docker setup runs two services:
 Start from the tracked generic example config, then edit secrets and owner profile settings:
 
 ```bash
+mkdir -p backend/config
 cp aqbox-ops/config/config.example.yaml backend/config/config.docker.yaml
 $EDITOR backend/config/config.docker.yaml
 ```
@@ -60,13 +61,13 @@ $EDITOR backend/config/config.docker.yaml
 Run the stack:
 
 ```bash
-AQBOX_CONFIG_FILE=./backend/config/config.docker.yaml docker compose up --build -d
+AQBOX_CONFIG_DIR=./backend/config AQBOX_CONFIG_NAME=config.docker.yaml docker compose up --build -d
 ```
 
 Open `http://127.0.0.1:8080`. To use another host port:
 
 ```bash
-AQBOX_HTTP_PORT=80 AQBOX_CONFIG_FILE=./backend/config/config.docker.yaml docker compose up --build -d
+AQBOX_HTTP_PORT=80 AQBOX_CONFIG_DIR=./backend/config AQBOX_CONFIG_NAME=config.docker.yaml docker compose up --build -d
 ```
 
 Runtime data is stored in the named Docker volume `aqbox-data` because the example config sets `db_path: /data/aqbox.sqlite3`. Keep real config files under `backend/config/` or another ignored path so secrets are not committed.
@@ -113,3 +114,6 @@ ip2region_ipv6_xdb_path: /ip2region/ip2region_v6.xdb
 `backend/config/` and `test/*.db` are local-only preview/runtime artifacts and must not be committed.
 
 See `aqbox-ops/RUNBOOK.md` for the container deployment runbook.
+
+Config is mounted as a directory so atomic editor saves are visible to backend hot reload.
+Set `AQBOX_CONFIG_DIR` to that directory and `AQBOX_CONFIG_NAME` to the filename inside it.

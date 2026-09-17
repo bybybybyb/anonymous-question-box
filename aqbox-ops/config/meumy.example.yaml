@@ -1,7 +1,8 @@
 # Legacy MeUmy deployment example.
 #
 # Copy this file to backend/config/config.docker.yaml or another ignored path,
-# change secrets, then set AQBOX_CONFIG_FILE to that path before running
+# change secrets, then set AQBOX_CONFIG_DIR to its directory and
+# AQBOX_CONFIG_NAME to its filename before running
 # docker compose. The referenced assets live in aqbox-ops/assets/meumy and are
 # mounted by compose at /assets/custom/meumy.
 host: 0.0.0.0
