@@ -18,6 +18,14 @@ _Avoid_: profile, tenant
 A named submission box under an owner (e.g. normal, snail) with its own rune limit, theme, and optional time window.
 _Avoid_: category, channel
 
+**Site metadata**:
+Public site-wide copy and branding shared across owners.
+_Avoid_: frontend config, app config
+
+**Theme**:
+The public visual treatment attached to a question type or owner view.
+_Avoid_: CSS class, skin
+
 **Submission**:
 A single anonymous question stored in the database, identified by a stable **submission UUID** issued at token creation.
 _Avoid_: post, ticket
@@ -73,6 +81,8 @@ _Avoid_: geolocation object, geo JSON, provider response
 ## Relationships
 
 - An **Owner** has one or more **Question types**
+- **Site metadata** applies across all **Owners**
+- A **Question type** may define one **Theme**
 - Each **Submission** belongs to exactly one **Owner** and one **Question type**
 - Each **Submission** may have at most one **Client IP** and one cached **IP location label**
 - **Askers** authenticate with a JWT bound to their **Submission UUID**; **Owner console** uses a separate admin JWT

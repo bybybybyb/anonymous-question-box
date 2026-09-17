@@ -158,6 +158,27 @@ def test_profiles_force_support_image_false(tmp_path: Path) -> None:
     assert qtype["support_image"] is False
 
 
+def test_profiles_preserve_site_metadata(tmp_path: Path) -> None:
+    payload = config_payload(tmp_path)
+    payload["metadata"]["site"] = {
+        "title": "Custom Box",
+        "header_title": "Custom Header",
+        "logo_url": "/assets/custom/logo.svg",
+        "hero_image_url": "/assets/custom/hero.svg",
+        "favicon_url": "/assets/custom/favicon.png",
+    }
+    client, _ = config_client(tmp_path, payload=payload)
+
+    with client:
+        resp = client.get("/profiles")
+
+    assert resp.status_code == 200
+    metadata = resp.json()["metadata"]
+    assert metadata["site"]["title"] == "Custom Box"
+    assert metadata["site"]["header_title"] == "Custom Header"
+    assert metadata["site"]["logo_url"] == "/assets/custom/logo.svg"
+
+
 def test_geo_enabled_defaults_to_true_when_config_omits_it(tmp_path: Path) -> None:
     payload = config_payload(tmp_path)
     payload.pop("geo_enabled")

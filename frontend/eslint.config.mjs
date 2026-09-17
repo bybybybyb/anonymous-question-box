@@ -20,7 +20,7 @@ export default [
     },
   },
   {
-    files: ["**/*.{js,vue}"],
+    files: ["**/*.{js,mjs,vue}"],
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "module",

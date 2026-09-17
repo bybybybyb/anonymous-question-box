@@ -23,7 +23,8 @@
 import Header from "./Header.vue";
 import QuestionDisplay from "./QuestionDisplay.vue";
 import QuestionSubmission from "./QuestionSubmission.vue";
-let currentBgClass = "";
+import { applyBodyTheme, clearBodyTheme, themeVariant } from "../siteConfig.mjs";
+
 export default {
   name: "QuestionView",
   props: {
@@ -52,12 +53,10 @@ export default {
         this.answered_at = resp.data.answered_at;
         this.images = resp.data.images;
 
-        currentBgClass =
-          this.ownerProfiles[this.owner].question_types[this.type].theme
-            .background_class;
-        document.body.classList.remove("bg-light");
-        document.body.classList.add("body-background-" + currentBgClass);
-        if (currentBgClass.includes("dark")) {
+        const theme =
+          this.ownerProfiles[this.owner].question_types[this.type].theme || {};
+        this.bodyThemeHandle = applyBodyTheme(theme);
+        if (themeVariant(theme) === "dark") {
           this.card_background_style = "background: rgba(120,120,120,0.9)";
         }
       })
@@ -72,8 +71,7 @@ export default {
   },
   beforeUnmount() {
     // change back the body background
-    document.body.classList.remove("body-background-" + currentBgClass);
-    document.body.classList.add("bg-light");
+    clearBodyTheme(this.bodyThemeHandle);
   },
   data() {
     return {
@@ -85,6 +83,7 @@ export default {
       answer_text: "",
       answered_at: "",
       images: [],
+      bodyThemeHandle: null,
     };
   },
 };

@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div v-if="ownerProfiles[owner]?.question_types?.[type]">
     <Header :hideBackBtn="true"></Header>
     <div class="container">
       <div class="row">
@@ -174,6 +174,7 @@ import FilePondPluginFileValidateType from "filepond-plugin-file-validate-type";
 import FilePondPluginImagePreview from "filepond-plugin-image-preview";
 import zh_cn from "filepond/locale/zh-cn";
 import { Modal } from "bootstrap";
+import { activeQuestionTypes, applyBodyTheme, clearBodyTheme, themeVariant } from "../siteConfig.mjs";
 
 setOptions(zh_cn);
 setOptions({
@@ -189,7 +190,6 @@ const FilePond = vueFilePond(
 );
 const storagePrefix = "questionNew_";
 let currentQuestionTypePrefix = "";
-let prevBgClass = "";
 export default {
   name: "QuestionNew",
   components: {
@@ -230,22 +230,16 @@ export default {
           : (this.submitBtnActiveClass = "disabled");
     },
     profileChanges() {
-      this.maxLength =
-        this.ownerProfiles[this.owner].question_types[this.type].rune_limit;
-      this.supportImage =
-        this.ownerProfiles[this.owner].question_types[this.type].support_image;
+      const questionType = this.ownerProfiles[this.owner].question_types[this.type];
+      this.maxLength = questionType.rune_limit;
+      this.supportImage = questionType.support_image;
 
       // style changes
-      // TODO: do not put style changes in code
       // body background
-      let newBgClass =
-        this.ownerProfiles[this.owner].question_types[this.type].theme
-          .background_class;
-      document.body.classList.remove("body-background-" + prevBgClass);
-      document.body.classList.add("body-background-" + newBgClass);
-      prevBgClass = newBgClass;
+      clearBodyTheme(this.bodyThemeHandle);
+      this.bodyThemeHandle = applyBodyTheme(questionType.theme || {});
       // card background
-      if (newBgClass.includes("dark")) {
+      if (themeVariant(questionType.theme || {}) === "dark") {
         this.cardBackgroundStyle = "background: rgba(120,120,120,0.9)";
         this.h5Style = "color:white";
         this.submitBtnStyleClass = "btn-success";
@@ -346,15 +340,19 @@ export default {
   },
   beforeMount() {
     // populate question types
-    var current = new Date();
-    for (var i in this.ownerProfiles[this.owner].question_types) {
-      let qt = this.ownerProfiles[this.owner].question_types[i];
-      let startTime = Date.parse(qt.start_time);
-      let endTime = Date.parse(qt.end_time);
-      if (isNaN(startTime) || isNaN(endTime)) this.questionTypes.push(qt);
-      else if (startTime <= current && endTime >= current)
-        this.questionTypes.push(qt);
+    const ownerProfile = this.ownerProfiles[this.owner];
+    if (!ownerProfile) {
+      alert("未能找到这个提问箱。");
+      this.$router.push({ path: "/" });
+      return;
     }
+    this.questionTypes = activeQuestionTypes(ownerProfile);
+    if (this.questionTypes.length === 0) {
+      alert("这个提问箱暂时没有开放的投稿类型。");
+      this.$router.push({ path: "/" });
+      return;
+    }
+    this.type = this.questionTypes[0].name;
     // change body background
     document.body.classList.remove("bg-light");
     this.profileChanges();
@@ -382,8 +380,7 @@ export default {
   mounted() {},
   beforeUnmount() {
     // change back the body background
-    document.body.classList.remove("body-background-" + prevBgClass);
-    document.body.classList.add("bg-light");
+    clearBodyTheme(this.bodyThemeHandle);
     const loadingOverlay = Modal.getInstance(
       document.querySelector("#loadingOverlay")
     );
@@ -391,10 +388,10 @@ export default {
   },
   data() {
     return {
-      type: "normal",
+      type: "",
       token: "",
       supportImage: false,
-      textPlaceHolder: "",
+      textPlaceholder: "",
       newQuestionText: "",
       questionTypes: [],
       currentLength: 0,
@@ -409,6 +406,7 @@ export default {
       imageFiles: [],
       acceptedFileTypes: ["image/*"],
       isProcessingFile: false,
+      bodyThemeHandle: null,
     };
   },
 };

@@ -1,0 +1,3 @@
+config*.yaml
+!config.example.yaml
+!meumy.example.yaml

@@ -1,0 +1,93 @@
+# Legacy MeUmy deployment example.
+#
+# Copy this file to backend/config/config.docker.yaml or another ignored path,
+# change secrets, then set AQBOX_CONFIG_DIR to its directory and
+# AQBOX_CONFIG_NAME to its filename before running
+# docker compose. The referenced assets live in aqbox-ops/assets/meumy and are
+# mounted by compose at /assets/custom/meumy.
+host: 0.0.0.0
+port: 3768
+db_path: /data/aqbox.sqlite3
+db_max_connections: 1
+
+jwt_secret_key: change-me-to-a-long-random-secret
+magic_spell: change-me-owner-password
+
+filtered_keywords: []
+geo_enabled: false
+trusted_proxy_cidrs:
+  - 127.0.0.1/32
+  - ::1/128
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 192.168.0.0/16
+
+owner_profiles:
+  merry:
+    name: merry
+    display_name: 咩栗
+    button_label: 咩栗和蜗牛姐姐的棉花糖
+    colors:
+      primary_color: "#769cd2"
+      secondary_color: "#f79fb8"
+    theme:
+      name: merry-owner
+      background_image: /assets/custom/meumy/merry-dark-blue.svg
+      background_position: bottom center
+      background_repeat: repeat
+      background_size: 500px 500px
+      variant: light
+    question_types:
+      normal:
+        name: normal
+        description: 咩栗和蜗牛姐姐
+        rune_limit: 500
+        theme:
+          name: merry
+          background: "linear-gradient(135deg, #769cd2 25%, #f79fb8 25%, #f79fb8 50%, #769cd2 50%, #769cd2 75%, #f79fb8 75%, #f79fb8 100%)"
+          background_size: 90px 90px
+          variant: light
+        support_image: false
+
+  umy:
+    name: umy
+    display_name: 呜米
+    button_label: 呜米一家人的棉花糖
+    colors:
+      primary_color: "#c42e30"
+      secondary_color: "#504141"
+    theme:
+      name: umy-owner
+      background_image: /assets/custom/meumy/umy-dark-red.svg
+      background_position: bottom center
+      background_repeat: repeat
+      background_size: 500px 500px
+      variant: light
+    question_types:
+      normal:
+        name: normal
+        description: 呜米一家人
+        rune_limit: 500
+        theme:
+          name: umy
+          background: "linear-gradient(45deg, #c42e30 25%, #504141 25%, #504141 50%, #c42e30 50%, #c42e30 75%, #504141 75%, #504141 100%)"
+          background_size: 90px 90px
+          variant: dark
+        support_image: false
+
+metadata:
+  site:
+    title: MeUmy的棉花糖
+    header_title: MeUmy的棉花糖
+    hero_title: MeUmy的棉花糖
+    logo_url: /assets/custom/meumy/marshmallow.svg
+    header_logo_url: /assets/custom/meumy/marshmallow-light.svg
+    hero_image_url: /assets/custom/meumy/marshmallow.svg
+    favicon_url: /assets/custom/meumy/marshmallow-32.png
+  introductions:
+    - Anonymous Question Box
+  console_prints: []
+  admin: {}
+
+llm_filter:
+  enabled: false

@@ -323,12 +323,12 @@ def load_settings(config_path: str | None = None) -> Settings:
         with path.open("r", encoding="utf-8") as fh:
             raw = yaml.safe_load(fh) or {}
 
-    metadata = raw.get("website_metadata") or raw.get("metadata") or {}
-    metadata = {
-        "introductions": list(metadata.get("introductions") or []),
-        "console_prints": list(metadata.get("console_prints") or []),
-        "admin": dict(metadata.get("admin") or {}),
-    }
+    raw_metadata_value = raw.get("website_metadata") or raw.get("metadata") or {}
+    raw_metadata = raw_metadata_value if isinstance(raw_metadata_value, dict) else {}
+    metadata = dict(raw_metadata)
+    metadata["introductions"] = list(raw_metadata.get("introductions") or [])
+    metadata["console_prints"] = list(raw_metadata.get("console_prints") or [])
+    metadata["admin"] = dict(raw_metadata.get("admin") or {})
     ip2region_cache_policy = str(raw.get("ip2region_cache_policy", "vectorIndex"))
     if ip2region_cache_policy not in IP2REGION_CACHE_POLICIES:
         raise ValueError(f"unsupported ip2region_cache_policy {ip2region_cache_policy}")

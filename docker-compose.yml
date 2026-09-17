@@ -1,0 +1,43 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      AQBOX_CONFIG: /config/${AQBOX_CONFIG_NAME:-config.example.yaml}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+    volumes:
+      - ${AQBOX_CONFIG_DIR:-./aqbox-ops/config}:/config:ro
+      - aqbox-data:/data
+      - ${AQBOX_IP2REGION_DIR:-./aqbox-ops/ip2region}:/ip2region:ro
+    expose:
+      - "3768"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3768/ops/health', timeout=2).read()",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    volumes:
+      - ${AQBOX_STATIC_ASSETS_DIR:-./aqbox-ops/assets}:/usr/share/nginx/html/assets/custom:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${AQBOX_HTTP_PORT:-8080}:80"
+    restart: unless-stopped
+
+volumes:
+  aqbox-data:
