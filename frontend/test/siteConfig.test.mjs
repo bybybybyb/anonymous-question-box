@@ -7,6 +7,7 @@ import {
   clearBodyTheme,
   ownerButtonLabel,
   ownerTheme,
+  questionTypeEntries,
   siteMetadata,
   themeClass,
   themeVariant,
@@ -113,6 +114,27 @@ test("site metadata accepts the documented URL prefixes", () => {
   assert.equal(site.favicon_url, "https://cdn.example.com/favicon.png");
 });
 
+test("an invalid explicit logo falls back to a valid logo_url", () => {
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  let site;
+  try {
+    site = siteMetadata({
+      site: {
+        logo_url: "/assets/custom/logo.svg",
+        header_logo_url: "javascript:alert(1)",
+        hero_image_url: "//evil.example.com/hero.png",
+      },
+    });
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  // Rejecting the explicit value must not discard the valid fallback with it.
+  assert.equal(site.header_logo_url, "/assets/custom/logo.svg");
+  assert.equal(site.hero_image_url, "/assets/custom/logo.svg");
+});
+
 test("unsafe background_image values are never applied to the body", () => {
   const body = fakeBody([]);
   globalThis.document = { body };
@@ -194,6 +216,18 @@ test("theme class rejects arbitrary class injection", () => {
 
   assert.equal(warnings.length, 1);
   assert.match(warnings[0], /position-fixed/);
+});
+
+test("question type entries treat the map key as the identifier", () => {
+  const entries = questionTypeEntries({
+    question_types: {
+      normal: { name: "renamed", description: "Normal" },
+    },
+  });
+
+  assert.equal(entries[0].name, "normal");
+  assert.equal(entries[0].questionType.name, "normal");
+  assert.equal(entries[0].questionType.description, "Normal");
 });
 
 test("theme variant derives from the resolved preset class", () => {
