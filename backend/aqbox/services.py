@@ -368,26 +368,7 @@ class LLMModerationWorker:
                 metadata={**metadata, "decision_json": _decision_json(parsed)},
             )
 
-        if not applied:
-            status, deleted = self.db.llm_moderation_row_outcome(uuid=row["uuid"])
-            if deleted or status != "pending":
-                # The row was resolved or soft-deleted while the paid call was in flight,
-                # so the write had nothing to match. Expected, not a fault.
-                logger.info(
-                    "LLM moderation %s decision for %s not applied: row is %s",
-                    parsed.decision,
-                    row["uuid"],
-                    "deleted" if deleted else (status or "missing"),
-                )
-                return
-            self._conflict_seen = True
-            self.recent_error_class = "finalize_conflict"
-            logger.error(
-                "LLM moderation %s decision for %s was not persisted (lock_owner=%s)",
-                parsed.decision,
-                row["uuid"],
-                self.lock_owner,
-            )
+        if not self._record_unapplied(applied, uuid=row["uuid"], what=f"{parsed.decision} decision"):
             return
 
         # Only a successfully applied decision proves the pipeline recovered, and only if
@@ -399,12 +380,20 @@ class LLMModerationWorker:
     def _record_unapplied(self, applied: bool, *, uuid: str, what: str) -> bool:
         """Report a finalize/reschedule that matched no row instead of dropping it silently.
 
-        These writes are conditional on the claim still being ours and the question not
-        being soft-deleted, so a ``False`` means the outcome was never recorded — yet the
-        caller has already published an error class for it.
+        A resolved or deleted row is a benign no-op. Only a still-pending, live row
+        indicates a lost claim whose outcome could not be recorded.
         """
         if applied:
             return True
+        status, deleted = self.db.llm_moderation_row_outcome(uuid=uuid)
+        if deleted or status != "pending":
+            logger.info(
+                "LLM moderation %s for %s not applied: row is %s",
+                what,
+                uuid,
+                "deleted" if deleted else (status or "missing"),
+            )
+            return False
         self._conflict_seen = True
         self.recent_error_class = "finalize_conflict"
         logger.error("LLM moderation %s for %s was not persisted (lock_owner=%s)", what, uuid, self.lock_owner)

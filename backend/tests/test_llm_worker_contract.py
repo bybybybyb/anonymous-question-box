@@ -461,8 +461,20 @@ def test_worker_conflict_is_not_erased_by_a_later_success_in_the_same_batch(tmp_
     assert "was not persisted" in caplog.text
 
 
-def test_worker_treats_a_row_deleted_mid_flight_as_benign(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
-    s = llm_settings(tmp_path, max_attempts=3)
+@pytest.mark.parametrize("max_attempts", [1, 3])
+@pytest.mark.parametrize(
+    "response_factory",
+    [
+        lambda: provider_response(decision="accept"),
+        lambda: provider_response(decision="reject"),
+        lambda: provider_response(error_class="timeout", finish_reason=None),
+        lambda: provider_response(content='{"decision": "accept"}'),
+    ],
+)
+def test_worker_treats_a_row_deleted_mid_flight_as_benign(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, max_attempts: int, response_factory: Callable[[], LLMProviderResponse]
+) -> None:
+    s = llm_settings(tmp_path, max_attempts=max_attempts)
     db = Database(s.db_path, moderation_schema=True)
     uuid = submitted_pending_uuid(db, s, "deleted mid flight")
 
@@ -470,7 +482,7 @@ def test_worker_treats_a_row_deleted_mid_flight_as_benign(tmp_path: Path, caplog
         async def complete(self, request: LLMProviderRequest) -> LLMProviderResponse:
             db.conn.execute("UPDATE question SET deleted_at = ? WHERE uuid = ?", (1, uuid))
             db.conn.commit()
-            return provider_response(decision="accept")
+            return response_factory()
 
     worker = LLMModerationWorker(db, SettingsProvider(settings=s), provider=DeleteMidFlightProvider(), poll_interval_seconds=0.01)
     with caplog.at_level("ERROR"):
@@ -478,7 +490,7 @@ def test_worker_treats_a_row_deleted_mid_flight_as_benign(tmp_path: Path, caplog
 
     # Losing the write here is expected: the owner removed the submission mid-call, so this
     # must not raise a conflict alarm.
-    assert worker.recent_error_class is None
+    assert worker.recent_error_class != "finalize_conflict"
     assert "was not persisted" not in caplog.text
 
 
