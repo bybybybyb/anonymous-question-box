@@ -1,5 +1,14 @@
 # Portable Runtime Branding Compatibility Implementation Plan
 
+> **Superseded:** This plan is complete, and Task 3 ("Restore Built-In MeUmy
+> Theme Compatibility") has been deliberately reversed. The six
+> `.body-background-*` preset rules and the bundled MeUmy assets named in
+> Task 3 were removed from the core bundle so the frontend stays generic, and
+> `themeClass({ background_class: "striped-merry" })` is now expected to
+> return `""`. Do NOT execute Task 3 or re-add those files. Current guidance
+> lives in `docs/adr/0006-runtime-site-config-and-assets.md` and
+> `aqbox-ops/config/meumy.example.yaml`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Finish runtime-configurable AQBox deployments while preserving existing MeUmy configuration, styling, and mark-without-list-reload behavior.

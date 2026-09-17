@@ -78,6 +78,49 @@ test("site metadata falls back to neutral defaults when site config is absent", 
   });
 });
 
+test("site metadata rejects off-origin and CSS-breaking branding URLs", () => {
+  const site = siteMetadata({
+    site: {
+      title: "Box",
+      logo_url: "//evil.example.com/logo.svg",
+      header_logo_url: 'http://x/a.png") , url("http://evil.example.com/track.png',
+      favicon_url: "assets/custom/favicon.png",
+      hero_image_url: "javascript:alert(1)",
+    },
+  });
+
+  assert.equal(site.title, "Box");
+  assert.equal(site.logo_url, "");
+  assert.equal(site.header_logo_url, "");
+  assert.equal(site.hero_image_url, "");
+  assert.equal(site.favicon_url, "");
+});
+
+test("site metadata accepts the documented URL prefixes", () => {
+  const site = siteMetadata({
+    site: {
+      logo_url: "/assets/custom/logo.svg",
+      header_logo_url: "./logo.svg",
+      hero_image_url: "../hero.svg",
+      favicon_url: "https://cdn.example.com/favicon.png",
+    },
+  });
+
+  assert.equal(site.logo_url, "/assets/custom/logo.svg");
+  assert.equal(site.header_logo_url, "./logo.svg");
+  assert.equal(site.hero_image_url, "../hero.svg");
+  assert.equal(site.favicon_url, "https://cdn.example.com/favicon.png");
+});
+
+test("unsafe background_image values are never applied to the body", () => {
+  const body = fakeBody([]);
+  globalThis.document = { body };
+
+  applyBodyTheme({ background_image: "//evil.example.com/track.png" });
+
+  assert.equal(body.style.backgroundImage, "");
+});
+
 test("owner button label prefers deployment copy", () => {
   assert.equal(
     ownerButtonLabel(
@@ -121,13 +164,35 @@ test("theme class supports generic presets", () => {
   );
 });
 
-test("theme class ignores preset names outside the generic set", () => {
-  assert.equal(themeClass({ background_class: "striped-merry" }), "");
-  assert.equal(themeClass({ preset: "texture-umy-dark" }), "");
+test("theme class ignores preset names outside the generic set and warns", () => {
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (message) => warnings.push(message);
+  try {
+    assert.equal(themeClass({ background_class: "striped-merry" }), "");
+    assert.equal(themeClass({ background_class: "striped-merry" }), "");
+    assert.equal(themeClass({ preset: "texture-umy-dark" }), "");
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.equal(warnings.length, 2, "one warning per distinct rejected token");
+  assert.match(warnings[0], /striped-merry/);
+  assert.match(warnings[1], /texture-umy-dark/);
 });
 
 test("theme class rejects arbitrary class injection", () => {
-  assert.equal(themeClass({ background_class: "position-fixed" }), "");
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (message) => warnings.push(message);
+  try {
+    assert.equal(themeClass({ background_class: "position-fixed" }), "");
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /position-fixed/);
 });
 
 test("owner theme falls back to the generic preset regardless of owner name", () => {

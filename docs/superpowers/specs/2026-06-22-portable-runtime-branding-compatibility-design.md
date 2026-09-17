@@ -1,5 +1,18 @@
 # Portable Runtime Branding Compatibility Design
 
+> **Superseded:** The core frontend bundle is now branding-neutral. This
+> document's "Compatibility Contract" — that legacy `theme.background_class`
+> values (`striped-merry`, `striped-umy`, `texture-merry-dark`,
+> `texture-merry-light`, `texture-umy-dark`, `texture-umy-light`) remain
+> supported, and that MeUmy assets stay compiled into the frontend bundle as
+> fallbacks — no longer holds. Those presets and bundled assets were removed
+> from the core; unsupported theme tokens now apply no background and log a
+> console warning. Deployment branding is supplied as configuration plus
+> assets under `aqbox-ops/`. Do not re-add the removed aliases or assets to
+> the frontend bundle. Current guidance lives in
+> `docs/adr/0006-runtime-site-config-and-assets.md` and
+> `aqbox-ops/config/meumy.example.yaml`.
+
 ## Goal
 
 Make AQBox portable across deployments without requiring a frontend rebuild for

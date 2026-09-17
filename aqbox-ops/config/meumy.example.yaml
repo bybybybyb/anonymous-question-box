@@ -22,12 +22,19 @@ trusted_proxy_cidrs:
   - 192.168.0.0/16
 
 # Themes use portable, config-driven fields:
-#   background_image, background_color, background_position,
-#   background_repeat, background_size, plus `preset` and `variant`.
+#   background, background_image, background_color, background_position,
+#   background_repeat, background_size, plus `preset`, `variant` and `mode`.
 #
-# This deployment previously relied on preset class names that were bundled into
-# the frontend build. The core bundle is branding-neutral, so the portable
-# equivalents of those presets are:
+# The core bundle no longer ships deployment-specific theme classes. A config
+# that used `background_class: <legacy MeUmy name>`, or that relied on the
+# removed implicit mapping (owner `merry` used to fall back to
+# `texture-merry-light` and owner `umy` to `texture-umy-light` when no explicit
+# theme was set), now gets NO background and logs a console warning naming the
+# rejected token. This file's own `owner_profiles` below already uses portable
+# fields, so it needs no migration. Note that `background_class` still works as
+# an alias for the four generic presets (plain|striped x light|dark).
+#
+# The portable equivalents of the removed presets are:
 #
 #   background_class: striped-merry
 #     -> background: "linear-gradient(135deg, #769cd2 25%, #f79fb8 25%, #f79fb8 50%, #769cd2 50%, #769cd2 75%, #f79fb8 75%, #f79fb8 100%)"
@@ -40,19 +47,27 @@ trusted_proxy_cidrs:
 #        background_color: "#2c3e50"
 #        background_position: bottom center
 #        background_size: 500px 500px
+#        variant: dark
 #   background_class: texture-merry-light
 #     -> background_image: /assets/custom/meumy/merry-dark-blue.svg
 #        background_position: bottom center
 #        background_size: 500px 500px
+#        variant: light
 #   background_class: texture-umy-dark
 #     -> background_image: /assets/custom/meumy/umy-light-grey.svg
 #        background_color: "#3a1213"
 #        background_position: bottom center
 #        background_size: 500px 500px
+#        variant: dark
 #   background_class: texture-umy-light
 #     -> background_image: /assets/custom/meumy/umy-dark-red.svg
 #        background_position: bottom center
 #        background_size: 500px 500px
+#        variant: light
+#
+# `variant` is load-bearing: it selects the card/form treatment. Without it a
+# structured theme resolves to `light`, so the two `-dark` presets must carry
+# `variant: dark` to keep their original appearance.
 owner_profiles:
   merry:
     name: merry
