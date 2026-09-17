@@ -11,7 +11,7 @@ import yaml
 from fastapi.testclient import TestClient
 
 from aqbox.app import create_app
-from aqbox.config import Settings, load_settings
+from aqbox.config import MAX_LLM_TIMEOUT_SECONDS, LLMModerationConfig, Settings, load_settings
 from aqbox.db import LOCATION_NO_DATA_LABEL, LOCATION_NO_DATA_VALUE, Database
 from aqbox.geo import lookup_and_store, parse_region
 from aqbox.moderation import llm_policy_for
@@ -1387,16 +1387,16 @@ def test_llm_moderation_config_requires_global_and_type_enablement(tmp_path: Pat
     assert enabled_policy.api_key() == "env-secret"
     assert loaded.llm_moderation.provider == "deepseek"
     assert loaded.llm_moderation.base_url == "https://api.deepseek.com"
-    assert loaded.llm_moderation.model == "deepseek-v4-flash"
+    assert loaded.llm_moderation.model == "deepseek-flash"
     assert loaded.llm_moderation.high_confidence_reject_threshold == 0.85
     assert loaded.llm_moderation.review_all_model_rejects is True
     assert loaded.llm_moderation.max_attempts == 2
-    assert loaded.llm_moderation.timeout_seconds == 10.0
+    assert loaded.llm_moderation.timeout_seconds == 60.0
     assert loaded.llm_moderation.max_tokens == 10240
     assert loaded.llm_moderation.initial_backoff_seconds == 1.0
     assert loaded.llm_moderation.raw_retention_enabled is False
     assert loaded.llm_moderation.raw_retention_seconds == 0
-    assert enabled_policy.timeout_seconds == 10.0
+    assert enabled_policy.timeout_seconds == 60.0
     assert enabled_policy.max_tokens == 10240
     assert enabled_policy.initial_backoff_seconds == 1.0
 
@@ -1422,6 +1422,12 @@ def test_direct_settings_llm_filter_derives_typed_config() -> None:
     policy = llm_policy_for(direct, "owner", "type")
     assert policy is not None
     assert policy.policy_prompt == "direct"
+    # These defaults exist twice (the dataclass fields and the YAML parse fallbacks
+    # in config.py), so assert the dataclass side directly to stop them drifting.
+    assert LLMModerationConfig().model == "deepseek-flash"
+    assert LLMModerationConfig().timeout_seconds == 60.0
+    assert policy.model == "deepseek-flash"
+    assert policy.timeout_seconds == 60.0
 
 
 def test_llm_policy_uses_config_api_key_fallback_and_redacts_repr(tmp_path: Path) -> None:
@@ -1511,6 +1517,32 @@ def test_invalid_llm_threshold_hot_reload_keeps_last_good_config(tmp_path: Path)
     assert cfg.json()["last_reload_error"]
     assert "high_confidence_reject_threshold" in cfg.json()["last_reload_error"]
     assert current.llm_moderation.high_confidence_reject_threshold == 0.8
+
+
+def test_llm_moderation_rejects_an_oversized_timeout(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    write_config(
+        config_path,
+        config_payload(tmp_path, llm_filter={"enabled": True, "timeout_seconds": MAX_LLM_TIMEOUT_SECONDS + 1}),
+    )
+
+    # Raising keeps the last-good config and surfaces via last_reload_error, rather than
+    # silently accepting a value that would stall the queue.
+    with pytest.raises(ValueError, match="timeout_seconds"):
+        load_settings(str(config_path))
+
+
+def test_llm_moderation_rejects_a_non_finite_timeout(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    write_config(
+        config_path,
+        config_payload(tmp_path, llm_filter={"enabled": True, "timeout_seconds": float("nan")}),
+    )
+
+    # `nan` compares False against every bound, so without an explicit finiteness check it
+    # slips past the ceiling and `max(0.1, nan)` silently clamps it to a 0.1s timeout.
+    with pytest.raises(ValueError, match="timeout_seconds"):
+        load_settings(str(config_path))
 
 
 def test_llm_moderation_config_parses_provider_and_retention_overrides(tmp_path: Path) -> None:
@@ -1610,7 +1642,7 @@ def test_ops_config_redacts_llm_api_keys_from_env_and_config(tmp_path: Path, mon
 
     assert cfg.status_code == 200
     assert cfg.json()["llm_filter"]["api_key_configured"] is True
-    assert cfg.json()["llm_filter"]["timeout_seconds"] == 10.0
+    assert cfg.json()["llm_filter"]["timeout_seconds"] == 60.0
     assert cfg.json()["llm_filter"]["max_tokens"] == 10240
     assert cfg.json()["llm_filter"]["initial_backoff_seconds"] == 1.0
     assert cfg.json()["llm_filter"]["raw_retention_enabled"] is False

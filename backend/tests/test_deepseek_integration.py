@@ -5,9 +5,12 @@ import os
 import anyio
 import pytest
 
-from aqbox.config import LLMModerationPolicy
+from aqbox.config import LLMModerationConfig, LLMModerationPolicy
 from aqbox.llm_provider import DeepSeekLLMProvider, build_llm_provider_request
 from aqbox.moderation import build_llm_moderation_prompt, parse_llm_moderation_response
+
+# Mirror the shipped defaults so this opt-in test exercises what production sends.
+_DEFAULTS = LLMModerationConfig()
 
 
 def make_policy() -> LLMModerationPolicy:
@@ -16,15 +19,21 @@ def make_policy() -> LLMModerationPolicy:
         question_type="confession",
         policy_prompt="Reject doxxing, private identifying details, harassment, threats, spam, and unsafe fan drama.",
         provider="deepseek",
-        base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-        model=os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash"),
+        base_url=os.environ.get("DEEPSEEK_BASE_URL", _DEFAULTS.base_url),
+        model=os.environ.get("DEEPSEEK_MODEL", _DEFAULTS.model),
         api_key_env="DEEPSEEK_API_KEY",
         api_key_value="",
         high_confidence_reject_threshold=0.85,
         review_all_model_rejects=True,
         max_attempts=1,
-        timeout_seconds=10.0,
-        max_tokens=256,
+        timeout_seconds=float(os.environ.get("DEEPSEEK_TIMEOUT_SECONDS", _DEFAULTS.timeout_seconds)),
+        # deepseek-flash runs in thinking mode and this provider never disables it, so
+        # chain-of-thought is counted in completion_tokens and consumes the max_tokens
+        # budget before the final JSON content is emitted. A cap that is too small
+        # truncates the reply to finish_reason="length", which
+        # parse_llm_moderation_response rejects as finish_reason_length instead of
+        # returning a decision. Wall-clock time needs headroom for the same reason.
+        max_tokens=int(os.environ.get("DEEPSEEK_MAX_TOKENS", _DEFAULTS.max_tokens)),
         initial_backoff_seconds=0.0,
     )
 
