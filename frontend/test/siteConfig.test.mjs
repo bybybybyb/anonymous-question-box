@@ -66,38 +66,16 @@ test("site metadata uses configured branding with stable fallbacks", () => {
   );
 });
 
-test("site metadata preserves the legacy MeUmy title when site config is absent", () => {
+test("site metadata falls back to neutral defaults when site config is absent", () => {
   assert.deepEqual(siteMetadata({}), {
-    title: "MeUmy的棉花糖",
-    header_title: "MeUmy的棉花糖",
-    hero_title: "MeUmy的棉花糖",
-    logo_url: "/marshmallow@300.png",
-    header_logo_url: "/marshmallow@300.png",
-    hero_image_url: "/marshmallow@300.png",
-    favicon_url: "/marshmallow@32.png",
+    title: "Anonymous Question Box",
+    header_title: "Anonymous Question Box",
+    hero_title: "Anonymous Question Box",
+    logo_url: "",
+    header_logo_url: "",
+    hero_image_url: "",
+    favicon_url: "",
   });
-});
-
-test("site metadata accepts bundled legacy asset URLs from the app entrypoint", () => {
-  assert.deepEqual(
-    siteMetadata(
-      {},
-      {
-        logo_url: "/built/marshmallow.svg",
-        header_logo_url: "/built/marshmallow-light.svg",
-        favicon_url: "/built/marshmallow-32.png",
-      }
-    ),
-    {
-      title: "MeUmy的棉花糖",
-      header_title: "MeUmy的棉花糖",
-      hero_title: "MeUmy的棉花糖",
-      logo_url: "/built/marshmallow.svg",
-      header_logo_url: "/built/marshmallow-light.svg",
-      hero_image_url: "/built/marshmallow.svg",
-      favicon_url: "/built/marshmallow-32.png",
-    }
-  );
 });
 
 test("owner button label prefers deployment copy", () => {
@@ -143,46 +121,44 @@ test("theme class supports generic presets", () => {
   );
 });
 
-test("theme class preserves legacy MeUmy aliases", () => {
-  assert.equal(
-    themeClass({ background_class: "striped-merry" }),
-    "body-background-striped-merry"
-  );
+test("theme class ignores preset names outside the generic set", () => {
+  assert.equal(themeClass({ background_class: "striped-merry" }), "");
+  assert.equal(themeClass({ preset: "texture-umy-dark" }), "");
 });
 
 test("theme class rejects arbitrary class injection", () => {
   assert.equal(themeClass({ background_class: "position-fixed" }), "");
 });
 
-test("owner theme preserves implicit legacy MeUmy textures", () => {
-  assert.deepEqual(ownerTheme({ name: "merry" }), {
-    background_class: "texture-merry-light",
+test("owner theme falls back to the generic preset regardless of owner name", () => {
+  assert.deepEqual(ownerTheme({ name: "owner-a" }), {
+    preset: "striped-light",
   });
-  assert.deepEqual(ownerTheme({ name: "umy" }), {
-    background_class: "texture-umy-light",
-  });
-});
-
-test("owner theme prefers explicit config and gives portable owners a generic fallback", () => {
-  const configured = { preset: "plain-dark" };
-  assert.equal(ownerTheme({ name: "merry", theme: configured }), configured);
-  assert.deepEqual(ownerTheme({ name: "portable" }), {
+  assert.deepEqual(ownerTheme({ name: "owner-b" }), {
     preset: "striped-light",
   });
 });
 
-test("legacy MeUmy theme class is applied and removed cleanly", () => {
+test("owner theme prefers explicit config and gives owners a generic fallback", () => {
+  const configured = { preset: "plain-dark" };
+  assert.equal(ownerTheme({ name: "owner-a", theme: configured }), configured);
+  assert.deepEqual(ownerTheme({ name: "owner-b" }), {
+    preset: "striped-light",
+  });
+});
+
+test("generic preset class is applied and removed cleanly", () => {
   const body = fakeBody(["bg-light"]);
   globalThis.document = { body };
 
-  const handle = applyBodyTheme({ background_class: "striped-merry" });
+  const handle = applyBodyTheme({ preset: "striped-light" });
 
-  assert.equal(body.classList.contains("body-background-striped-merry"), true);
+  assert.equal(body.classList.contains("body-theme-preset-striped-light"), true);
   assert.equal(body.classList.contains("bg-light"), false);
 
   clearBodyTheme(handle);
 
-  assert.equal(body.classList.contains("body-background-striped-merry"), false);
+  assert.equal(body.classList.contains("body-theme-preset-striped-light"), false);
   assert.equal(body.classList.contains("bg-light"), true);
 });
 

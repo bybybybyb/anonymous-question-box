@@ -21,6 +21,38 @@ trusted_proxy_cidrs:
   - 172.16.0.0/12
   - 192.168.0.0/16
 
+# Themes use portable, config-driven fields:
+#   background_image, background_color, background_position,
+#   background_repeat, background_size, plus `preset` and `variant`.
+#
+# This deployment previously relied on preset class names that were bundled into
+# the frontend build. The core bundle is branding-neutral, so the portable
+# equivalents of those presets are:
+#
+#   background_class: striped-merry
+#     -> background: "linear-gradient(135deg, #769cd2 25%, #f79fb8 25%, #f79fb8 50%, #769cd2 50%, #769cd2 75%, #f79fb8 75%, #f79fb8 100%)"
+#        background_size: 90px 90px
+#   background_class: striped-umy
+#     -> background: "linear-gradient(45deg, #c42e30 25%, #504141 25%, #504141 50%, #c42e30 50%, #c42e30 75%, #504141 75%, #504141 100%)"
+#        background_size: 90px 90px
+#   background_class: texture-merry-dark
+#     -> background_image: /assets/custom/meumy/merry-light-grey.svg
+#        background_color: "#2c3e50"
+#        background_position: bottom center
+#        background_size: 500px 500px
+#   background_class: texture-merry-light
+#     -> background_image: /assets/custom/meumy/merry-dark-blue.svg
+#        background_position: bottom center
+#        background_size: 500px 500px
+#   background_class: texture-umy-dark
+#     -> background_image: /assets/custom/meumy/umy-light-grey.svg
+#        background_color: "#3a1213"
+#        background_position: bottom center
+#        background_size: 500px 500px
+#   background_class: texture-umy-light
+#     -> background_image: /assets/custom/meumy/umy-dark-red.svg
+#        background_position: bottom center
+#        background_size: 500px 500px
 owner_profiles:
   merry:
     name: merry

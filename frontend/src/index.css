@@ -17,54 +17,6 @@ body {
   scrollbar-width: none; /* Firefox */
 }
 
-.body-background-striped-merry {
-  background-image: linear-gradient(
-    135deg,
-    #769cd2 25%,
-    #f79fb8 25%,
-    #f79fb8 50%,
-    #769cd2 50%,
-    #769cd2 75%,
-    #f79fb8 75%,
-    #f79fb8 100%
-  );
-  background-size: 90px 90px;
-}
-
-.body-background-striped-umy {
-  background-image: linear-gradient(
-    45deg,
-    #c42e30 25%,
-    #504141 25%,
-    #504141 50%,
-    #c42e30 50%,
-    #c42e30 75%,
-    #504141 75%,
-    #504141 100%
-  );
-  background-size: 90px 90px;
-}
-
-.body-background-texture-merry-dark {
-  background: url(./assets/merry_light_grey.svg) bottom center, #2c3e50;
-  background-size: 500px 500px;
-}
-
-.body-background-texture-merry-light {
-  background: url(./assets/merry_dark_blue.svg) bottom center;
-  background-size: 500px 500px;
-}
-
-.body-background-texture-umy-dark {
-  background: url(./assets/umy_light_grey.svg) bottom center, #3a1213;
-  background-size: 500px 500px;
-}
-
-.body-background-texture-umy-light {
-  background: url(./assets/umy_dark_red.svg) bottom center;
-  background-size: 500px 500px;
-}
-
 .body-theme-preset-striped-light {
   background-image: linear-gradient(
     135deg,

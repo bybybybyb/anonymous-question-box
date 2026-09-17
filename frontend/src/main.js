@@ -17,8 +17,6 @@ import LiveView from "./components/LiveView.vue";
 import LiveProjectorView from "./components/LiveProjectorView.vue";
 import Main from "./components/Main.vue";
 import { setDocumentSite, siteMetadata } from "./siteConfig.mjs";
-import legacyLogoUrl from "./assets/marshmallow.svg";
-import legacyHeaderLogoUrl from "./assets/marshmallow_light.svg";
 
 const routes = [
   { name: "homepage", path: "/", component: Main },
@@ -93,11 +91,7 @@ function isInitialProjectorRoute() {
     .then((resp) => {
       const ownerProfiles = resp.data.owner_profiles;
       const websiteMetadata = resp.data.metadata;
-      const site = siteMetadata(websiteMetadata, {
-        logo_url: legacyLogoUrl,
-        header_logo_url: legacyHeaderLogoUrl,
-        favicon_url: "/marshmallow@32.png",
-      });
+      const site = siteMetadata(websiteMetadata);
       setDocumentSite(site);
       const profileProvider = {
         name: "ProfileProvider",
