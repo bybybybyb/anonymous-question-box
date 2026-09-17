@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 from contextlib import suppress
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -149,6 +150,20 @@ class VisitService:
             raise
 
 
+def _truncate_for_log(value: str | None, limit: int = 200) -> str:
+    """Bound and sanitise provider error text for a single log line.
+
+    Length is capped so a chatty provider cannot flood the log, and non-printable
+    characters (including CR/LF) are dropped so provider-controlled text cannot forge
+    log lines. This is the provider's own error message rather than submission text,
+    but a provider may echo part of the request, so it stays bounded and one-line.
+    """
+    if not value:
+        return ""
+    text = "".join(char for char in str(value) if char.isprintable())
+    return text if len(text) <= limit else text[:limit] + "..."
+
+
 class LLMModerationWorker:
     """Processes pending LLM moderation rows without holding SQLite locks across provider I/O."""
 
@@ -160,6 +175,7 @@ class LLMModerationWorker:
         provider: LLMProvider,
         poll_interval_seconds: float = 0.5,
         lock_seconds: int = 30,
+        lock_margin_seconds: int = 30,
         batch_size: int = 5,
     ):
         self.db = db
@@ -167,14 +183,32 @@ class LLMModerationWorker:
         self.provider = provider
         self.poll_interval_seconds = max(poll_interval_seconds, 0.01)
         self.lock_seconds = max(lock_seconds, 1)
+        self.lock_margin_seconds = max(lock_margin_seconds, 0)
         self.batch_size = max(batch_size, 1)
         self.lock_owner = f"llm-worker-{uuid4()}"
         self._stop = asyncio.Event()
         self.last_successful_check_at: int | None = None
         self.recent_error_class: str | None = None
+        # Set when a decision evaluated in the current batch could not be persisted, so a
+        # later success in the same pass does not erase an unresolved conflict.
+        self._conflict_seen = False
 
     def stop(self) -> None:
         self._stop.set()
+
+    def _claim_lock_seconds(self, settings: Settings) -> int:
+        """Size the claim lease for the whole claimed batch.
+
+        Rows are claimed together and then processed sequentially, so the lease has to
+        cover every call in the batch: sizing it for a single call leaves the later rows
+        claimable while they are still in flight, and a second worker would re-run the
+        same paid request. Each row's timeout is re-read while processing, so a timeout
+        raised mid-batch can still outlive this lease; that window is narrow and accepted.
+        """
+        if not settings.llm_moderation.enabled:
+            return self.lock_seconds
+        per_call = math.ceil(settings.llm_moderation.timeout_seconds)
+        return max(self.lock_seconds, per_call * self.batch_size) + self.lock_margin_seconds
 
     async def run(self) -> None:
         while not self._stop.is_set():
@@ -192,7 +226,7 @@ class LLMModerationWorker:
         rows = self.db.claim_due_llm_moderation(
             now=now,
             lock_owner=self.lock_owner,
-            lock_seconds=self.lock_seconds,
+            lock_seconds=self._claim_lock_seconds(settings),
             limit=self.batch_size,
             max_attempts=max_attempts,
             include_future=sweep_future,
@@ -201,6 +235,7 @@ class LLMModerationWorker:
             rows.extend(self._claim_disabled_policy_rows(settings, now, self.batch_size - len(rows)))
         self.db.purge_due_raw_moderation_event_fields(now=now)
         self.last_successful_check_at = now
+        self._conflict_seen = False
         for row in rows:
             try:
                 await self._process_claimed(row)
@@ -216,7 +251,7 @@ class LLMModerationWorker:
             self.db.claim_pending_llm_moderation_by_pairs(
                 now=now,
                 lock_owner=self.lock_owner,
-                lock_seconds=self.lock_seconds,
+                lock_seconds=self._claim_lock_seconds(settings),
                 limit=limit,
                 pairs=disabled_pairs,
             ),
@@ -244,18 +279,22 @@ class LLMModerationWorker:
             return
         if int(row.get("attempt_count") or 0) >= settings.llm_moderation.max_attempts:
             self.recent_error_class = "max_attempts_exhausted"
-            self.db.finalize_llm_moderation_block(
+            self._record_unapplied(
+                self.db.finalize_llm_moderation_block(
+                    uuid=row["uuid"],
+                    lock_owner=self.lock_owner,
+                    finalized_at=finalized_at,
+                    source="llm_error",
+                    reason="never_evaluated",
+                    short_reason="LLM moderation attempts were already exhausted",
+                    rationale="The pending submission reached the configured maximum attempts before this worker run.",
+                    confidence=None,
+                    error_class="max_attempts_exhausted",
+                    metadata=_llm_metadata_from_row(row, settings),
+                    increment_attempt=False,
+                ),
                 uuid=row["uuid"],
-                lock_owner=self.lock_owner,
-                finalized_at=finalized_at,
-                source="llm_error",
-                reason="never_evaluated",
-                short_reason="LLM moderation attempts were already exhausted",
-                rationale="The pending submission reached the configured maximum attempts before this worker run.",
-                confidence=None,
-                error_class="max_attempts_exhausted",
-                metadata=_llm_metadata_from_row(row, settings),
-                increment_attempt=False,
+                what="max_attempts_exhausted block",
             )
             return
 
@@ -271,6 +310,17 @@ class LLMModerationWorker:
             self._finalize_config_disabled(row, current_settings, attempted_at)
             return
         if response.error_class is not None:
+            logger.warning(
+                "LLM moderation provider failure for %s: class=%s http_status=%s model=%s message=%s",
+                row["uuid"],
+                response.error_class,
+                response.http_status,
+                # Error responses are built with model=None, so log the model that was
+                # requested instead — it is the field an operator needs to act on a
+                # request-rejected failure such as a retired model name.
+                policy.model,
+                _truncate_for_log(response.provider_error_message),
+            )
             self._handle_failed_attempt(row, current_settings, attempted_at, str(response.error_class), metadata)
             return
         try:
@@ -280,11 +330,19 @@ class LLMModerationWorker:
                 original_text=row["text"],
             )
         except InvalidLLMModerationResponseError as exc:
+            # The model replied, but not in the required shape. `code` is what tells an
+            # operator the difference between a truncation and a malformed payload.
+            logger.warning(
+                "LLM moderation rejected the provider response for %s: code=%s finish_reason=%s",
+                row["uuid"],
+                exc.code,
+                response.finish_reason,
+            )
             self._handle_failed_attempt(row, current_settings, attempted_at, f"invalid_response_{exc.code}", metadata)
             return
 
         if parsed.decision == "accept":
-            self.db.finalize_llm_moderation_accept(
+            applied = self.db.finalize_llm_moderation_accept(
                 uuid=row["uuid"],
                 lock_owner=self.lock_owner,
                 finalized_at=attempted_at,
@@ -295,36 +353,70 @@ class LLMModerationWorker:
                     "rationale": parsed.rationale,
                 },
             )
+        else:
+            source, reason = _reject_framing(parsed, current_settings)
+            applied = self.db.finalize_llm_moderation_block(
+                uuid=row["uuid"],
+                lock_owner=self.lock_owner,
+                finalized_at=attempted_at,
+                source=source,
+                reason=reason,
+                short_reason=parsed.short_reason,
+                rationale=parsed.rationale,
+                confidence=parsed.confidence,
+                error_class="",
+                metadata={**metadata, "decision_json": _decision_json(parsed)},
+            )
+
+        if not self._record_unapplied(applied, uuid=row["uuid"], what=f"{parsed.decision} decision"):
             return
 
-        source, reason = _reject_framing(parsed, current_settings)
-        self.db.finalize_llm_moderation_block(
-            uuid=row["uuid"],
-            lock_owner=self.lock_owner,
-            finalized_at=attempted_at,
-            source=source,
-            reason=reason,
-            short_reason=parsed.short_reason,
-            rationale=parsed.rationale,
-            confidence=parsed.confidence,
-            error_class="",
-            metadata={**metadata, "decision_json": _decision_json(parsed)},
-        )
+        # Only a successfully applied decision proves the pipeline recovered, and only if
+        # no earlier row in this pass lost its decision: the indicator is a single value
+        # shared by the whole batch, so a later success must not erase a live conflict.
+        if not self._conflict_seen:
+            self.recent_error_class = None
+
+    def _record_unapplied(self, applied: bool, *, uuid: str, what: str) -> bool:
+        """Report a finalize/reschedule that matched no row instead of dropping it silently.
+
+        A resolved or deleted row is a benign no-op. Only a still-pending, live row
+        indicates a lost claim whose outcome could not be recorded.
+        """
+        if applied:
+            return True
+        status, deleted = self.db.llm_moderation_row_outcome(uuid=uuid)
+        if deleted or status != "pending":
+            logger.info(
+                "LLM moderation %s for %s not applied: row is %s",
+                what,
+                uuid,
+                "deleted" if deleted else (status or "missing"),
+            )
+            return False
+        self._conflict_seen = True
+        self.recent_error_class = "finalize_conflict"
+        logger.error("LLM moderation %s for %s was not persisted (lock_owner=%s)", what, uuid, self.lock_owner)
+        return False
 
     def _finalize_config_disabled(self, row: dict[str, Any], settings: Settings, finalized_at: int) -> None:
         self.recent_error_class = "config_disabled"
-        self.db.finalize_llm_moderation_block(
+        self._record_unapplied(
+            self.db.finalize_llm_moderation_block(
+                uuid=row["uuid"],
+                lock_owner=self.lock_owner,
+                finalized_at=finalized_at,
+                source="llm_error",
+                reason="never_evaluated",
+                short_reason="LLM moderation disabled before evaluation",
+                rationale="The configured LLM policy was disabled while the submission was pending.",
+                confidence=None,
+                error_class="config_disabled",
+                metadata=_llm_metadata_from_row(row, settings),
+                increment_attempt=False,
+            ),
             uuid=row["uuid"],
-            lock_owner=self.lock_owner,
-            finalized_at=finalized_at,
-            source="llm_error",
-            reason="never_evaluated",
-            short_reason="LLM moderation disabled before evaluation",
-            rationale="The configured LLM policy was disabled while the submission was pending.",
-            confidence=None,
-            error_class="config_disabled",
-            metadata=_llm_metadata_from_row(row, settings),
-            increment_attempt=False,
+            what="config_disabled block",
         )
 
     def _handle_failed_attempt(
@@ -333,26 +425,34 @@ class LLMModerationWorker:
         self.recent_error_class = error_class
         attempt_count = int(row.get("attempt_count") or 0) + 1
         if attempt_count >= settings.llm_moderation.max_attempts:
-            self.db.finalize_llm_moderation_block(
+            self._record_unapplied(
+                self.db.finalize_llm_moderation_block(
+                    uuid=row["uuid"],
+                    lock_owner=self.lock_owner,
+                    finalized_at=attempted_at,
+                    source="llm_error",
+                    reason="never_evaluated",
+                    short_reason="LLM moderation could not evaluate this submission",
+                    rationale="The provider did not return a usable moderation decision before attempts were exhausted.",
+                    confidence=None,
+                    error_class=error_class,
+                    metadata=metadata,
+                ),
                 uuid=row["uuid"],
-                lock_owner=self.lock_owner,
-                finalized_at=attempted_at,
-                source="llm_error",
-                reason="never_evaluated",
-                short_reason="LLM moderation could not evaluate this submission",
-                rationale="The provider did not return a usable moderation decision before attempts were exhausted.",
-                confidence=None,
-                error_class=error_class,
-                metadata=metadata,
+                what=f"{error_class} block",
             )
             return
-        self.db.reschedule_llm_moderation_error(
+        self._record_unapplied(
+            self.db.reschedule_llm_moderation_error(
+                uuid=row["uuid"],
+                lock_owner=self.lock_owner,
+                attempted_at=attempted_at,
+                next_attempt_at=attempted_at + self._retry_delay_seconds(settings, attempt_count),
+                error_class=error_class,
+                metadata=metadata,
+            ),
             uuid=row["uuid"],
-            lock_owner=self.lock_owner,
-            attempted_at=attempted_at,
-            next_attempt_at=attempted_at + self._retry_delay_seconds(settings, attempt_count),
-            error_class=error_class,
-            metadata=metadata,
+            what=f"{error_class} reschedule",
         )
 
     @staticmethod
