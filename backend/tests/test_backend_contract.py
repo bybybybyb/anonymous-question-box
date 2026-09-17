@@ -1532,6 +1532,19 @@ def test_llm_moderation_rejects_an_oversized_timeout(tmp_path: Path) -> None:
         load_settings(str(config_path))
 
 
+def test_llm_moderation_rejects_a_non_finite_timeout(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    write_config(
+        config_path,
+        config_payload(tmp_path, llm_filter={"enabled": True, "timeout_seconds": float("nan")}),
+    )
+
+    # `nan` compares False against every bound, so without an explicit finiteness check it
+    # slips past the ceiling and `max(0.1, nan)` silently clamps it to a 0.1s timeout.
+    with pytest.raises(ValueError, match="timeout_seconds"):
+        load_settings(str(config_path))
+
+
 def test_llm_moderation_config_parses_provider_and_retention_overrides(tmp_path: Path) -> None:
     config_path = tmp_path / "config.yaml"
     payload = config_payload(

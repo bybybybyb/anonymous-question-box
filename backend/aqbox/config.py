@@ -229,6 +229,11 @@ def _parse_llm_moderation_config(raw: dict[str, Any]) -> LLMModerationConfig:
             )
         boxes[owner] = LLMBoxConfig(question_types=question_types, raw=dict(box_raw))
     timeout_seconds = _as_float(raw.get("timeout_seconds"), default=60.0)
+    # Checked here rather than in `_as_float` so the message can name the field: `nan`
+    # compares False against every bound, so it would slip past the ceiling below and
+    # `max(0.1, nan)` would silently clamp it to 0.1s (every call times out).
+    if not math.isfinite(timeout_seconds):
+        raise ValueError(f"llm_filter.timeout_seconds must be a finite number, got {timeout_seconds!r}")
     if timeout_seconds > MAX_LLM_TIMEOUT_SECONDS:
         raise ValueError(
             f"llm_filter.timeout_seconds {timeout_seconds!r} exceeds the maximum "

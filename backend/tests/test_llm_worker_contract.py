@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -405,7 +406,7 @@ def test_worker_reports_conflict_instead_of_clearing_when_finalize_is_rejected(t
     assert "was not persisted" in caplog.text
 
 
-def test_worker_lease_outlives_a_provider_timeout_longer_than_the_lock(tmp_path: Path) -> None:
+def test_worker_lease_covers_the_whole_claimed_batch(tmp_path: Path) -> None:
     s = llm_settings(tmp_path, timeout_seconds=600.0)
     db = Database(s.db_path, moderation_schema=True)
     submitted_pending_uuid(db, s, "lease headroom")
@@ -418,12 +419,67 @@ def test_worker_lease_outlives_a_provider_timeout_longer_than_the_lock(tmp_path:
         state = db.conn.execute("SELECT locked_until FROM question_moderation_state").fetchone()
         assert state is not None
         lease = int(state["locked_until"]) - int(time.time())
-        # The configured timeout exceeds the base lock, so the claim must widen the lease.
-        assert lease >= int(s.llm_moderation.timeout_seconds) > worker.lock_seconds
+        # Rows are claimed together and processed one at a time, so the lease has to cover
+        # every call in the batch — a single call's worth leaves the later rows claimable
+        # while they are still in flight.
+        batch_requirement = math.ceil(s.llm_moderation.timeout_seconds) * worker.batch_size
+        assert lease >= batch_requirement > s.llm_moderation.timeout_seconds
         provider.release.set()
         await task
 
     asyncio.run(inspect_while_in_flight())
+
+
+def test_worker_conflict_is_not_erased_by_a_later_success_in_the_same_batch(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    s = llm_settings(tmp_path, max_attempts=3)
+    db = Database(s.db_path, moderation_schema=True)
+    conflicted = submitted_pending_uuid(db, s, "conflict row")
+    clean = submitted_pending_uuid(db, s, "clean row")
+    set_pending_order(db, conflicted, clean)
+
+    class StealFirstOnlyProvider:
+        def __init__(self) -> None:
+            self.stolen = False
+
+        async def complete(self, request: LLMProviderRequest) -> LLMProviderResponse:
+            if not self.stolen:
+                self.stolen = True
+                db.conn.execute(
+                    "UPDATE question_moderation_state SET lock_owner = ? WHERE uuid = ?",
+                    ("worker-b", conflicted),
+                )
+                db.conn.commit()
+            return provider_response(decision="accept")
+
+    worker = LLMModerationWorker(db, SettingsProvider(settings=s), provider=StealFirstOnlyProvider(), poll_interval_seconds=0.01)
+    with caplog.at_level("ERROR"):
+        asyncio.run(worker.run_once())
+
+    # The clean row finalised successfully, but the conflicted row is still pending with no
+    # event row, so health must not be left reporting that everything recovered.
+    assert worker.recent_error_class == "finalize_conflict"
+    assert "was not persisted" in caplog.text
+
+
+def test_worker_treats_a_row_deleted_mid_flight_as_benign(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    s = llm_settings(tmp_path, max_attempts=3)
+    db = Database(s.db_path, moderation_schema=True)
+    uuid = submitted_pending_uuid(db, s, "deleted mid flight")
+
+    class DeleteMidFlightProvider:
+        async def complete(self, request: LLMProviderRequest) -> LLMProviderResponse:
+            db.conn.execute("UPDATE question SET deleted_at = ? WHERE uuid = ?", (1, uuid))
+            db.conn.commit()
+            return provider_response(decision="accept")
+
+    worker = LLMModerationWorker(db, SettingsProvider(settings=s), provider=DeleteMidFlightProvider(), poll_interval_seconds=0.01)
+    with caplog.at_level("ERROR"):
+        asyncio.run(worker.run_once())
+
+    # Losing the write here is expected: the owner removed the submission mid-call, so this
+    # must not raise a conflict alarm.
+    assert worker.recent_error_class is None
+    assert "was not persisted" not in caplog.text
 
 
 def test_worker_retry_backoff_is_exponential_with_cap(tmp_path: Path) -> None:

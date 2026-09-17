@@ -16,7 +16,7 @@ LLMProviderErrorClass = Literal[
     "config_api_key_rejected",
     "config_permission",
     "config_endpoint",
-    "provider_bad_request",
+    "provider_request_rejected",
     "rate_limited",
     "timeout",
     "network",
@@ -162,15 +162,14 @@ def _classify_http_status(status_code: int) -> LLMProviderErrorClass:
     """Map a provider HTTP status onto an operational error class.
 
     A status alone cannot say *which* request field was rejected — a retired model
-    name and a malformed body are both 400 — so 400 stays generic and the provider's
-    own message (logged by the worker) carries that detail. What the status does
-    distinguish is worth keeping apart: an operator triaging a blocked submission
-    needs to know whether the key, the permissions, or the endpoint is at fault.
+    name and a malformed body are both 400 — so the generic 4xx class deliberately
+    stays fault-neutral and the provider's own message (logged by the worker) carries
+    that detail. What the status does distinguish is worth keeping apart: an operator
+    triaging a blocked submission needs to know whether the key, the permissions, the
+    endpoint, or the request itself is at fault.
     """
     if status_code == 402:
         return "quota_exceeded"
-    if status_code == 400:
-        return "provider_bad_request"
     if status_code == 401:
         return "config_api_key_rejected"
     if status_code == 403:
@@ -179,6 +178,11 @@ def _classify_http_status(status_code: int) -> LLMProviderErrorClass:
         return "config_endpoint"
     if status_code == 429:
         return "rate_limited"
+    # Every other 4xx is the provider rejecting our request (400/405/406/415/422 and
+    # anything unenumerated). Keeping this ahead of the fallback stops `invalid_response`
+    # from covering both "bad request" and "unusable response body".
+    if 400 <= status_code <= 499:
+        return "provider_request_rejected"
     if 500 <= status_code <= 599:
         return "server"
     return "invalid_response"

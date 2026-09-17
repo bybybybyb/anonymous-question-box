@@ -208,10 +208,12 @@ def test_deepseek_provider_preserves_finish_reason_for_parser_boundary(finish_re
 @pytest.mark.parametrize(
     ("status_code", "expected_error_class"),
     [
-        (400, "provider_bad_request"),
+        (400, "provider_request_rejected"),
         (401, "config_api_key_rejected"),
         (403, "config_permission"),
         (404, "config_endpoint"),
+        (422, "provider_request_rejected"),
+        (405, "provider_request_rejected"),
         (402, "quota_exceeded"),
         (429, "rate_limited"),
         (500, "server"),
