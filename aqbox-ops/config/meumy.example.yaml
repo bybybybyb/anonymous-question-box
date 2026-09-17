@@ -25,14 +25,17 @@ trusted_proxy_cidrs:
 #   background, background_image, background_color, background_position,
 #   background_repeat, background_size, plus `preset`, `variant` and `mode`.
 #
-# The core bundle no longer ships deployment-specific theme classes. A config
-# that used `background_class: <legacy MeUmy name>`, or that relied on the
-# removed implicit mapping (owner `merry` used to fall back to
-# `texture-merry-light` and owner `umy` to `texture-umy-light` when no explicit
-# theme was set), now gets NO background and logs a console warning naming the
-# rejected token. This file's own `owner_profiles` below already uses portable
-# fields, so it needs no migration. Note that `background_class` still works as
-# an alias for the four generic presets (plain|striped x light|dark).
+# The core bundle no longer ships deployment-specific theme classes, so two things
+# changed and they fail differently:
+#   - a config that set `background_class: <legacy MeUmy name>` now gets NO
+#     background, and the frontend logs a console warning naming the rejected token;
+#   - an owner that relied on the removed implicit mapping (owner `merry` used to
+#     fall back to `texture-merry-light`, owner `umy` to `texture-umy-light`) now
+#     silently gets the generic `striped-light` preset instead — a visible style
+#     change that logs nothing. Set an explicit owner `theme` to control it.
+# This file's own `owner_profiles` below already uses portable fields, so it needs no
+# migration. Note that `background_class` still works as an alias for the four generic
+# presets (plain|striped x light|dark).
 #
 # The portable equivalents of the removed presets are:
 #
