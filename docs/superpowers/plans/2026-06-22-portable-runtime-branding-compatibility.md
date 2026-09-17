@@ -84,7 +84,7 @@ Expected: no output.
 Add:
 
 ```json
-"test": "node --test test/*.test.js"
+"test": "node --test test/*.test.mjs"
 ```
 
 Tests must assert:
@@ -178,8 +178,9 @@ Expected: all tests pass.
 
 - [ ] **Step 1: Add helper tests for Owner Theme fallback**
 
-Add `ownerTheme(owner)` tests proving an explicit Owner Theme is returned and a
-missing Theme falls back to `{ preset: "striped-light" }`.
+Add `ownerTheme(owner)` tests proving an explicit Owner Theme is returned, that
+owner names `merry`/`umy` with no explicit Theme fall back to their legacy
+textures, and that any other owner falls back to `{ preset: "striped-light" }`.
 
 - [ ] **Step 2: Run tests to verify RED**
 

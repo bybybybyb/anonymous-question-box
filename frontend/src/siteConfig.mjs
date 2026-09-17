@@ -116,8 +116,10 @@ export function activeQuestionTypes(owner = {}, now = new Date()) {
 export function themeVariant(theme = {}) {
   if (theme.variant === "dark" || theme.mode === "dark") return "dark";
   if (theme.variant === "light" || theme.mode === "light") return "light";
-  const preset = themePreset(theme);
-  return preset.includes("dark") ? "dark" : "light";
+  // Derive from the class actually applied, not from the preset name alone: legacy
+  // `background_class` values resolve through `themeClass`, and reading the raw
+  // token would report "light" for a dark legacy theme (dark body, light cards).
+  return themeClass(theme).includes("dark") ? "dark" : "light";
 }
 
 function themePreset(theme = {}) {

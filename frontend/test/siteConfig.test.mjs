@@ -9,6 +9,7 @@ import {
   ownerTheme,
   siteMetadata,
   themeClass,
+  themeVariant,
 } from "../src/siteConfig.mjs";
 
 function fakeBody(initialClasses = []) {
@@ -193,6 +194,19 @@ test("theme class rejects arbitrary class injection", () => {
 
   assert.equal(warnings.length, 1);
   assert.match(warnings[0], /position-fixed/);
+});
+
+test("theme variant derives from the resolved preset class", () => {
+  assert.equal(themeVariant({ preset: "plain-dark" }), "dark");
+  assert.equal(themeVariant({ preset: "striped-dark" }), "dark");
+  assert.equal(themeVariant({ preset: "striped-light" }), "light");
+  assert.equal(themeVariant({}), "light");
+});
+
+test("theme variant prefers an explicit variant or mode over the preset", () => {
+  assert.equal(themeVariant({ variant: "dark" }), "dark");
+  assert.equal(themeVariant({ mode: "dark", preset: "plain-light" }), "dark");
+  assert.equal(themeVariant({ variant: "light", preset: "plain-dark" }), "light");
 });
 
 test("owner theme falls back to the generic preset regardless of owner name", () => {

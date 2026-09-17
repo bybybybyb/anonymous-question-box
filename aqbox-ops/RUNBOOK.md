@@ -32,9 +32,10 @@ $EDITOR backend/config/config.docker.yaml
 AQBOX_CONFIG_FILE=./backend/config/config.docker.yaml docker compose up --build -d
 ```
 
-The MeUmy config references bundled files under `/assets/custom/meumy/...`.
-Those URLs resolve because Docker mounts `aqbox-ops/assets` into the frontend
-container at `/usr/share/nginx/html/assets/custom`.
+The MeUmy config references host-mounted files under `/assets/custom/meumy/...`
+(they are not baked into any image). Those URLs resolve because Docker mounts
+`aqbox-ops/assets` into the frontend container at
+`/usr/share/nginx/html/assets/custom`.
 
 ## Custom Branding
 
