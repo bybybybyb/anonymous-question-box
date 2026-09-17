@@ -301,7 +301,12 @@ llm_filter:
   - output: parsed raw response envelope including content, finish reason, model, latency, token usage, provider error class.
 - Implement provider calls with `httpx.AsyncClient`; do not introduce the OpenAI SDK for this slice.
 - Classify provider errors as:
-  - `config_auth`: missing key, bad key, model/base URL configuration failures;
+  - `config_missing_api_key`: no API key configured;
+  - `config_api_key_rejected`: provider 401;
+  - `config_permission`: provider 403;
+  - `config_endpoint`: provider 404 (wrong base URL or path);
+  - `provider_bad_request`: provider 400 — covers a retired/unknown model name as well as a
+    malformed body; the provider's own message (logged by the worker) carries which;
   - `rate_limited`: provider 429;
   - `timeout`: request timeout;
   - `network`: DNS/connectivity/TLS failures;

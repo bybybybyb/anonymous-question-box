@@ -12,7 +12,11 @@ from .config import LLMModerationPolicy
 from .moderation import LLMModerationPrompt
 
 LLMProviderErrorClass = Literal[
-    "config_auth",
+    "config_missing_api_key",
+    "config_api_key_rejected",
+    "config_permission",
+    "config_endpoint",
+    "provider_bad_request",
     "rate_limited",
     "timeout",
     "network",
@@ -78,7 +82,7 @@ class DeepSeekLLMProvider:
     async def complete(self, request: LLMProviderRequest) -> LLMProviderResponse:
         started = time.perf_counter()
         if not request.api_key:
-            return self._error_response(started, "config_auth")
+            return self._error_response(started, "config_missing_api_key")
         try:
             response = await asyncio.wait_for(
                 self._client.post(
@@ -155,10 +159,24 @@ def _chat_completions_url(base_url: str) -> str:
 
 
 def _classify_http_status(status_code: int) -> LLMProviderErrorClass:
+    """Map a provider HTTP status onto an operational error class.
+
+    A status alone cannot say *which* request field was rejected — a retired model
+    name and a malformed body are both 400 — so 400 stays generic and the provider's
+    own message (logged by the worker) carries that detail. What the status does
+    distinguish is worth keeping apart: an operator triaging a blocked submission
+    needs to know whether the key, the permissions, or the endpoint is at fault.
+    """
     if status_code == 402:
         return "quota_exceeded"
-    if status_code in {400, 401, 403, 404}:
-        return "config_auth"
+    if status_code == 400:
+        return "provider_bad_request"
+    if status_code == 401:
+        return "config_api_key_rejected"
+    if status_code == 403:
+        return "config_permission"
+    if status_code == 404:
+        return "config_endpoint"
     if status_code == 429:
         return "rate_limited"
     if 500 <= status_code <= 599:

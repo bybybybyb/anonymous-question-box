@@ -11,7 +11,7 @@ import yaml
 from fastapi.testclient import TestClient
 
 from aqbox.app import create_app
-from aqbox.config import LLMModerationConfig, Settings, load_settings
+from aqbox.config import MAX_LLM_TIMEOUT_SECONDS, LLMModerationConfig, Settings, load_settings
 from aqbox.db import LOCATION_NO_DATA_LABEL, LOCATION_NO_DATA_VALUE, Database
 from aqbox.geo import lookup_and_store, parse_region
 from aqbox.moderation import llm_policy_for
@@ -1517,6 +1517,19 @@ def test_invalid_llm_threshold_hot_reload_keeps_last_good_config(tmp_path: Path)
     assert cfg.json()["last_reload_error"]
     assert "high_confidence_reject_threshold" in cfg.json()["last_reload_error"]
     assert current.llm_moderation.high_confidence_reject_threshold == 0.8
+
+
+def test_llm_moderation_rejects_an_oversized_timeout(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    write_config(
+        config_path,
+        config_payload(tmp_path, llm_filter={"enabled": True, "timeout_seconds": MAX_LLM_TIMEOUT_SECONDS + 1}),
+    )
+
+    # Raising keeps the last-good config and surfaces via last_reload_error, rather than
+    # silently accepting a value that would stall the queue.
+    with pytest.raises(ValueError, match="timeout_seconds"):
+        load_settings(str(config_path))
 
 
 def test_llm_moderation_config_parses_provider_and_retention_overrides(tmp_path: Path) -> None:

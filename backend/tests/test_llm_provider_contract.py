@@ -208,10 +208,10 @@ def test_deepseek_provider_preserves_finish_reason_for_parser_boundary(finish_re
 @pytest.mark.parametrize(
     ("status_code", "expected_error_class"),
     [
-        (400, "config_auth"),
-        (401, "config_auth"),
-        (403, "config_auth"),
-        (404, "config_auth"),
+        (400, "provider_bad_request"),
+        (401, "config_api_key_rejected"),
+        (403, "config_permission"),
+        (404, "config_endpoint"),
         (402, "quota_exceeded"),
         (429, "rate_limited"),
         (500, "server"),
@@ -270,11 +270,11 @@ def test_deepseek_provider_classifies_invalid_provider_envelopes(response: httpx
     assert result.finish_reason is None
 
 
-def test_deepseek_provider_classifies_missing_api_key_as_config_auth_without_network() -> None:
+def test_deepseek_provider_classifies_missing_api_key_without_network() -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
         raise AssertionError("missing API key should not perform a network request")
 
     result = run_call_with_transport(httpx.MockTransport(handler), policy=make_policy(api_key_value=""))
 
-    assert result.error_class == "config_auth"
+    assert result.error_class == "config_missing_api_key"
     assert result.http_status is None
