@@ -15,21 +15,23 @@ secrets and local runtime files in ignored paths such as `backend/config/`.
 ## Generic Docker Deployment
 
 ```bash
+mkdir -p backend/config
 cp aqbox-ops/config/config.example.yaml backend/config/config.docker.yaml
 $EDITOR backend/config/config.docker.yaml
-AQBOX_CONFIG_FILE=./backend/config/config.docker.yaml docker compose up --build -d
+AQBOX_CONFIG_DIR=./backend/config AQBOX_CONFIG_NAME=config.docker.yaml docker compose up --build -d
 ```
 
-The compose defaults point at `aqbox-ops/config/config.example.yaml`,
+The compose defaults mount `aqbox-ops/config/` and read `config.example.yaml`,
 `aqbox-ops/assets`, and `aqbox-ops/ip2region`. Override them with
-`AQBOX_CONFIG_FILE`, `AQBOX_STATIC_ASSETS_DIR`, and `AQBOX_IP2REGION_DIR`.
+`AQBOX_CONFIG_DIR`, `AQBOX_CONFIG_NAME`, `AQBOX_STATIC_ASSETS_DIR`, and `AQBOX_IP2REGION_DIR`.
 
 ## Legacy MeUmy Deployment
 
 ```bash
+mkdir -p backend/config
 cp aqbox-ops/config/meumy.example.yaml backend/config/config.docker.yaml
 $EDITOR backend/config/config.docker.yaml
-AQBOX_CONFIG_FILE=./backend/config/config.docker.yaml docker compose up --build -d
+AQBOX_CONFIG_DIR=./backend/config AQBOX_CONFIG_NAME=config.docker.yaml docker compose up --build -d
 ```
 
 The MeUmy config references host-mounted files under `/assets/custom/meumy/...`
@@ -65,3 +67,6 @@ ip2region_ipv4_xdb_path: /ip2region/ip2region_v4.xdb
 ip2region_ipv6_xdb_path: /ip2region/ip2region_v6.xdb
 ip2region_cache_policy: vectorIndex
 ```
+
+Config is mounted as a directory so atomic editor saves are visible to backend hot reload.
+Set `AQBOX_CONFIG_DIR` to that directory and `AQBOX_CONFIG_NAME` to the filename inside it.

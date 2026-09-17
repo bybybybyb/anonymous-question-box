@@ -4,10 +4,10 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      AQBOX_CONFIG: /config/config.yaml
+      AQBOX_CONFIG: /config/${AQBOX_CONFIG_NAME:-config.example.yaml}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
     volumes:
-      - ${AQBOX_CONFIG_FILE:-./aqbox-ops/config/config.example.yaml}:/config/config.yaml:ro
+      - ${AQBOX_CONFIG_DIR:-./aqbox-ops/config}:/config:ro
       - aqbox-data:/data
       - ${AQBOX_IP2REGION_DIR:-./aqbox-ops/ip2region}:/ip2region:ro
     expose:

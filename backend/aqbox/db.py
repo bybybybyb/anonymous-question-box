@@ -1318,6 +1318,28 @@ class Database:
             "locked": int(row["locked"] or 0),
         }
 
+    def llm_moderation_row_outcome(self, *, uuid: str) -> tuple[str, bool]:
+        """Return ``(moderation status or "", question is soft-deleted)`` for one submission.
+
+        A ``finalize_*`` that matched no row can mean either "another claimer owns this row"
+        (a real conflict) or "the row was already resolved or deleted while the call was in
+        flight" (benign). The write itself cannot tell them apart, so the caller re-reads
+        the row to decide whether to raise an alarm.
+        """
+        with self.lock:
+            row = self.conn.execute(
+                """
+                SELECT COALESCE(ms.status, '') AS status, q.deleted_at AS deleted_at
+                FROM question q
+                LEFT JOIN question_moderation_state ms ON ms.uuid = q.uuid
+                WHERE q.uuid = ?
+                """,
+                (uuid,),
+            ).fetchone()
+        if row is None:
+            return ("", False)
+        return (str(row["status"] or ""), row["deleted_at"] is not None)
+
     def update_answer(self, uuid: str, answer: str, answered_by: str, answered_at: int) -> bool:
         with self.lock:
             cur = self.conn.execute(

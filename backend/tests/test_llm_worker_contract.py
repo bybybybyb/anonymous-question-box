@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -26,6 +28,7 @@ def llm_settings(
     initial_backoff_seconds: float = 0,
     high_confidence_reject_threshold: float = 0.85,
     review_all_model_rejects: bool = True,
+    timeout_seconds: float = 0.2,
 ) -> Settings:
     s = settings(tmp_path)
     s.llm_filter = {
@@ -33,7 +36,7 @@ def llm_settings(
         "api_key": "test-key",
         "model": "test-model",
         "max_attempts": max_attempts,
-        "timeout_seconds": 0.2,
+        "timeout_seconds": timeout_seconds,
         "initial_backoff_seconds": initial_backoff_seconds,
         "high_confidence_reject_threshold": high_confidence_reject_threshold,
         "review_all_model_rejects": review_all_model_rejects,
@@ -350,6 +353,145 @@ def test_worker_provider_error_and_invalid_response_exhaust_to_llm_error_review(
         "attempt_count": 2,
         "last_error_class": "invalid_response_missing_field",
     }
+
+
+def test_worker_clears_recent_error_class_after_successful_decision(tmp_path: Path) -> None:
+    s = llm_settings(tmp_path, max_attempts=3)
+    db = Database(s.db_path, moderation_schema=True)
+    provider = FakeLLMProvider(
+        provider_response(error_class="timeout", finish_reason=None),
+        provider_response(decision="accept"),
+    )
+    uuid = submitted_pending_uuid(db, s, "retry recovers", provider=provider)
+    worker = LLMModerationWorker(db, SettingsProvider(settings=s), provider=provider, poll_interval_seconds=0.01)
+
+    asyncio.run(worker.run_once())
+    assert worker.recent_error_class == "timeout"
+
+    db.conn.execute(
+        "UPDATE question_moderation_state SET next_attempt_at = NULL WHERE uuid = ?",
+        (uuid,),
+    )
+    db.conn.commit()
+
+    asyncio.run(worker.run_once())
+
+    assert worker.recent_error_class is None
+    assert db.conn.execute("SELECT status FROM question_moderation_state WHERE uuid = ?", (uuid,)).fetchone() is None
+
+
+def test_worker_reports_conflict_instead_of_clearing_when_finalize_is_rejected(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    s = llm_settings(tmp_path, max_attempts=3)
+    db = Database(s.db_path, moderation_schema=True)
+    uuid = submitted_pending_uuid(db, s, "lock stolen")
+
+    class LockStealingProvider:
+        async def complete(self, request: LLMProviderRequest) -> LLMProviderResponse:
+            # Simulate a second claimer taking the row while this call is in flight.
+            db.conn.execute(
+                "UPDATE question_moderation_state SET lock_owner = ? WHERE uuid = ?",
+                ("worker-b", uuid),
+            )
+            db.conn.commit()
+            return provider_response(decision="accept")
+
+    worker = LLMModerationWorker(db, SettingsProvider(settings=s), provider=LockStealingProvider(), poll_interval_seconds=0.01)
+    with caplog.at_level("ERROR"):
+        asyncio.run(worker.run_once())
+
+    row = db.conn.execute("SELECT status FROM question_moderation_state WHERE uuid = ?", (uuid,)).fetchone()
+    assert row is not None
+    assert row["status"] == "pending"
+    assert worker.recent_error_class == "finalize_conflict"
+    assert "was not persisted" in caplog.text
+
+
+def test_worker_lease_covers_the_whole_claimed_batch(tmp_path: Path) -> None:
+    s = llm_settings(tmp_path, timeout_seconds=600.0)
+    db = Database(s.db_path, moderation_schema=True)
+    submitted_pending_uuid(db, s, "lease headroom")
+    provider = BlockingLLMProvider(provider_response(decision="accept"))
+    worker = LLMModerationWorker(db, SettingsProvider(settings=s), provider=provider, poll_interval_seconds=0.01)
+
+    async def inspect_while_in_flight() -> None:
+        task = asyncio.ensure_future(worker.run_once())
+        await provider.started.wait()
+        state = db.conn.execute("SELECT locked_until FROM question_moderation_state").fetchone()
+        assert state is not None
+        lease = int(state["locked_until"]) - int(time.time())
+        # Rows are claimed together and processed one at a time, so the lease has to cover
+        # every call in the batch — a single call's worth leaves the later rows claimable
+        # while they are still in flight.
+        batch_requirement = math.ceil(s.llm_moderation.timeout_seconds) * worker.batch_size
+        assert lease >= batch_requirement > s.llm_moderation.timeout_seconds
+        provider.release.set()
+        await task
+
+    asyncio.run(inspect_while_in_flight())
+
+
+def test_worker_conflict_is_not_erased_by_a_later_success_in_the_same_batch(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    s = llm_settings(tmp_path, max_attempts=3)
+    db = Database(s.db_path, moderation_schema=True)
+    conflicted = submitted_pending_uuid(db, s, "conflict row")
+    clean = submitted_pending_uuid(db, s, "clean row")
+    set_pending_order(db, conflicted, clean)
+
+    class StealFirstOnlyProvider:
+        def __init__(self) -> None:
+            self.stolen = False
+
+        async def complete(self, request: LLMProviderRequest) -> LLMProviderResponse:
+            if not self.stolen:
+                self.stolen = True
+                db.conn.execute(
+                    "UPDATE question_moderation_state SET lock_owner = ? WHERE uuid = ?",
+                    ("worker-b", conflicted),
+                )
+                db.conn.commit()
+            return provider_response(decision="accept")
+
+    worker = LLMModerationWorker(db, SettingsProvider(settings=s), provider=StealFirstOnlyProvider(), poll_interval_seconds=0.01)
+    with caplog.at_level("ERROR"):
+        asyncio.run(worker.run_once())
+
+    # The clean row finalised successfully, but the conflicted row is still pending with no
+    # event row, so health must not be left reporting that everything recovered.
+    assert worker.recent_error_class == "finalize_conflict"
+    assert "was not persisted" in caplog.text
+
+
+@pytest.mark.parametrize("max_attempts", [1, 3])
+@pytest.mark.parametrize(
+    "response_factory",
+    [
+        lambda: provider_response(decision="accept"),
+        lambda: provider_response(decision="reject"),
+        lambda: provider_response(error_class="timeout", finish_reason=None),
+        lambda: provider_response(content='{"decision": "accept"}'),
+    ],
+)
+def test_worker_treats_a_row_deleted_mid_flight_as_benign(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, max_attempts: int, response_factory: Callable[[], LLMProviderResponse]
+) -> None:
+    s = llm_settings(tmp_path, max_attempts=max_attempts)
+    db = Database(s.db_path, moderation_schema=True)
+    uuid = submitted_pending_uuid(db, s, "deleted mid flight")
+
+    class DeleteMidFlightProvider:
+        async def complete(self, request: LLMProviderRequest) -> LLMProviderResponse:
+            db.conn.execute("UPDATE question SET deleted_at = ? WHERE uuid = ?", (1, uuid))
+            db.conn.commit()
+            return response_factory()
+
+    worker = LLMModerationWorker(db, SettingsProvider(settings=s), provider=DeleteMidFlightProvider(), poll_interval_seconds=0.01)
+    with caplog.at_level("ERROR"):
+        asyncio.run(worker.run_once())
+
+    # Losing the write here is expected: the owner removed the submission mid-call, so this
+    # must not raise a conflict alarm.
+    assert worker.recent_error_class != "finalize_conflict"
+    assert "was not persisted" not in caplog.text
 
 
 def test_worker_retry_backoff_is_exponential_with_cap(tmp_path: Path) -> None:

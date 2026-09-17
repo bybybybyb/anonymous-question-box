@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div v-if="ownerProfiles[owner]?.question_types?.[type]">
     <Header :hideBackBtn="true"></Header>
     <div class="container">
       <div class="row">
