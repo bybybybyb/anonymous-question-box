@@ -89,16 +89,20 @@ export default {
     },
   },
   mounted() {
+    this.previousDocumentTitle = document.title;
+    document.title = "直播投影";
     this.projectionState = readProjectionState();
     this.unsubscribeProjectionState = subscribeProjectionState((state) => {
       this.projectionState = state;
     });
   },
   beforeUnmount() {
+    document.title = this.previousDocumentTitle;
     this.unsubscribeProjectionState();
   },
   data() {
     return {
+      previousDocumentTitle: "",
       projectionState: null,
       unsubscribeProjectionState: () => {},
     };
