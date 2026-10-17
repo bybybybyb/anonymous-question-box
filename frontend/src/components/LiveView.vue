@@ -216,7 +216,7 @@
                           回复时间： {{ formatTime(q.answered_at) }}
                         </li>
                         <li class="list-group-item" v-if="q.ip">
-                          IP：{{ q.ip }}
+                          IP：<MaskedIp :ip="q.ip" />
                           <span v-if="q.ip_addr || q.ip_isp"
                             >（{{ [q.ip_addr, q.ip_isp].filter(Boolean).join(" / ") }}）</span
                           >
@@ -333,6 +333,7 @@
 </template>
 <script>
 import Header from "./Header.vue";
+import MaskedIp from "./MaskedIp.vue";
 import Pagination from "v-pagination-3";
 import ImageDisplay from "./ImageDisplay.vue";
 import {
@@ -372,6 +373,7 @@ function createProjectionSessionId() {
 export default {
   name: "LiveView",
   components: {
+    MaskedIp,
     Pagination,
     Header,
     ImageDisplay,
