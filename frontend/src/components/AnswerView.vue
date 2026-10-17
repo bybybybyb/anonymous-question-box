@@ -7,7 +7,7 @@
             <div class="card-body py-3 border-bottom text-start text-sm-center">
               <div class="fw-semibold">投稿时间：{{ asked_at }}</div>
               <div class="small text-muted mt-1" v-if="ip">
-                IP：{{ ip }}
+                IP：<MaskedIp :ip="ip" />
                 <span v-if="ip_addr || ip_isp"
                   >（{{ [ip_addr, ip_isp].filter(Boolean).join(" / ") }}）</span
                 >
@@ -141,11 +141,12 @@
 
 <script>
 import Header from "./Header.vue";
+import MaskedIp from "./MaskedIp.vue";
 import ImageDisplay from "./ImageDisplay.vue";
 const storagePrefix = "AnswerView_draft_";
 export default {
   name: "AnswerView",
-  components: { Header, ImageDisplay },
+  components: { Header, ImageDisplay, MaskedIp },
   props: { changeQuestion: String },
   emits: ["fullscreenImg"],
   watch: {

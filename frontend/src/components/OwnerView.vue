@@ -174,7 +174,7 @@
                   回复时间： {{ formatTime(q.answered_at) }}
                 </div>
                 <div class="col-12 mt-1 small text-muted" v-if="q.ip">
-                  IP：{{ q.ip }}
+                  IP：<MaskedIp :ip="q.ip" />
                   <span v-if="q.ip_addr || q.ip_isp"
                     >（{{ [q.ip_addr, q.ip_isp].filter(Boolean).join(" / ") }}）</span
                   >
@@ -236,7 +236,7 @@
                   投稿时间： {{ formatTime(q.asked_at) }}
                 </div>
                 <div class="col-12 mt-1 small text-muted" v-if="q.ip">
-                  IP：{{ q.ip }}
+                  IP：<MaskedIp :ip="q.ip" />
                   <span v-if="q.ip_addr || q.ip_isp"
                     >（{{ [q.ip_addr, q.ip_isp].filter(Boolean).join(" / ") }}）</span
                   >
@@ -408,6 +408,7 @@
 
 <script>
 import Header from "./Header.vue";
+import MaskedIp from "./MaskedIp.vue";
 import Pagination from "v-pagination-3";
 import AnswerView from "./AnswerView.vue";
 import ImageDisplay from "./ImageDisplay.vue";
@@ -442,6 +443,7 @@ const defaultListMode = "normal";
 export default {
   name: "OwnerView",
   components: {
+    MaskedIp,
     Pagination,
     Header,
     AnswerView,
